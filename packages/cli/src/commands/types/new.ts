@@ -20,6 +20,14 @@ import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { dataTypeFlags, presetOptions } from '../../support/data-type-flags.ts'
 import { describeDefinition, describeSync, here } from '../../support/describe.ts'
+import {
+  HostedChange,
+  type HostedOutcome,
+  schemaWritesOf,
+  type ToFlags,
+  toFlags,
+} from '../../support/hosted-schema.ts'
+import type { Io } from '../../support/site.ts'
 import { siteConfig } from '../../support/site.ts'
 import {
   applySchema,
@@ -110,6 +118,7 @@ export default class TypesNew extends BaseCommand {
       'data types: store any other setting as given; JSON when it parses',
       '<setting>=<value>',
     ),
+    ...toFlags,
   }
   static override access = 'site' as const
   static override section = 'settings' as const
@@ -119,8 +128,14 @@ export default class TypesNew extends BaseCommand {
     outputFields: [
       { name: 'created', type: 'array', items: { type: 'string' } },
       { name: 'schema', type: 'string' },
+      {
+        name: 'hosted',
+        type: 'object',
+        nullable: true,
+        description: 'with --to: what that site did',
+      },
     ],
-    errors: ['not_found', 'conflict', 'refused'],
+    errors: ['not_found', 'conflict', 'refused', 'usage', 'confirmation_required', 'unavailable'],
   } as const
 
   async run() {
@@ -183,8 +198,10 @@ export default class TypesNew extends BaseCommand {
 
     const created: string[] = []
     const file = join(config.schemaDir, TYPE_KIND_FILES[kind].dir, fileNameFor(args.alias))
+    const text = writeContentType(type, kind)
+    const hosted = await toHosted(this, config, file, text, flags)
     await mkdir(join(file, '..'), { recursive: true })
-    await writeFile(file, writeContentType(type, kind))
+    await writeFile(file, text)
     created.push(here(file))
     const kindWord =
       kind === 'document' ? (element ? 'element type' : 'content type') : (`${kind} type` as const)
@@ -210,10 +227,10 @@ export default class TypesNew extends BaseCommand {
         await writeFile(view, viewScaffold(type))
         created.push(here(view))
         this.say(`  created  ${here(view)}`)
+        if (flags.to) this.say(`  note     the view reaches ${flags.to} with a deploy`)
       }
     }
-    const report = await applySchema(this, config)
-    return { created, schema: describeSync(report) }
+    return { created, ...(await applyBoth(this, config, hosted)) }
   }
 
   private async newDataType(
@@ -250,12 +267,42 @@ export default class TypesNew extends BaseCommand {
       config.schemaDir,
     )
     const file = join(config.schemaDir, 'data-types', fileNameFor(alias))
+    const text = writeDataType(built.dataType)
+    const hosted = await toHosted(this, config, file, text, flags as ToFlags)
     await mkdir(join(file, '..'), { recursive: true })
-    await writeFile(file, writeDataType(built.dataType))
+    await writeFile(file, text)
     this.say(
       `  added    ${describeDefinition({ kind: 'data type', alias, name: built.dataType.name })}`,
     )
-    const report = await applySchema(this, config)
-    return { created: [here(file)], schema: describeSync(report) }
+    return { created: [here(file)], ...(await applyBoth(this, config, hosted)) }
   }
+}
+
+/** With --to, the new definition checked on that site before its file is written. */
+function toHosted(
+  io: Io,
+  config: Awaited<ReturnType<typeof siteConfig>>,
+  file: string,
+  text: string,
+  flags: ToFlags,
+): Promise<HostedChange | undefined> {
+  return HostedChange.prepare(
+    io,
+    config,
+    flags.to ? schemaWritesOf(config, [{ file, next: text }], flags.to) : {},
+    flags,
+  )
+}
+
+/** Applies it here, then on the --to site, taking that site's version when it is later. */
+async function applyBoth(
+  io: Io,
+  config: Awaited<ReturnType<typeof siteConfig>>,
+  hosted: HostedChange | undefined,
+): Promise<{ schema: string; hosted: HostedOutcome | null }> {
+  let schema = describeSync(await applySchema(io, config))
+  if (!hosted) return { schema, hosted: null }
+  const { raised, ...there } = await hosted.apply(io, config)
+  if (raised) schema = describeSync(await applySchema(io, config))
+  return { schema, hosted: there }
 }

@@ -151,7 +151,12 @@ describe(`a read-only group (${dialectUnderTest})`, () => {
   test('reads what its sections show and is refused every change', async () => {
     const { admin, page, folder, binned, element, elementFolder, group } = await site()
     const reader = await group('readers', {
-      sections: ['Umb.Section.Content', 'Umb.Section.Media', 'Umb.Section.Library'],
+      sections: [
+        'Umb.Section.Content',
+        'Crombolo.Section.Pages',
+        'Umb.Section.Media',
+        'Umb.Section.Library',
+      ],
       fallbackPermissions: [
         'Umb.Document.Read',
         'Umb.Document.PropertyValue.Read',
@@ -255,7 +260,7 @@ describe(`a property a group may only read (${dialectUnderTest})`, () => {
     )
     const body = type.properties.find((p) => p.alias === 'body')?.id as string
     const editor = await group('summaryEditors', {
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       fallbackPermissions: [
         'Umb.Document.Read',
         'Umb.Document.Update',

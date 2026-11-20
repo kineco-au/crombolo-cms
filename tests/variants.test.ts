@@ -276,7 +276,7 @@ describe('culture variants', () => {
     const group = await h.post(`${V1}/user-group`, {
       name: 'English editors',
       alias: 'englishEditors',
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       languages: ['en-US'],
       hasAccessToAllLanguages: false,
       documentRootAccess: true,

@@ -196,6 +196,10 @@ describe('the media verbs (story 088)', () => {
       'AddRemoteExchange',
       'AddExchangeActor',
       'RenameSingleUseToken',
+      'AddWorkspaces',
+      'AddContentPlaces',
+      'AddWorkspaceMerge',
+      'AddWorkspaceSchema',
     ])
     const held = async (key: string) =>
       (

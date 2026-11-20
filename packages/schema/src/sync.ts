@@ -39,6 +39,7 @@ import {
   UserGroupRepository,
   updateSchemaStateHash,
   type WorkflowSyncReport,
+  type WorkspaceScope,
   writeUrlOptions,
 } from '@crombolo/data'
 import { compileBlocks } from './blocks.ts'
@@ -75,6 +76,12 @@ export interface SyncOptions {
   status?: 'prepared' | 'current'
   /** The form field and workflow types the site's wired bundles add. */
   formTypes?: FormTypes
+  /**
+   * A workspace's sync (story 376): types and data types only, into its own copies.
+   * No schema state, languages, URL options, workflows, user groups, folders,
+   * template rows or cache instruction: those are the site's.
+   */
+  workspace?: WorkspaceScope
 }
 
 export type SyncAction = 'applied' | 'would-apply' | 'skipped-older' | 'skipped-same' | 'refused'
@@ -173,7 +180,8 @@ export async function syncSchema(
     .withLock(Locks.Schema, async () =>
       db.transaction(async (tx) => {
         const current = await currentSchemaState(tx, true)
-        const prepared = await latestPreparedState(tx)
+        const workspace = options.workspace
+        const prepared = workspace ? undefined : await latestPreparedState(tx)
         const preparedHere =
           prepared && prepared.id > current.id && compareStates(prepared, fileState) === 0
             ? prepared
@@ -190,7 +198,7 @@ export async function syncSchema(
             },
           })
         const cutOver = preparedHere !== undefined && status === 'current'
-        const cmp = compareStates(fileState, current)
+        const cmp = workspace ? 1 : compareStates(fileState, current)
         const neverSynced = current.hash === null
         if (cmp < 0)
           return emptySyncReport('skipped-older', {
@@ -205,18 +213,21 @@ export async function syncSchema(
         }
 
         const report = emptySyncReport('applied')
-        const state = cutOver
-          ? (preparedHere as SchemaStateRow)
-          : await appendSchemaState(tx, {
-              version: set.version,
-              revision: node.revision,
-              hash,
-              status,
-              by: node.nodeId,
-            })
+        // A workspace's copies are written under the state Shared is at: no new one.
+        const state = workspace
+          ? current
+          : cutOver
+            ? (preparedHere as SchemaStateRow)
+            : await appendSchemaState(tx, {
+                version: set.version,
+                revision: node.revision,
+                hash,
+                status,
+                by: node.nodeId,
+              })
         report.state = { id: state.id, version: state.version, revision: state.revision }
 
-        const dataTypes = new DataTypeRepository(tx)
+        const dataTypes = new DataTypeRepository(tx, workspace ? { workspace } : {})
         const typeFolders = new FolderRepository(
           tx,
           ObjectTypes.DocumentTypeContainer,
@@ -228,7 +239,7 @@ export async function syncSchema(
           ObjectTypes.DataType,
         )
         const folderKey = (repo: FolderRepository, folder: string | undefined) =>
-          folder
+          folder && !workspace
             ? repo.ensurePath(
                 folder
                   .split('/')
@@ -236,7 +247,7 @@ export async function syncSchema(
                   .filter(Boolean),
               )
             : Promise.resolve(null)
-        const types = new ContentTypeRepository(tx)
+        const types = new ContentTypeRepository(tx, workspace ? { workspace } : {})
         const templates = new ComponentRepository(tx)
         const languages = new LanguageRepository(tx)
 
@@ -253,7 +264,10 @@ export async function syncSchema(
           {
             name: 'media' as const,
             types: set.mediaTypes ?? [],
-            repo: new ContentTypeRepository(tx, { kind: 'media' }),
+            repo: new ContentTypeRepository(tx, {
+              kind: 'media',
+              ...(workspace ? { workspace } : {}),
+            }),
             folders: new FolderRepository(
               tx,
               ObjectTypes.MediaTypeContainer,
@@ -265,7 +279,10 @@ export async function syncSchema(
           {
             name: 'member' as const,
             types: set.memberTypes ?? [],
-            repo: new ContentTypeRepository(tx, { kind: 'member' }),
+            repo: new ContentTypeRepository(tx, {
+              kind: 'member',
+              ...(workspace ? { workspace } : {}),
+            }),
             folders: new FolderRepository(
               tx,
               ObjectTypes.MemberTypeContainer,
@@ -357,8 +374,8 @@ export async function syncSchema(
           if (found) dataTypeKeyByAlias.set(alias, found.key)
         }
 
-        // ---- languages
-        if (set.languages.length > 0) {
+        // ---- languages: the site's, never a workspace's
+        if (set.languages.length > 0 && !workspace) {
           const result = await languages.upsertAll(
             set.languages.map((l) => ({
               isoCode: l.iso,
@@ -374,7 +391,7 @@ export async function syncSchema(
 
         // ---- how URLs are built: the files are the source, absent is the default.
         // Only a current sync moves it; a prepared one serves no URLs yet.
-        if (status === 'current') {
+        if (status === 'current' && !workspace) {
           const urls = { hideTopLevel: set.urls?.hideTopLevel ?? DEFAULT_URL_OPTIONS.hideTopLevel }
           const before = await writeUrlOptions(tx, urls)
           if (!sameUrlOptions(before, urls)) report.urls = { before, after: urls }
@@ -398,6 +415,8 @@ export async function syncSchema(
         const componentKeyByAlias = new Map<string, string>()
         for (const alias of new Set(set.contentTypes.flatMap((t) => t.components))) {
           const existing = await templates.byAlias(alias)
+          // A workspace makes no template row: its components are its own (story 377).
+          if (!existing && workspace) continue
           const key = existing?.key ?? crypto.randomUUID()
           if (!existing) await templates.save({ key, name: alias, alias, content: null })
           componentKeyByAlias.set(alias, key)
@@ -595,9 +614,10 @@ export async function syncSchema(
                   compositionType: 'Composition' as const,
                 })),
                 allowedContentTypes: [],
-                allowedComponentKeys: t.components.map(
-                  (alias) => componentKeyByAlias.get(alias) ?? '',
-                ),
+                allowedComponentKeys: t.components.flatMap((alias) => {
+                  const known = componentKeyByAlias.get(alias)
+                  return known ? [known] : workspace ? [] : ['']
+                }),
                 defaultComponentKey: t.defaultComponent
                   ? (componentKeyByAlias.get(t.defaultComponent) ?? null)
                   : null,
@@ -624,7 +644,7 @@ export async function syncSchema(
             }
           }
           for (const { aggregate } of aggregates)
-            await kind.repo.save(aggregate, { sinceStateId: state.id })
+            await kind.repo.save(aggregate, workspace ? {} : { sinceStateId: state.id })
           for (const { type, aggregate } of aggregates) {
             if (type.allowChildren.length === 0) continue
             await kind.repo.save(
@@ -635,12 +655,30 @@ export async function syncSchema(
                   sortOrder,
                 })),
               },
-              { sinceStateId: state.id },
+              workspace ? {} : { sinceStateId: state.id },
             )
           }
 
           // ---- types in the database but not in files: retire, unless they have content
           const inFiles = new Set(typeKeyByAlias.values())
+          if (workspace) {
+            // The workspace's own view: a type its files no longer hold is retired there.
+            for (const listed of await kind.repo.all()) {
+              const key = listed.key.toLowerCase()
+              if (inFiles.has(key) || listed.formKey) continue
+              if (SYSTEM_MEDIA_TYPES.some((t) => t.key === key)) continue
+              if (key === SYSTEM_MEMBER_TYPE.key) continue
+              if (SYSTEM_CONTENT_TYPES.some((t) => t.key === key)) continue
+              const count = await kind.repo.contentCount(key)
+              if (count > 0 && !options.forceRetireTypes)
+                throw new SchemaSyncRefused(
+                  `${kind.noun} "${listed.alias}" was removed but ${count} ${kind.items} of it exist; keep it, or retire it once they have gone`,
+                )
+              await kind.repo.delete(key)
+              report.retiredTypes.push(listed.alias)
+            }
+            continue
+          }
           const dbTypes = await tx.q
             .selectFrom('content_type as ct')
             .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -681,6 +719,10 @@ export async function syncSchema(
         // Folder holds whichever built-in media types the site now has (story 180),
         // in this transaction so no node sees the new state before Folder does.
         // A file that defines Folder says itself what it allows.
+        if (workspace) {
+          if (options.dryRun) throw new DryRun(report)
+          return report
+        }
         if (!(set.mediaTypes ?? []).some((t) => t.alias.toLowerCase() === 'folder'))
           await ensureSystemMediaTypes(tx, { linkFolderChildren: true })
         if (cutOver) {

@@ -6,6 +6,119 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **A hosted site's schema changes land in its code (374).** `crombolo types check
+  --against <profile>` lists where a hosted site's definitions and the checkout's
+  `schema/` differ; `types export --from <profile>` brings the site's into the files,
+  saying what it adds, changes and removes first; and the type commands' `--to
+  <profile>` change the files and then the site. A site changed since the files were
+  is refused before anything is written, unless `--force`, and `--all` makes the site
+  match the files. The site's version comes back into `schema.toml`, so a later deploy
+  is never skipped as older. The remote protocol gains `schema-files` and
+  `schema-edit` (`docs/schema-as-code.md`, `docs/remote-protocol.md`).
+
+- **A workspace: pages changed apart from Shared (375).** With `CROMBOLO_WORKSPACES=true`,
+  a person opens a workspace at `<backoffice>/crombolo/api/workspaces`, shares it with
+  the people they choose, and changes, makes, publishes and unpublishes pages in it
+  through the Management API with the `Crombolo-Workspace` header, while Shared, its
+  published pages, its search and everyone else's workspaces stay as they were. Moves,
+  reorders and deletes of Shared pages wait for the merge (380); media, the Library and
+  the recycle bin are refused in a workspace. A workspace's change is audited, naming
+  it, and announced nowhere else. Discarding one leaves no row behind
+  (`docs/workspaces.md`).
+
+- **Every place under Content has its own permission and address (385).** Pages, Media,
+  Approvals, Structure, Code and Forms are each a grant a group holds, shown under Content
+  in the group editor, and each needs Content too: the Management API, the command line,
+  group files and bundles refuse a place without it. Settings no longer opens Structure
+  or Code. Each place lives under Content's address (`section/content/media`,
+  `/approvals`, `/structure`, `/code`, `/forms`), old addresses redirect, and the header
+  has no Media tab (`docs/backoffice-hosting.md`).
+
+- **Merging a workspace into Shared (380).** `GET <backoffice>/crombolo/api/workspaces/{key}/merge`
+  says what a merge would do, and `POST` does it, all or nothing: each field comes from
+  the side that changed it, a field both changed is refused and answered in the
+  workspace (`POST /{key}/conflicts`), what the workspace published is published, its
+  moves and deletes are done where Shared has not moved on, and the workspace closes.
+  Publishing what Shared left unpublished, or a page Shared took down or deleted, is
+  accepted by name first. Merging needs the new `Crombolo.Workspace.Merge` permission and
+  each change's own; a page a workflow covers arrives as a draft sent for approval.
+  Several workspaces merge as one with `POST /merge`, and a host merges through the
+  remote protocol's `workspace-merge`. With `CROMBOLO_WORKSPACES_REQUIRED=true`, a page
+  changes only in a workspace: the back office works in each person's own, and publishing
+  a page there merges that page alone (`docs/workspaces.md`).
+
+- **A workspace holds schema changes (376).** Opening a workspace takes a copy of the
+  site's definition files, kept by hash; with the `Crombolo-Workspace` header a content,
+  media or member type or a data type is saved in the workspace's own copy, and its
+  pages use it, while Shared's types, values and files stay as they were. A merge brings
+  the workspace's files into Shared three ways before its pages, refusing where Shared
+  changed the same lines; `POST /{key}/update` brings Shared's later changes in, and
+  `POST /{key}/files/resolve` answers a file's conflict. Shared refuses to delete a
+  type an open workspace changed, unless an administrator forces it
+  (`docs/workspaces.md`).
+
+- **A workspace holds components, stylesheets and scripts (377).** Its copy of the site's
+  files is taken as it opens; with the header a component, stylesheet or script is read
+  and saved there, a component that does not compile refused, and a page rendered with
+  its views (`GET /{key}/render?path=/`) shows its changes while Shared's pages do not.
+  A merge writes them where they live, refusing one whose components would break
+  against Shared's; a file the site reads only as it starts (`PUT /{key}/site-files`, an
+  administrator) takes effect at the merge. `CROMBOLO_WORKSPACE_VIEWS_LIMIT` (50) caps
+  the workspaces' views one server keeps ready.
+
+- **A change that loses data says so, and takes two steps (382).** Each kind of change to
+  the definitions and files has one of four classes (`none`, `additive`,
+  `data-requiring`, `breaking`) from one table. A merge lists each item with its class,
+  and how many pages a lossy one touches, and is refused until whatever loses data,
+  removes or renames is accepted by id or by kind; a page deleted in a workspace is
+  accepted the same way. `CROMBOLO_PURGE_AFTER_DAYS` holds a purge back until a
+  retirement is that many days old (`docs/schema-as-code.md`).
+
+### Migrations
+
+- **082 `AddWorkspaces`** (expand): the `workspace`, `workspace_member`,
+  `workspace_document`, `workspace_document_culture` and `workspace_pending` tables, and
+  a nullable `workspace_id` on `node`, `content_version`, `property_value` and
+  `content_schedule`, each indexed.
+- **083 `AddContentPlaces`** (expand): every stored group keeps what it could open. One
+  holding Content gains Pages (`pages`); one holding Settings gains Structure and Code
+  (`structure`, `components`); one holding Media, Approvals or Forms without Content gains
+  Content, with Pages off.
+- **084 `AddWorkspaceMerge`** (expand): `state`, `merged_at`, `merged_by` and `personal`
+  on `workspace`; the published state a page began from on `workspace_document` and
+  `workspace_document_culture`; and on `workspace_pending`, where the page stood when
+  it was recorded and its name, for a page Shared deleted.
+- **085 `AddWorkspaceSchema`** (expand): `file_blob` (texts by hash) and `workspace_file`
+  (each workspace's list of path, base and hash); `workspace_id` and `origin_key` on
+  `content_type` and `data_type`, `origin_key` on `property_type` and
+  `property_type_group`, `schema_built` on `workspace`; Shared's content-type alias
+  index is now over Shared's rows only.
+
+### Upgrade notes
+
+- Migrations 082, 084 and 085 run on upgrade; they only add. Workspaces stay off until
+  `CROMBOLO_WORKSPACES=true`, and are required only with `CROMBOLO_WORKSPACES_REQUIRED=true`,
+  which refuses to start without them.
+- Only administrators merge a workspace until a group is given `Crombolo.Workspace.Merge`.
+- A workspace merge that deletes pages, or removes or renames anything, now needs it
+  accepted: `accept: ["page-deleted"]`, or the item's id, on `POST /{key}/merge`.
+- **Group files need the new grants (385).** Migration 083 changes groups kept in the
+  database; a group kept in `schema/user-groups/*.toml` is set from its file at the next
+  sync, so it has only what the file names. Before deploying, add to each file's
+  `sections`:
+  - `"pages"` where it has `"content"` and its people edit pages;
+  - `"structure", "components"` where it has `"settings"` and its people change types or
+    templates;
+  - `"content"` where it has `"media"`, `"workflow"` or `"forms"` without it, or the file
+    is refused.
+- Bookmarks of `section/media`, `section/forms`, `section/workflow` and Settings' Structure,
+  Code, Forms and Workflows open the same screens at their new addresses.
+- A site offers `schema-edit` at `CROMBOLO_REMOTE_ACCESS=content` or
+  above, to people with the push permission and ApplyStructure, and only where its
+  schema is writable.
+
 ## v0.69.1 — 2026-11-16
 
 ### Features

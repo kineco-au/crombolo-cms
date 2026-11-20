@@ -14,19 +14,53 @@ export const TABS = [
   { id: 'people', label: 'People' },
 ]
 
-/** The areas of the back office, as Access lists them, by section alias. */
+const CONTENT = 'Umb.Section.Content'
+
+/**
+ * The areas of the back office, as Access lists them, by section alias. The
+ * places under Content (story 385) each need Content as well: `under` says so.
+ */
 export const AREAS = [
-  { section: 'Umb.Section.Content', label: 'Content', line: "The site's pages." },
   {
-    section: 'Umb.Section.Library',
-    label: 'Library',
-    line: 'Shared pieces pages are built from: blocks, menus and promos.',
+    section: CONTENT,
+    label: 'Content',
+    line: 'The places below, under one menu. Each needs this too.',
   },
-  { section: 'Umb.Section.Media', label: 'Media', line: 'Images, documents and other files.' },
+  { section: 'Crombolo.Section.Pages', label: 'Pages', line: "The site's pages.", under: CONTENT },
+  {
+    section: 'Umb.Section.Media',
+    label: 'Media',
+    line: 'Images, documents and other files.',
+    under: CONTENT,
+  },
+  {
+    section: 'Crombolo.Section.Workflow',
+    label: 'Approvals',
+    line: 'Pages waiting for someone to approve them.',
+    under: CONTENT,
+  },
+  {
+    section: 'Crombolo.Section.Structure',
+    label: 'Structure',
+    line: 'Content, media and member types, data types, languages and workflows. These change the whole site.',
+    under: CONTENT,
+  },
+  {
+    section: 'Crombolo.Section.Components',
+    label: 'Code',
+    line: 'Templates, components, stylesheets and scripts. These change the whole site.',
+    under: CONTENT,
+  },
   {
     section: 'Crombolo.Section.Forms',
     label: 'Forms',
     line: 'Forms visitors fill in, and their answers.',
+    under: CONTENT,
+  },
+  {
+    section: 'Umb.Section.Library',
+    label: 'Library',
+    line: 'Shared pieces pages are built from: blocks, menus and promos.',
   },
   {
     section: 'Umb.Section.Members',
@@ -36,7 +70,7 @@ export const AREAS = [
   {
     section: 'Umb.Section.Settings',
     label: 'Settings',
-    line: "Content types, templates, redirects and the site's tools.",
+    line: "Redirects, logs, webhooks, extensions and the site's other tools.",
   },
   {
     section: 'Umb.Section.Users',
@@ -48,12 +82,17 @@ export const AREAS = [
     label: 'Translation',
     line: 'The dictionary of words templates show in each language.',
   },
-  {
-    section: 'Crombolo.Section.Workflow',
-    label: 'Workflow',
-    line: 'The approval steps a page goes through before it is published.',
-  },
 ]
+
+/**
+ * What to say of a place under Content the group holds without Content, which
+ * can't be saved (story 385); undefined when nothing needs saying. Pure.
+ */
+export function needsContent(area, sections) {
+  if (!area.under || !sections.includes(area.section) || sections.includes(area.under))
+    return undefined
+  return `${area.label} is under Content, so the group needs Content too.`
+}
 
 const D = (verb) => `Umb.Document.${verb}`
 const E = (verb) => `Umb.Element.${verb}`

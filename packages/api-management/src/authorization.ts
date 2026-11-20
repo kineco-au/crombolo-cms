@@ -71,6 +71,10 @@ export interface NodeLookup {
 type Sections = readonly AppAlias[]
 
 const CONTENT: Sections = ['content']
+/** The places under Content (story 385): Pages, Structure and Code each a grant of its own. */
+const PAGES: Sections = ['pages']
+const STRUCTURE: Sections = ['structure']
+const CODE: Sections = ['components']
 const MEDIA: Sections = ['media']
 const SETTINGS: Sections = ['settings']
 const USERS: Sections = ['users']
@@ -78,22 +82,32 @@ const MEMBERS: Sections = ['members']
 const TRANSLATION: Sections = ['translation']
 const LIBRARY: Sections = ['library']
 /** SectionAccessFor{Content,Media,Element}Tree: pickers open these trees from anywhere. */
-const ANY_TREE: Sections = ['content', 'media', 'users', 'settings', 'members', 'library']
+const ANY_TREE: Sections = [
+  'content',
+  'pages',
+  'media',
+  'users',
+  'settings',
+  'structure',
+  'components',
+  'members',
+  'library',
+]
 
 const TREES: Record<string, Sections> = {
   document: ANY_TREE,
   media: ANY_TREE,
   element: ANY_TREE,
-  'document-type': SETTINGS,
-  'document-blueprint': SETTINGS,
-  'data-type': SETTINGS,
-  'media-type': SETTINGS,
-  'member-type': ['settings', 'members'],
-  template: ['settings', 'content'],
+  'document-type': STRUCTURE,
+  'document-blueprint': STRUCTURE,
+  'data-type': STRUCTURE,
+  'media-type': STRUCTURE,
+  'member-type': ['structure', 'members'],
+  template: ['components', 'content'],
   dictionary: ['translation', 'settings'],
-  'partial-view': SETTINGS,
-  script: SETTINGS,
-  stylesheet: SETTINGS,
+  'partial-view': CODE,
+  script: CODE,
+  stylesheet: CODE,
   'relation-type': SETTINGS,
   'static-file': ['settings', 'content', 'media', 'members'],
   'member-group': MEMBERS,
@@ -111,10 +125,10 @@ const SETTINGS_AREAS = new Set([
   'telemetry',
   'webhook',
   'relation-type',
-  'partial-view',
-  'script',
-  'stylesheet',
 ])
+
+/** Code's areas (story 385): what Settings held for components before. */
+const CODE_AREAS = new Set(['partial-view', 'script', 'stylesheet'])
 
 /** Type actions only the Settings section may take, beyond every write. */
 const TYPE_ADMIN_ACTIONS = new Set([
@@ -142,57 +156,59 @@ export function sectionRequirements(operation: OperationInfo): Array<Sections | 
   const action = second.startsWith('{') ? third : second
   const typeAdmin = write || TYPE_ADMIN_ACTIONS.has(action)
   if (SETTINGS_AREAS.has(area)) return [SETTINGS]
+  if (CODE_AREAS.has(area)) return [CODE]
   switch (area) {
     case 'tree':
       return TREES[second] ? [TREES[second]] : []
     case 'recycle-bin':
-      return [second === 'media' ? MEDIA : second === 'element' ? LIBRARY : CONTENT]
+      return [second === 'media' ? MEDIA : second === 'element' ? LIBRARY : PAGES]
     case 'collection':
-      return [second === 'media' ? MEDIA : CONTENT]
+      return [second === 'media' ? MEDIA : PAGES]
     case 'filter':
-      if (second === 'data-type') return [['content', 'settings']]
+      if (second === 'data-type') return [['content', 'structure']]
       if (second === 'user' || second === 'user-group') return [USERS]
       if (second === 'member') return [MEMBERS]
       return []
     case 'redirect-management':
       // Tracking on or off is a setting for the whole site, not an edit to content
-      return second === 'status' && write ? [SETTINGS] : [CONTENT]
+      return second === 'status' && write ? [SETTINGS] : [PAGES]
     case 'document':
     case 'document-version':
+      return [PAGES]
     case 'relation':
     case 'oembed':
     case 'dynamic-root':
       return [CONTENT]
     case 'document-type':
-      if (second === 'folder') return [SETTINGS]
-      if (third === 'blueprint') return [['content', 'library', 'settings'], CONTENT]
+      if (second === 'folder') return [STRUCTURE]
+      if (third === 'blueprint') return [['content', 'library', 'structure'], CONTENT]
       return typeAdmin
-        ? [['content', 'library', 'settings'], SETTINGS]
-        : [['content', 'library', 'settings']]
+        ? [['content', 'library', 'structure'], STRUCTURE]
+        : [['content', 'library', 'structure']]
     case 'document-blueprint':
       if (second === 'from-document' || third === 'scaffold') return [CONTENT]
-      if (!write && second.startsWith('{') && third === '') return [['content', 'settings']]
-      return [SETTINGS]
+      if (!write && second.startsWith('{') && third === '') return [['content', 'structure']]
+      return [STRUCTURE]
     case 'data-type':
-      if (second === 'folder') return [SETTINGS]
+      if (second === 'folder') return [STRUCTURE]
       return typeAdmin
-        ? [['content', 'library', 'media', 'members', 'settings'], SETTINGS]
-        : [['content', 'library', 'media', 'members', 'settings']]
+        ? [['content', 'library', 'media', 'members', 'structure'], STRUCTURE]
+        : [['content', 'library', 'media', 'members', 'structure']]
     case 'media':
       return [MEDIA]
     case 'media-type':
-      if (second === 'folder') return [SETTINGS]
-      return typeAdmin ? [['media', 'settings'], SETTINGS] : [['media', 'settings']]
+      if (second === 'folder') return [STRUCTURE]
+      return typeAdmin ? [['media', 'structure'], STRUCTURE] : [['media', 'structure']]
     case 'member-type':
-      if (second === 'folder') return [SETTINGS]
-      return typeAdmin ? [['settings', 'members'], SETTINGS] : [['settings', 'members']]
+      if (second === 'folder') return [STRUCTURE]
+      return typeAdmin ? [['structure', 'members'], STRUCTURE] : [['structure', 'members']]
     case 'member':
     case 'member-group':
       return [MEMBERS]
     case 'template':
-      return write ? [['settings', 'content'], SETTINGS] : [['settings', 'content']]
+      return write ? [['components', 'content'], CODE] : [['components', 'content']]
     case 'language':
-      return write ? [SETTINGS] : []
+      return write ? [STRUCTURE] : []
     case 'dictionary':
       return [TRANSLATION]
     case 'user':
@@ -471,6 +487,21 @@ export function canReadDocumentAt(
   if (!hasSection(principal, 'content')) return false
   if (!hasPathAccess(principal.startNodes.document, chain, trashed)) return false
   return permissionsForPath(principal.groups, chain).has(D.Read)
+}
+
+/**
+ * Whether the caller holds every verb on a document at a place, its ancestors'
+ * keys then its own: what a workspace's merge checks for each change (story 380). Pure.
+ */
+export function mayDocumentAt(
+  principal: Principal,
+  chain: readonly string[],
+  verbs: readonly string[],
+): boolean {
+  if (!hasSection(principal, 'content') || !hasSection(principal, 'pages')) return false
+  if (!hasPathAccess(principal.startNodes.document, chain, false)) return false
+  const granted = permissionsForPath(principal.groups, chain)
+  return verbs.every((v) => granted.has(v))
 }
 
 /**

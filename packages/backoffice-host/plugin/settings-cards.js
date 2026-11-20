@@ -7,10 +7,10 @@ export const STRUCTURE_MENU = 'Umb.Menu.StructureSettings'
 export const CODE_MENU = 'Umb.Menu.Templating'
 export const ADVANCED_MENU = 'Umb.Menu.AdvancedSettings'
 
-/** The sidebar app that draws each tree. */
+/** The sidebar app that draws each tree, in its own place under Content (story 385). */
 export const SIDEBAR_APPS = {
-  structure: 'Umb.SectionSidebarMenu.Settings',
-  code: 'Umb.SectionSidebarMenu.Templating',
+  structure: 'Crombolo.SectionSidebarMenu.Structure',
+  code: 'Crombolo.SectionSidebarMenu.Code',
 }
 
 export const GROUPS = ['Site', 'Health', 'History', 'Developers', 'Extensions', 'Other']

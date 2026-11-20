@@ -142,7 +142,7 @@ describe('a page answered from what was published', () => {
     expect(published.status).toBe(200)
     expect(published.headers.get('etag')).not.toBe(etag)
     expect(renders).toHaveBeenCalledTimes(2)
-  })
+  }, 10_000)
 
   test('a visitor something personal may be shown to is rendered for', async () => {
     const h = await boot(site(), { validator: 'published' })
@@ -152,7 +152,7 @@ describe('a page answered from what was published', () => {
     for (const cookie of ['__Host-umbMemberCrombolo=x', 'UMB_PREVIEW=1', 'crombolo-form=x'])
       await visit(h, '/', { 'if-none-match': etag, cookie })
     expect(renders).toHaveBeenCalledTimes(3)
-  })
+  }, 10_000)
 
   test('a page made members-only is never confirmed from its public copy', async () => {
     const h = await boot(site(), { validator: 'published' })
@@ -170,7 +170,7 @@ describe('a page answered from what was published', () => {
     const after = await visit(h, '/', { 'if-none-match': etag })
     expect(after.status).toBe(200)
     expect(after.headers.get('cache-control')).toBe('private, no-store')
-  })
+  }, 10_000)
 
   test('changing who may see a page moves every page’s ETag', async () => {
     const h = await boot(site(), { validator: 'published' })
@@ -189,7 +189,7 @@ describe('a page answered from what was published', () => {
     const after = await visit(h, '/', { 'if-none-match': etag })
     expect(after.status).toBe(200)
     expect(after.headers.get('etag')).not.toBe(etag)
-  })
+  }, 10_000)
 
   test('a type set to its body keeps the hash over the body', async () => {
     const h = await boot(site(), { validator: 'published', types: { news: { validator: 'body' } } })

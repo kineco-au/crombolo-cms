@@ -11,7 +11,9 @@ class CromboloDocumentLinkAction extends UmbEntityActionBase {
     const { data } = await new UmbDocumentDetailRepository(this).requestByUnique(this.args.unique)
     const unique = target === 'template' ? data?.template?.unique : data?.documentType?.unique
     if (!unique) return
-    const path = `section/settings/workspace/${target}/edit/${unique}`
+    // Content types are in Structure, templates in Code (story 385).
+    const place = target === 'template' ? 'code' : 'structure'
+    const path = `section/content/${place}/workspace/${target}/edit/${unique}`
     history.pushState(null, '', new URL(path, document.baseURI).pathname)
   }
 }

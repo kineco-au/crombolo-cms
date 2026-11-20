@@ -7,9 +7,9 @@
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 
 export const TEMPLATE_PICKER_MODAL = 'Crombolo.Modal.TemplatePicker'
-const SETTINGS = 'Umb.Section.Settings'
+const STRUCTURE = 'Crombolo.Section.Structure'
 
-/** Whether the reader may change a content type: Settings. */
+/** Whether the reader may change a content type: Structure (story 385). */
 async function mayChangeTypes(host) {
   const context = await host.getContext?.(UMB_CURRENT_USER_CONTEXT).catch(() => undefined)
   if (!context) return false
@@ -19,7 +19,7 @@ async function mayChangeTypes(host) {
       queueMicrotask(() => subscription.unsubscribe())
     })
   })
-  return user?.isAdmin === true || (user?.allowedSections ?? []).includes(SETTINGS)
+  return user?.isAdmin === true || (user?.allowedSections ?? []).includes(STRUCTURE)
 }
 
 export const onInit = async (_host, extensionRegistry) => {

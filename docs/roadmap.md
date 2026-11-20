@@ -65,6 +65,14 @@ Listed so they are not mistaken for gaps:
   and **turning URL tracking on or off** needs the Settings section, where
   Umbraco asks only for Content. Each such operation is listed with its reason
   in `AUTHORIZATION_DIVERGENCES` (`packages/api-management/src/divergences.ts`).
+- **The places under Content are grants and addresses of their own** (story
+  `385`). Umbraco has a Media section, and keeps types, templates and files in
+  Settings. Crombolo puts Pages, Media, Approvals, Structure, Code and Forms under
+  Content, at `section/content/...`, each a grant a group holds on top of
+  Content, which every one of them needs. Settings opens none of them: content
+  types, data types, languages and blueprints need Structure, and templates,
+  partial views, stylesheets and scripts need Code, where Umbraco asks for
+  Settings. A group holding a place without Content is refused.
 - The **template query builder** writes TypeScript against the render model rather
   than Razor (story `021`).
 - **Telemetry** is fixed at Minimal and cannot be raised: nothing is collected or

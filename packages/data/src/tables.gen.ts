@@ -226,6 +226,7 @@ export interface CoreTables {
     id: Generated<number>
     language_id: number | null
     node_id: number
+    workspace_id: number | null
   }
   content_transfer_change: {
     action: string
@@ -266,6 +267,7 @@ export interface CoreTables {
     keep_latest_version_per_day_for_days: number | null
     list_view: string | null
     node_id: Generated<number>
+    origin_key: string | null
     prevent_cleanup: Bool
     retired_at: Timestamp | null
     seo: string | null
@@ -275,6 +277,7 @@ export interface CoreTables {
     site_settings: Default<Bool>
     thumbnail: string | null
     variations: number
+    workspace_id: number | null
   }
   content_type_allowed_child: {
     allowed_content_type_id: number
@@ -299,6 +302,7 @@ export interface CoreTables {
     text: string | null
     user_id: number | null
     version_date: Timestamp
+    workspace_id: number | null
   }
   content_version_culture_variation: {
     available_user_id: number | null
@@ -315,9 +319,11 @@ export interface CoreTables {
     editor_alias: string
     editor_ui_alias: string | null
     node_id: Generated<number>
+    origin_key: string | null
     retired_at: Timestamp | null
     since_state_id: number | null
     since_version: string | null
+    workspace_id: number | null
   }
   delivery_member_token: {
     client_id: string
@@ -427,6 +433,11 @@ export interface CoreTables {
     id: Generated<number>
     name: string
     value: string
+  }
+  file_blob: {
+    hash: string
+    size: number
+    text: string
   }
   form_entry: {
     create_date: Timestamp
@@ -588,6 +599,7 @@ export interface CoreTables {
     trashed: Bool
     tree_group: Generated<number>
     unique_id: string
+    workspace_id: number | null
   }
   node_file: {
     node_id: number
@@ -603,6 +615,7 @@ export interface CoreTables {
     mandatory: Bool
     mandatory_message: string | null
     name: string
+    origin_key: string | null
     property_type_group_id: number | null
     retired_at: Timestamp | null
     searchable: Default<Bool>
@@ -619,6 +632,7 @@ export interface CoreTables {
     alias: string | null
     content_type_node_id: number
     id: Generated<number>
+    origin_key: string | null
     parent_id: number | null
     sort_order: number
     text: string | null
@@ -640,6 +654,7 @@ export interface CoreTables {
     sortable_value: string | null
     text_value: string | null
     varchar_value: string | null
+    workspace_id: number | null
   }
   public_access: {
     create_date: Timestamp
@@ -964,5 +979,67 @@ export interface CoreTables {
     subscriber: string
     success: Bool
     url: string
+  }
+  workspace: {
+    created_at: Timestamp
+    id: Generated<number>
+    key: string
+    merged_at: Timestamp | null
+    merged_by: string | null
+    name: string
+    owner_key: string
+    personal: Default<Bool>
+    schema_built: Default<Bool>
+    state: Generated<string>
+    updated_at: Timestamp
+  }
+  workspace_document: {
+    base_event_id: number | null
+    base_published: Bool | null
+    created: Bool
+    edited: Bool
+    node_id: number
+    published: Bool
+    published_event_id: number | null
+    workspace_id: Generated<number>
+  }
+  workspace_document_culture: {
+    available: Bool
+    base_published: Bool | null
+    base_published_event_id: number | null
+    edited: Bool
+    language_id: number
+    name: string | null
+    node_id: number
+    published: Bool
+    published_event_id: number | null
+    published_name: string | null
+    workspace_id: Generated<number>
+  }
+  workspace_file: {
+    base_hash: string | null
+    class: string | null
+    hash: string | null
+    path: string
+    workspace_id: Generated<number>
+  }
+  workspace_member: {
+    added_at: Timestamp
+    user_key: string
+    workspace_id: Generated<number>
+  }
+  workspace_pending: {
+    base_event_id: number | null
+    base_parent_id: number | null
+    base_sort_order: number | null
+    id: Generated<number>
+    kind: string
+    name: string | null
+    node_id: number
+    recorded_at: Timestamp
+    sort_order: number | null
+    target_parent_id: number | null
+    user_id: number | null
+    workspace_id: number
   }
 }

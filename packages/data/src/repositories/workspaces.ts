@@ -1,0 +1,457 @@
+/**
+ * Workspaces (story 375): a named place to change pages apart from Shared,
+ * its owner's and shared with the people they choose. Opening one is a single
+ * row; discarding one removes every row that carries it.
+ */
+import { normaliseUuid } from '@crombolo/core'
+import type { Db } from '../database.ts'
+import { DbDate, fromDbBool } from '../dialect.ts'
+import { Locks } from '../locks.ts'
+import { deleteNodeRows } from './documents.ts'
+import { WorkspaceFileRepository } from './workspace-files.ts'
+
+export interface Workspace {
+  id: number
+  key: string
+  name: string
+  ownerKey: string
+  memberKeys: string[]
+  /** A person's own, which `workspaces.required` opens for them (story 380). */
+  personal: boolean
+  /** Open, or merged into Shared (story 380), when it takes nothing more. */
+  state: 'open' | 'merged'
+  mergedAt: Date | null
+  mergedBy: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** A move, reorder or delete waiting for the merge, with where its page stood (story 380). */
+export interface WorkspacePending {
+  /** Null for a page Shared has since deleted. */
+  key: string | null
+  nodeId: number
+  name: string
+  kind: 'move' | 'sort' | 'trash' | 'delete' | 'orphaned' | 'gone'
+  targetParentId: number | null
+  sortOrder: number | null
+  baseParentId: number | null
+  baseSortOrder: number | null
+  baseEventId: number | null
+}
+
+/** What a workspace holds that Shared does not, page by page. */
+export interface WorkspaceChange {
+  key: string
+  name: string
+  /** `changed` and `made` are its versions; the rest wait for the merge. */
+  kind: 'changed' | 'made' | 'move' | 'sort' | 'trash' | 'delete' | 'orphaned' | 'gone'
+}
+
+export class WorkspaceRepository {
+  #db: Db
+
+  constructor(db: Db) {
+    this.#db = db
+  }
+
+  async open(input: { name: string; ownerKey: string; personal?: boolean }): Promise<Workspace> {
+    const key = normaliseUuid(crypto.randomUUID())
+    const now = DbDate.toDb(new Date())
+    await this.#db.q
+      .insertInto('workspace')
+      .values({
+        key,
+        name: input.name,
+        owner_key: normaliseUuid(input.ownerKey),
+        personal: this.#db.dialect.boolValue(input.personal === true) as boolean,
+        created_at: now,
+        updated_at: now,
+      })
+      .execute()
+    return (await this.byKey(key)) as Workspace
+  }
+
+  /** A person's own unnamed workspace, while it is open (story 380). */
+  async ownOf(userKey: string): Promise<Workspace | undefined> {
+    const rows = await this.#db.q
+      .selectFrom('workspace')
+      .selectAll()
+      .where('owner_key', '=', normaliseUuid(userKey))
+      .where('personal', '=', this.#db.dialect.boolValue(true) as boolean)
+      .where('state', '=', 'open')
+      .execute()
+    return (await this.#withMembers(rows))[0]
+  }
+
+  async byKey(key: string): Promise<Workspace | undefined> {
+    const rows = await this.#db.q
+      .selectFrom('workspace')
+      .selectAll()
+      .where('key', '=', normaliseUuid(key))
+      .execute()
+    return (await this.#withMembers(rows))[0]
+  }
+
+  /** Those a person owns or is a member of, newest first. */
+  async forUser(userKey: string): Promise<Workspace[]> {
+    const user = normaliseUuid(userKey)
+    const rows = await this.#db.q
+      .selectFrom('workspace')
+      .selectAll()
+      .where((eb) =>
+        eb.or([
+          eb('owner_key', '=', user),
+          eb(
+            'id',
+            'in',
+            eb.selectFrom('workspace_member').select('workspace_id').where('user_key', '=', user),
+          ),
+        ]),
+      )
+      .orderBy('id', 'desc')
+      .execute()
+    return this.#withMembers(rows)
+  }
+
+  /** Every workspace, for an administrator clearing ones left behind. */
+  async all(): Promise<Workspace[]> {
+    const rows = await this.#db.q
+      .selectFrom('workspace')
+      .selectAll()
+      .orderBy('id', 'desc')
+      .execute()
+    return this.#withMembers(rows)
+  }
+
+  async rename(id: number, name: string): Promise<void> {
+    await this.#db.q
+      .updateTable('workspace')
+      .set({ name, updated_at: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
+  }
+
+  /** Adds a member; false when they already are one. */
+  async addMember(id: number, userKey: string): Promise<boolean> {
+    const user = normaliseUuid(userKey)
+    const existing = await this.#db.q
+      .selectFrom('workspace_member')
+      .select('user_key')
+      .where('workspace_id', '=', id)
+      .where('user_key', '=', user)
+      .execute()
+    if (existing.length > 0) return false
+    await this.#db.q
+      .insertInto('workspace_member')
+      .values({ workspace_id: id, user_key: user, added_at: DbDate.toDb(new Date()) })
+      .execute()
+    return true
+  }
+
+  /** Removes a member; false when they were not one. */
+  async removeMember(id: number, userKey: string): Promise<boolean> {
+    const user = normaliseUuid(userKey)
+    const existing = await this.#db.q
+      .selectFrom('workspace_member')
+      .select('user_key')
+      .where('workspace_id', '=', id)
+      .where('user_key', '=', user)
+      .execute()
+    if (existing.length === 0) return false
+    await this.#db.q
+      .deleteFrom('workspace_member')
+      .where('workspace_id', '=', id)
+      .where('user_key', '=', user)
+      .execute()
+    return true
+  }
+
+  /** The pages it changed or made, and what waits for the merge, by page. */
+  async changes(id: number): Promise<WorkspaceChange[]> {
+    const touched = await this.#db.q
+      .selectFrom('workspace_document as wd')
+      .innerJoin('node as n', 'n.id', 'wd.node_id')
+      .select(['n.unique_id', 'n.text', 'wd.created', 'wd.node_id'])
+      .where('wd.workspace_id', '=', id)
+      .orderBy('wd.node_id')
+      .execute()
+    const heads = new Map<number, string>()
+    for (const row of await this.#db.q
+      .selectFrom('content_version')
+      .select(['node_id', 'text', 'id'])
+      .where('workspace_id', '=', id)
+      .orderBy('id')
+      .execute())
+      heads.set(Number(row.node_id), String(row.text ?? ''))
+    const pending = await this.#db.q
+      .selectFrom('workspace_pending as p')
+      .leftJoin('node as n', 'n.id', 'p.node_id')
+      .select(['n.unique_id', 'n.text', 'p.kind', 'p.name', 'p.node_id'])
+      .where('p.workspace_id', '=', id)
+      .orderBy('p.id')
+      .execute()
+    return [
+      ...touched.map((row) => ({
+        key: normaliseUuid(String(row.unique_id)),
+        name: heads.get(Number(row.node_id)) ?? String(row.text ?? ''),
+        kind: (Number(row.created) ? 'made' : 'changed') as WorkspaceChange['kind'],
+      })),
+      ...pending.map((row) => ({
+        // A page Shared deleted since is named by what it was called.
+        key: row.unique_id ? normaliseUuid(String(row.unique_id)) : `gone:${row.node_id}`,
+        name: String(row.text ?? row.name ?? ''),
+        kind: String(row.kind) as WorkspaceChange['kind'],
+      })),
+    ]
+  }
+
+  /** Removes the workspace and everything carrying it; Shared is as it was. */
+  async discard(id: number): Promise<void> {
+    await this.#db.locks.withLock(Locks.ContentTree, () =>
+      this.#db.transaction(async (tx) => {
+        const versions = () =>
+          tx.q.selectFrom('content_version').select('id').where('workspace_id', '=', id)
+        const made = (
+          await tx.q.selectFrom('node').select('id').where('workspace_id', '=', id).execute()
+        ).map((row) => Number(row.id))
+        await tx.q.deleteFrom('property_value').where('workspace_id', '=', id).execute()
+        await tx.q
+          .deleteFrom('content_version_culture_variation')
+          .where('version_id', 'in', versions())
+          .execute()
+        await tx.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
+        await tx.q.deleteFrom('content_version').where('workspace_id', '=', id).execute()
+        await tx.q.deleteFrom('content_schedule').where('workspace_id', '=', id).execute()
+        for (const table of [
+          'workspace_pending',
+          'workspace_document_culture',
+          'workspace_document',
+          'workspace_member',
+        ] as const)
+          await tx.q.deleteFrom(table).where('workspace_id', '=', id).execute()
+        if (made.length > 0) await deleteNodeRows(tx, { ids: made })
+        await dropWorkspaceSchema(tx, id)
+        await tx.q.deleteFrom('workspace').where('id', '=', id).execute()
+      }),
+    )
+  }
+
+  /** Whether the workspace has rows of its own for its types yet (story 376). */
+  async schemaBuilt(id: number): Promise<boolean> {
+    const rows = await this.#db.q
+      .selectFrom('workspace')
+      .select('schema_built')
+      .where('id', '=', id)
+      .execute()
+    return fromDbBool(rows[0]?.schema_built)
+  }
+
+  /** Marks the workspace's types as built, or not, so the next save builds them again. */
+  async setSchemaBuilt(id: number, built: boolean): Promise<void> {
+    await this.#db.q
+      .updateTable('workspace')
+      .set({ schema_built: this.#db.dialect.boolValue(built) as boolean })
+      .where('id', '=', id)
+      .execute()
+  }
+
+  /** What waits for the merge: each page's latest move, reorder and delete, and each marker. */
+  async pending(id: number): Promise<WorkspacePending[]> {
+    const rows = await this.#db.q
+      .selectFrom('workspace_pending as p')
+      .leftJoin('node as n', 'n.id', 'p.node_id')
+      .select([
+        'n.unique_id',
+        'n.text',
+        'p.node_id',
+        'p.name',
+        'p.kind',
+        'p.target_parent_id',
+        'p.sort_order',
+        'p.base_parent_id',
+        'p.base_sort_order',
+        'p.base_event_id',
+      ])
+      .where('p.workspace_id', '=', id)
+      .orderBy('p.id')
+      .execute()
+    const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
+    return rows.map((row) => ({
+      key: row.unique_id ? normaliseUuid(String(row.unique_id)) : null,
+      nodeId: Number(row.node_id),
+      name: String(row.text ?? row.name ?? ''),
+      kind: String(row.kind) as WorkspacePending['kind'],
+      targetParentId: num(row.target_parent_id),
+      sortOrder: num(row.sort_order),
+      baseParentId: num(row.base_parent_id),
+      baseSortOrder: num(row.base_sort_order),
+      baseEventId: num(row.base_event_id),
+    }))
+  }
+
+  /** Drops what waits for the merge for one page, or one marker: the change is not to go. */
+  async dropPending(id: number, nodeId: number): Promise<void> {
+    await this.#db.q
+      .deleteFrom('workspace_pending')
+      .where('workspace_id', '=', id)
+      .where('node_id', '=', nodeId)
+      .execute()
+  }
+
+  /** A page merged alone from a person's own workspace (story 380): its rows there go. */
+  async dropPage(id: number, nodeId: number): Promise<void> {
+    const versions = () =>
+      this.#db.q
+        .selectFrom('content_version')
+        .select('id')
+        .where('workspace_id', '=', id)
+        .where('node_id', '=', nodeId)
+    await this.#db.q
+      .deleteFrom('property_value')
+      .where('workspace_id', '=', id)
+      .where('node_id', '=', nodeId)
+      .execute()
+    await this.#db.q
+      .deleteFrom('content_version_culture_variation')
+      .where('version_id', 'in', versions())
+      .execute()
+    await this.#db.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
+    await this.#db.q
+      .deleteFrom('content_version')
+      .where('workspace_id', '=', id)
+      .where('node_id', '=', nodeId)
+      .execute()
+    for (const table of ['workspace_document_culture', 'workspace_document'] as const)
+      await this.#db.q
+        .deleteFrom(table)
+        .where('workspace_id', '=', id)
+        .where('node_id', '=', nodeId)
+        .execute()
+  }
+
+  /**
+   * Closes a merged workspace (story 380): every row carrying it goes, as a
+   * discard removes them, and the workspace stays, marked merged, by whom and
+   * when. Called inside the merge's transaction, holding the tree's lock.
+   */
+  async closeMerged(id: number, by: string): Promise<void> {
+    const versions = () =>
+      this.#db.q.selectFrom('content_version').select('id').where('workspace_id', '=', id)
+    await this.#db.q.deleteFrom('property_value').where('workspace_id', '=', id).execute()
+    await this.#db.q
+      .deleteFrom('content_version_culture_variation')
+      .where('version_id', 'in', versions())
+      .execute()
+    await this.#db.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
+    await this.#db.q.deleteFrom('content_version').where('workspace_id', '=', id).execute()
+    await this.#db.q.deleteFrom('content_schedule').where('workspace_id', '=', id).execute()
+    for (const table of [
+      'workspace_pending',
+      'workspace_document_culture',
+      'workspace_document',
+    ] as const)
+      await this.#db.q.deleteFrom(table).where('workspace_id', '=', id).execute()
+    await dropWorkspaceSchema(this.#db, id)
+    const now = DbDate.toDb(new Date())
+    await this.#db.q
+      .updateTable('workspace')
+      .set({ state: 'merged', merged_at: now, merged_by: normaliseUuid(by), updated_at: now })
+      .where('id', '=', id)
+      .execute()
+  }
+
+  async #withMembers(
+    rows: ReadonlyArray<{
+      id: number
+      key: string
+      name: string
+      owner_key: string
+      personal?: unknown
+      state?: string | null
+      merged_at?: unknown
+      merged_by?: string | null
+      created_at: unknown
+      updated_at: unknown
+    }>,
+  ): Promise<Workspace[]> {
+    if (rows.length === 0) return []
+    const members = await this.#db.q
+      .selectFrom('workspace_member')
+      .select(['workspace_id', 'user_key'])
+      .where(
+        'workspace_id',
+        'in',
+        rows.map((row) => Number(row.id)),
+      )
+      .orderBy('added_at')
+      .execute()
+    return rows.map((row) => ({
+      id: Number(row.id),
+      key: normaliseUuid(String(row.key)),
+      name: String(row.name),
+      ownerKey: normaliseUuid(String(row.owner_key)),
+      memberKeys: members
+        .filter((m) => Number(m.workspace_id) === Number(row.id))
+        .map((m) => normaliseUuid(String(m.user_key))),
+      personal: fromDbBool(row.personal),
+      state: row.state === 'merged' ? 'merged' : 'open',
+      mergedAt: DbDate.fromDb(row.merged_at) ?? null,
+      mergedBy: row.merged_by ? normaliseUuid(String(row.merged_by)) : null,
+      createdAt: DbDate.fromDb(row.created_at) ?? new Date(0),
+      updatedAt: DbDate.fromDb(row.updated_at) ?? new Date(0),
+    }))
+  }
+}
+
+/**
+ * Removes a workspace's own schema (story 376): its copies of types and data types,
+ * with their properties, groups and relations, then its file list and every text
+ * nothing else keeps. Its pages must be gone, or moved to Shared's types, first.
+ */
+export async function dropWorkspaceSchema(db: Db, id: number): Promise<void> {
+  const types = (
+    await db.q.selectFrom('content_type').select('node_id').where('workspace_id', '=', id).execute()
+  ).map((row) => Number(row.node_id))
+  const dataTypes = (
+    await db.q.selectFrom('data_type').select('node_id').where('workspace_id', '=', id).execute()
+  ).map((row) => Number(row.node_id))
+  if (types.length > 0) {
+    const properties = () =>
+      db.q.selectFrom('property_type').select('id').where('content_type_id', 'in', types)
+    await db.q.deleteFrom('property_value').where('property_type_id', 'in', properties()).execute()
+    await db.q
+      .deleteFrom('member_property_type')
+      .where('property_type_id', 'in', properties())
+      .execute()
+    await db.q.deleteFrom('property_type').where('content_type_id', 'in', types).execute()
+    await db.q
+      .deleteFrom('property_type_group')
+      .where('content_type_node_id', 'in', types)
+      .execute()
+    await db.q
+      .deleteFrom('content_type_composition')
+      .where((eb) =>
+        eb.or([
+          eb('child_content_type_id', 'in', types),
+          eb('parent_content_type_id', 'in', types),
+        ]),
+      )
+      .execute()
+    await db.q
+      .deleteFrom('content_type_allowed_child')
+      .where((eb) =>
+        eb.or([eb('content_type_id', 'in', types), eb('allowed_content_type_id', 'in', types)]),
+      )
+      .execute()
+    await db.q
+      .deleteFrom('content_type_template')
+      .where('content_type_node_id', 'in', types)
+      .execute()
+    await db.q.deleteFrom('content_type').where('workspace_id', '=', id).execute()
+  }
+  await db.q.deleteFrom('data_type').where('workspace_id', '=', id).execute()
+  const nodes = [...types, ...dataTypes]
+  if (nodes.length > 0) await db.q.deleteFrom('node').where('id', 'in', nodes).execute()
+  await new WorkspaceFileRepository(db).discard(id)
+}

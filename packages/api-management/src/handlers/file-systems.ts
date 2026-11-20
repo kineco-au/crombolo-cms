@@ -43,7 +43,19 @@ const treeItem = (entry: FileEntry) => ({
   hasChildren: entry.hasChildren,
 })
 
-function failure(area: FileArea, status: FileStatus, folder = false): Response {
+function failure(area: FileArea, status: FileStatus, folder = false, detail?: string): Response {
+  if (status === 'DoesNotCompile' || status === 'TooLarge')
+    return problemResponse(
+      problemDetails({
+        title:
+          status === 'DoesNotCompile'
+            ? "The component doesn't compile, so it wasn't saved"
+            : 'The file is too large to keep in a workspace',
+        ...(detail ? { detail } : {}),
+        status: 400,
+        operationStatus: status,
+      }),
+    )
   if (status === 'ReadOnly')
     return problemResponse(
       problemDetails({
@@ -92,7 +104,7 @@ export function registerFileSystemHandlers(
       },
     })
   const result = (ctx: RequestContext, outcome: FileResult, create: boolean, folder = false) => {
-    if (!outcome.ok) return failure(area, outcome.status, folder)
+    if (!outcome.ok) return failure(area, outcome.status, folder, outcome.detail)
     return create ? created(ctx, outcome.path, folder) : new Response(null, { status: 200 })
   }
   const page = (ctx: RequestContext, entries: readonly FileEntry[] | undefined) => {

@@ -38,12 +38,20 @@ import {
   Locks,
   type NodeRepository,
   type NodeRow,
+  WorkspaceFileRepository,
+  type WorkspaceScope,
 } from '@crombolo/data'
-import { aliasFromName } from '@crombolo/schema'
+import { aliasFromName, fileNameFor, TYPE_KIND_FILES } from '@crombolo/schema'
 import { readContentTypeUdt, writeContentTypeUdt } from '../content-type-udt.ts'
 import { classifyTypeChange } from '../schema-classify.ts'
 import { contentTypeJsonSchema, schemaForStorage, valueTypeName } from '../value-schemas.ts'
-import { createSchemaFileWriter, type SchemaFiles, schemaProblems } from './schema-files.ts'
+import {
+  createSchemaFileWriter,
+  createWorkspaceSchemaFileWriter,
+  type SchemaFiles,
+  schemaProblems,
+  workspaceSchemaProblems,
+} from './schema-files.ts'
 
 async function toTreeItems(
   nodes: NodeRepository,
@@ -166,13 +174,16 @@ export async function savedIfValid<T>(
   db: Db,
   files: SchemaFiles | undefined,
   work: (tx: Db) => Promise<T>,
+  /** What is wrong as `db` sees it, when not the site's files: a workspace's own (story 376). */
+  problemsOf?: (db: Db) => Promise<string[]>,
 ): Promise<{ ok: true; value: T } | PortFailure> {
-  if (!files) return { ok: true, value: await work(db) }
-  const before = new Set(await schemaProblems(db, files))
+  const problems = problemsOf ?? (files ? (handle: Db) => schemaProblems(handle, files) : undefined)
+  if (!problems) return { ok: true, value: await work(db) }
+  const before = new Set(await problems(db))
   try {
     const value = await db.transaction(async (tx) => {
       const value = await work(tx)
-      const added = (await schemaProblems(tx, files)).filter((p) => !before.has(p))
+      const added = (await problems(tx)).filter((p) => !before.has(p))
       if (added.length > 0) throw new InvalidSchemaSave(added)
       return value
     })
@@ -236,6 +247,8 @@ export interface ContentTypePortOptions extends ContentTypeRepositoryOptions {
   kind?: ContentTypeKind
   /** Lets "Create template" write the view file. */
   componentFiles?: ComponentFileStore
+  /** Called before a type is written in a workspace: its own types are built first (story 376). */
+  beforeWrite?: () => Promise<void>
 }
 
 /** Whether a tree item is the folder holding the types made from forms, and nothing else. */
@@ -257,15 +270,31 @@ export function createContentTypePort(
   options: ContentTypePortOptions = {},
 ): ContentTypePort {
   const kind = options.kind ?? 'document'
-  const repo = new ContentTypeRepository(db, { nodeState: options.nodeState, kind })
+  const workspace = options.workspace
+  const scope = workspace ? { workspace } : {}
+  const repo = new ContentTypeRepository(db, { nodeState: options.nodeState, kind, ...scope })
   /** The same repository over a transaction's handle, for a checked save. */
   const repoOn = (handle: Db) =>
-    new ContentTypeRepository(handle, { nodeState: options.nodeState, kind })
+    new ContentTypeRepository(handle, { nodeState: options.nodeState, kind, ...scope })
   const nodes = repo.nodes
   const objectType = repo.objectType
   const containerType = CONTENT_TYPE_OBJECT_TYPES[kind].container
   const folders = new FolderRepository(db, containerType, objectType)
-  const files = schemaFiles ? createSchemaFileWriter(db, schemaFiles, kind) : undefined
+  const files = schemaFiles
+    ? workspace
+      ? createWorkspaceSchemaFileWriter(db, schemaFiles, kind, workspace)
+      : createSchemaFileWriter(db, schemaFiles, kind)
+    : undefined
+  /** A save kept only if it leaves the definitions no worse: the site's, or the workspace's. */
+  const checked = <T>(work: (tx: Db) => Promise<T>) =>
+    savedIfValid(
+      db,
+      schemaFiles,
+      work,
+      workspace && schemaFiles
+        ? (handle) => workspaceSchemaProblems(handle, schemaFiles, workspace)
+        : undefined,
+    )
   const templates = new ComponentRepository(db, options.componentFiles)
   const rewrite = () => files?.rewriteAll() ?? Promise.resolve()
 
@@ -293,7 +322,8 @@ export function createContentTypePort(
         }
         const refused = files?.refuse(aggregate)
         if (refused) return refused
-        const saved = await savedIfValid(db, schemaFiles, (tx) => repoOn(tx).save(aggregate))
+        await options.beforeWrite?.()
+        const saved = await checked((tx) => repoOn(tx).save(aggregate))
         if (!saved.ok) return saved
         // A new type can only be additive, and the version moves before the file is
         // written so the file that lands carries the version it belongs to.
@@ -309,12 +339,13 @@ export function createContentTypePort(
         }
         const refused = files?.refuse(aggregate)
         if (refused) return refused
+        await options.beforeWrite?.()
         const before = await repo.byKey(key)
         // Classified here, while the database still holds the old type: once it is
         // saved there is nothing left to compare it with.
         const change = files ? await classifyTypeChange(db, before, { ...aggregate, key }) : 'none'
         // The editor does not send tree placement; keep what the type has.
-        const saved = await savedIfValid(db, schemaFiles, (tx) =>
+        const saved = await checked((tx) =>
           repoOn(tx).save({
             ...aggregate,
             key,
@@ -328,8 +359,18 @@ export function createContentTypePort(
         return { ok: true as const }
       },
 
-      async remove(key) {
+      async remove(key, how = {}) {
+        await options.beforeWrite?.()
         const before = await repo.byKey(key)
+        if (
+          !workspace &&
+          before &&
+          !how.force &&
+          (await new WorkspaceFileRepository(db).changedInOpenWorkspace(
+            `schema/${TYPE_KIND_FILES[kind].dir}/${fileNameFor(before.alias)}`,
+          ))
+        )
+          return 'in-workspace' as const
         const removed = await repo.delete(key)
         if (removed && before) await files?.remove(before.alias)
         return removed
@@ -613,12 +654,22 @@ export function createContentTypePort(
   )
 }
 
-export function createDataTypePort(db: Db, schemaFiles?: SchemaFiles): DataTypePort {
-  const repo = new DataTypeRepository(db)
+export function createDataTypePort(
+  db: Db,
+  schemaFiles?: SchemaFiles,
+  /** A workspace's data types (story 376), built before its first write. */
+  options: { workspace?: WorkspaceScope; beforeWrite?: () => Promise<void> } = {},
+): DataTypePort {
+  const workspace = options.workspace
+  const repo = new DataTypeRepository(db, workspace ? { workspace } : {})
   const nodes = repo.nodes
   const objectType = ObjectTypes.DataType
   const folders = new FolderRepository(db, ObjectTypes.DataTypeContainer, objectType)
-  const files = schemaFiles ? createSchemaFileWriter(db, schemaFiles) : undefined
+  const files = schemaFiles
+    ? workspace
+      ? createWorkspaceSchemaFileWriter(db, schemaFiles, 'document', workspace)
+      : createSchemaFileWriter(db, schemaFiles)
+    : undefined
   const rewrite = () => files?.rewriteAll() ?? Promise.resolve()
   const tree = createSettingsTree(
     nodes,
@@ -658,18 +709,38 @@ export function createDataTypePort(db: Db, schemaFiles?: SchemaFiles): DataTypeP
         }
       },
       async save(model: DataTypeModel) {
+        if (workspace && schemaFiles) {
+          const refused = files?.refuse({ alias: model.alias ?? model.name })
+          if (refused) return refused
+        }
+        await options.beforeWrite?.()
         const aliased = await withAlias(model)
-        const saved = await savedIfValid(db, schemaFiles, (tx) =>
-          new DataTypeRepository(tx).save(aliased),
+        const saved = await savedIfValid(
+          db,
+          schemaFiles,
+          (tx) => new DataTypeRepository(tx, workspace ? { workspace } : {}).save(aliased),
+          workspace && schemaFiles
+            ? (handle) => workspaceSchemaProblems(handle, schemaFiles, workspace)
+            : undefined,
         )
         if (!saved.ok) return saved
         await files?.writeDataType(saved.value)
         return undefined
       },
-      async remove(key) {
+      async remove(key, how = {}) {
+        await options.beforeWrite?.()
         const before = await repo.byKey(key)
         if (!before) return false
         if ((await repo.referencedBy(key)).length > 0) return 'in-use'
+        if (
+          !workspace &&
+          before.alias &&
+          !how.force &&
+          (await new WorkspaceFileRepository(db).changedInOpenWorkspace(
+            `schema/data-types/${fileNameFor(before.alias)}`,
+          ))
+        )
+          return 'in-workspace' as const
         const removed = await repo.delete(key)
         if (removed && before.alias) await files?.removeDataType(before.alias)
         return removed

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { resolveDeliveryApiSettings } from '@crombolo/api-delivery'
 import type {
   CurrentUserPort,
+  FileSystemPort,
   LocalizationPort,
   ManagementApiDeps,
   ManifestPort,
@@ -41,6 +42,7 @@ import {
   LanguageRepository,
   TagRepository,
   UserRepository,
+  type Workspace,
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
 import { fileNameFor, parseUserGroup, type SchemaUserGroup, writeUserGroup } from '@crombolo/schema'
@@ -76,6 +78,10 @@ import { createTemplateFileStore } from './adapters/template-files.ts'
 import { createTemplateQueryPort } from './adapters/template-query.ts'
 import { avatarUrls, createUserPorts, type DeclaredGroups } from './adapters/users.ts'
 import { createWebhookPort } from './adapters/webhooks.ts'
+import {
+  createWorkspaceFilePort,
+  type WorkspaceFileAreaOptions,
+} from './adapters/workspace-file-port.ts'
 import { backOfficeUrl } from './back-office-url.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
 import { type CromboloConfig, contentFilesLocked, type UserLinkSender, VERSION } from './config.ts'
@@ -88,9 +94,12 @@ import { MediaFileStore } from './media-files.ts'
 import { createModelsBuilderPort } from './models-builder.ts'
 import { createNodeOperations, type NodeOperations } from './node-operations.ts'
 import { createOEmbedService } from './oembed.ts'
+import { NO_REDIRECT_TRACKING } from './redirects.ts'
 import type { SchemaBoot } from './schema.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { createWebhookService, type WebhookService } from './webhooks.ts'
+import { createWorkspaceSchema } from './workspace-schema.ts'
+import { inWorkspaces } from './workspaces.ts'
 
 /** Re-exported for tests; the canonical list lives in @crombolo/core. */
 export const CORE_SECTIONS = CORE_SECTION_ALIASES
@@ -480,13 +489,32 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
   // already understands folders; the template API is id-addressed and cannot
   // express a folder at all.
   const readOnly = contentFilesLocked(options.config)
-  deps.components = createComponentsPort(options.config.componentsDir, readOnly)
-  deps.componentSnippets = COMPONENT_SNIPPETS
-  deps.stylesheets = createFileSystemPort(options.config.stylesheetsDir, {
-    extension: '.css',
-    readOnly,
+  // Story 377: with the header, a workspace's own copy, kept in its file list.
+  const workspaceFiles = (
+    shared: FileSystemPort,
+    area: Omit<WorkspaceFileAreaOptions, 'readOnly'>,
+  ) =>
+    options.db
+      ? inWorkspaces(shared, (w) =>
+          createWorkspaceFilePort(options.db as Db, w.id, { ...area, readOnly }),
+        )
+      : shared
+  deps.components = workspaceFiles(createComponentsPort(options.config.componentsDir, readOnly), {
+    prefix: 'components/',
+    extension: '.tsx',
+    also: ['.ts'],
+    rewrites: ['.cshtml'],
+    compiles: true,
   })
-  deps.scripts = createFileSystemPort(options.config.scriptsDir, { extension: '.js', readOnly })
+  deps.componentSnippets = COMPONENT_SNIPPETS
+  deps.stylesheets = workspaceFiles(
+    createFileSystemPort(options.config.stylesheetsDir, { extension: '.css', readOnly }),
+    { prefix: 'stylesheets/', extension: '.css' },
+  )
+  deps.scripts = workspaceFiles(
+    createFileSystemPort(options.config.scriptsDir, { extension: '.js', readOnly }),
+    { prefix: 'scripts/', extension: '.js' },
+  )
   if (options.db) {
     const dynamicRoots = new DynamicRootRepository(options.db)
     deps.dynamicRoots = { resolve: (query) => dynamicRoots.resolve(query) }
@@ -572,23 +600,38 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       nodeState: options.schema?.nodeState,
       valueIntake,
     })
-    deps.contentTypes = createContentTypePort(options.db, schemaFiles(options.config), {
-      nodeState: options.schema?.nodeState,
-      componentFiles: createTemplateFileStore(
-        options.config.componentsDir,
-        options.onViewsChange,
-        contentFilesLocked(options.config),
-      ),
+    // Story 376: a request in a workspace reads and writes its own copy of the types,
+    // built from its copy of the files at its first schema save.
+    const db = options.db
+    const workspaceSchema = options.schema
+      ? createWorkspaceSchema(db, options.config, options.schema)
+      : undefined
+    const inWorkspace = (workspace: Workspace) => ({
+      workspace: { id: workspace.id, key: workspace.key },
+      beforeWrite: () =>
+        workspaceSchema?.ensureBuilt({ id: workspace.id, key: workspace.key }) ?? Promise.resolve(),
     })
-    deps.mediaTypes = createContentTypePort(options.db, schemaFiles(options.config), {
-      nodeState: options.schema?.nodeState,
-      kind: 'media',
-    })
-    deps.memberTypes = createContentTypePort(options.db, schemaFiles(options.config), {
-      nodeState: options.schema?.nodeState,
-      kind: 'member',
-    })
-    deps.dataTypes = createDataTypePort(options.db, schemaFiles(options.config))
+    const typePort = (kind: 'document' | 'media' | 'member', workspace?: Workspace) =>
+      createContentTypePort(db, schemaFiles(options.config), {
+        nodeState: options.schema?.nodeState,
+        kind,
+        ...(kind === 'document'
+          ? {
+              componentFiles: createTemplateFileStore(
+                options.config.componentsDir,
+                options.onViewsChange,
+                contentFilesLocked(options.config),
+              ),
+            }
+          : {}),
+        ...(workspace ? inWorkspace(workspace) : {}),
+      })
+    deps.contentTypes = inWorkspaces(typePort('document'), (w) => typePort('document', w))
+    deps.mediaTypes = inWorkspaces(typePort('media'), (w) => typePort('media', w))
+    deps.memberTypes = inWorkspaces(typePort('member'), (w) => typePort('member', w))
+    deps.dataTypes = inWorkspaces(createDataTypePort(db, schemaFiles(options.config)), (w) =>
+      createDataTypePort(db, schemaFiles(options.config), inWorkspace(w)),
+    )
     deps.templates = createTemplatePort(
       options.db,
       createTemplateFileStore(
@@ -678,22 +721,38 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       onChange: () => options.cache?.invalidate(),
       nodeId: options.schema?.nodeId,
     })
-    if (operations && options.cache)
-      deps.documents = createDocumentPort(
-        options.db,
-        options.cache,
-        {
-          nodeState: options.schema?.nodeState,
-          nodeId: options.schema?.nodeId,
-          valueIntake,
-        },
-        operations.tracker,
-        options.config.siteDir,
-        () => emailReady(email),
+    if (operations && options.cache) {
+      const cache = options.cache
+      const db = options.db
+      const documentOptions = {
+        nodeState: options.schema?.nodeState,
+        nodeId: options.schema?.nodeId,
+        valueIntake,
+      }
+      // Story 375: a request in a workspace reads and writes the workspace's pages.
+      deps.documents = inWorkspaces(
+        createDocumentPort(
+          db,
+          cache,
+          documentOptions,
+          operations.tracker,
+          options.config.siteDir,
+          () => emailReady(email),
+        ),
+        (workspace) =>
+          createDocumentPort(
+            db,
+            cache,
+            { ...documentOptions, workspace: workspace.id },
+            NO_REDIRECT_TRACKING,
+            options.config.siteDir,
+            () => emailReady(email),
+          ),
       )
+    }
     if (deps.documents && operations) {
       deps.approvals = operations.approvals
-      deps.documentOperations = operations.documents
+      deps.documentOperations = inWorkspaces(operations.documents, operations.documentsIn)
     }
   }
   return deps

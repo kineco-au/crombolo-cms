@@ -9,7 +9,7 @@ import {
   ownGroup,
   siteDefinitions,
 } from '../../../support/site-definitions.ts'
-import { commitDefinitionEdit, editSpec } from '../../../support/type-edit.ts'
+import { commitDefinitionEditUnnamed, editSpec } from '../../../support/type-edit.ts'
 
 /** A user group taken out of the site (story 251); refused while users are in it, unless they move. */
 export default class UsersGroupsRemove extends BaseCommand {
@@ -50,7 +50,7 @@ export default class UsersGroupsRemove extends BaseCommand {
       )
     if (target && !database.some((d) => d.group.alias.toLowerCase() === target.toLowerCase()))
       throw new CliError('not_found', `There is no group "${target}" to move its users to.`)
-    const outcome = await commitDefinitionEdit(
+    const outcome = await commitDefinitionEditUnnamed(
       this,
       {
         config,

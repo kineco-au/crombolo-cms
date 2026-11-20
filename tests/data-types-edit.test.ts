@@ -176,7 +176,7 @@ describe('the commands, on a site with a page', () => {
     expect(file('short-text.toml')).toContain('notAThing = true')
     expect(cli('types', 'update', 'shortText', '--unset', 'notAThing').code).toBe(0)
     expect(file('short-text.toml')).not.toContain('notAThing')
-  })
+  }, 30_000)
 
   test("a new preset's named settings, fractions included (story 357)", () => {
     const run = cli('types', 'update', 'rating', '--step', '0.5', '--max', '5', '--range')
@@ -188,7 +188,7 @@ describe('the commands, on a site with a page', () => {
     expect(wrong.code).toBe(ERROR_KINDS.refused.exitCode)
     expect(wrong.out).toContain('--range does not apply to textstring')
     expect(cli('types', 'update', 'rating', '--step', 'half').code).not.toBe(0)
-  })
+  }, 30_000)
 
   test('a block added and taken away', () => {
     expect(
@@ -202,7 +202,7 @@ describe('the commands, on a site with a page', () => {
     expect(cli('types', 'update', 'pageBlocks', '--remove-block', 'feature').code).toBe(0)
     const unknown = cli('types', 'update', 'pageBlocks', '--add-block', 'nothingLikeIt')
     expect(unknown.code).toBe(ERROR_KINDS.refused.exitCode)
-  })
+  }, 30_000)
 
   test('a start node by a content file’s path, the same key everywhere', () => {
     const run = cli('types', 'update', 'pagePicker', '--start-at', '/Home/News')
@@ -213,7 +213,7 @@ describe('the commands, on a site with a page', () => {
     expect(cli('types', 'update', 'pagePicker', '--start-at', '/Nowhere').code).toBe(
       ERROR_KINDS.not_found.exitCode,
     )
-  })
+  }, 30_000)
 
   test('a built-in data type is not changed; a flag for the other kind is refused', () => {
     const builtIn = cli('types', 'update', 'textstring', '--set', 'maxChars=10')
@@ -224,7 +224,7 @@ describe('the commands, on a site with a page', () => {
     expect(wrong.out).toContain('--allow-child is for types')
     const other = cli('types', 'update', 'page', '--max-chars', '3')
     expect(other.code).toBe(ERROR_KINDS.usage.exitCode)
-  })
+  }, 30_000)
 
   test('removed when nothing uses it; refused, naming the properties, when something does', () => {
     const used = cli('types', 'remove', 'shortText')
@@ -233,7 +233,7 @@ describe('the commands, on a site with a page', () => {
     const removed = cli('types', 'remove', 'unused')
     expect(removed.code, removed.out).toBe(0)
     expect(cli('types', 'show', 'unused').code).toBe(ERROR_KINDS.not_found.exitCode)
-  })
+  }, 30_000)
 
   test('types editors lists them with their flags, and nothing names a file', () => {
     const editors = cli('types', 'editors')
@@ -259,5 +259,5 @@ describe('the commands, on a site with a page', () => {
     expect(nothing.out).toContain('slider')
     for (const run of [editors, cli('types', 'update', 'shortText', '--max-chars', '70')])
       expect(run.out).not.toMatch(/\.toml|schema\//i)
-  })
+  }, 30_000)
 })

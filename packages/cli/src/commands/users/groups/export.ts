@@ -9,7 +9,7 @@ import {
   groupFile,
   siteDefinitions,
 } from '../../../support/site-definitions.ts'
-import { commitDefinitionEdit, editSpec } from '../../../support/type-edit.ts'
+import { commitDefinitionEditUnnamed, editSpec } from '../../../support/type-edit.ts'
 
 /** A group made in the back office, made one of the site's own (story 251). */
 export default class UsersGroupsExport extends BaseCommand {
@@ -50,7 +50,7 @@ export default class UsersGroupsExport extends BaseCommand {
         },
       )
     const group = asDeclared(found.group)
-    return commitDefinitionEdit(
+    return commitDefinitionEditUnnamed(
       this,
       {
         config,

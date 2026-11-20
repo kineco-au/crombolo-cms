@@ -150,7 +150,7 @@ describe('the commands', () => {
     expect(bare.out).toContain('"publish" needs its area: content:publish, library:publish')
     const unknown = cli('users', 'groups', 'update', 'writers', '--section', 'kitchen')
     expect(unknown.code).toBe(ERROR_KINDS.refused.exitCode)
-    expect(unknown.out).toContain('one of content, media')
+    expect(unknown.out).toContain('one of content, pages, structure, components, media')
   }, 60_000)
 
   test('a webhook by plain event names', () => {

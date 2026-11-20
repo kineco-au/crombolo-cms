@@ -37,6 +37,13 @@ export default class TypesPurge extends BaseCommand {
     const days = flags['older-than']
     const config = await siteConfig()
     needSchemaDir(config)
+    // Story 382: a site may hold a purge back until its retirement is so many days old.
+    if (days < config.purgeAfterDays)
+      this.fail(
+        'refused',
+        `This site purges only what was retired at least ${config.purgeAfterDays} day(s) ago.`,
+        `Run it with --older-than ${config.purgeAfterDays} or more.`,
+      )
     const backup = await backupBefore(config, {
       reason: 'purge',
       backupTaken: flags['backup-taken'],

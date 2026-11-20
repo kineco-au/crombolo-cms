@@ -148,6 +148,13 @@ export async function goToSection(page: Page, name: string): Promise<void> {
     await settle(page)
     return
   }
+  // Media is a place under Content (story 385), reached from the row beneath the header.
+  if (name === 'Media') {
+    await goToSection(page, 'Content')
+    await page.locator('crombolo-content-strip').getByRole('link', { name }).click()
+    await settle(page)
+    return
+  }
   const tab = page.locator('umb-backoffice-header-sections').getByRole('tab', { name })
   // Clicking the open section's tab navigates again, closing whatever a test opens next
   if ((await tab.getAttribute('active')) === null) await tab.click()

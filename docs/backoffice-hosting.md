@@ -465,12 +465,30 @@ are a box on Home, whose All details opens the client's own dialog.
 
 Every trail in Settings starts at Home, and its landing page has one too.
 
-**Settings is one grant (story 322).** Structure, Code and Workflow set-up follow the Settings
-section, as `api-management/src/authorization.ts` says. Between stories 296 and 322 a group could
-hold `structure`, `components` or `workflowSetup` alone; those aliases are read and dropped now
-(`RETIRED_SECTIONS` in `packages/core/src/sections.ts`), and the client is told exactly the
-sections held. The fork's header still lists them among the sections with no tab, inert until the
-next Umbraco rebase takes them out.
+**Each place under Content is a grant of its own (story 385),** reversing story 322's single
+Settings grant: Pages (`pages`), Media (`media`), Approvals (`workflow`), Structure (`structure`),
+Code (`components`) and Forms (`forms`), each needing Content as well
+(`placesRefusal` in `packages/core/src/sections.ts`, refused by the Management API's group save, the
+command line's group commands and group files). Structure opens content, media and member types,
+data types, blueprints, languages and workflow set-up; Code opens templates, partial views,
+stylesheets and scripts; Settings keeps its tools and opens neither (`api-management/src/authorization.ts`).
+Workflow set-up, which a group could hold alone between stories 296 and 322, is read and dropped
+(`RETIRED_SECTIONS`). Migration 083 gave every stored group what it could open before.
+
+**Each place has an address under Content (story 385).** The fork's sections can live at a
+pathname with a slash in it: Media's is `content/media`, and the sections' routes are matched
+longest first so `section/content` does not take `section/content/media/...`. Structure and Code are
+sections of their own at `content/structure` and `content/code`, which the plugin registers, with
+the Settings layout (`settings-section.js`) drawing each with its tree beside every page and their
+sidebars (`Crombolo.SectionSidebarMenu.Structure` and `.Code`) on Umbraco's menus. The editors of
+their types and files build their addresses from `UMB_STRUCTURE_SECTION_PATHNAME` and
+`UMB_CODE_SECTION_PATHNAME`, as Settings' build theirs from `UMB_SETTINGS_SECTION_PATHNAME`; any
+section opens any entity's editor at `workspace/<entity-type>`. Forms is at `content/forms` and
+Approvals at `content/approvals`. Old addresses redirect: `section/media`, `section/forms` and
+`section/workflow` in the fork's `moved-sections.ts`, and Settings' old Structure, Code, Forms,
+Workflows and editor addresses in its layout. None of the places has a header tab. Pages has no
+section manifest: without the grant, Content draws no page tree (a condition on
+`Umb.SidebarMenu.Content` in the fork).
 
 **Modules (story 292)** are `.ts` files in the components tree, served by `createComponentsPort`.
 The create menu is built from `entityCreateOptionAction` manifests, not the unused options modal.
@@ -479,21 +497,19 @@ The create menu is built from `entityCreateOptionAction` manifests, not the unus
 the plugin's own requests: a 401 renews the session or opens the sign-in dialog, and the
 request waits and is sent again. The client's calls have their own queue and are left alone.
 
-**The menu under Content (story 289)** is `content-strip.js`: Pages, Approvals, Structure and
-Code, for whoever may open each, and nothing for someone with one. It is a row of
-its own under the header, which the fork draws and a `backofficeEntryPoint` defines, shown
-wherever one of them is open; `--crombolo-content-strip-height` makes room for it. The trees
-stay where they were, because the client hard-codes `section/settings/...` for types and templates,
-so the menu spans sections and raises `crombolo:mark-section` to keep Content's tab marked.
-The fork hides Forms and Approvals from the header for anyone with Content. Settings has no
-Build group.
+**The menu under Content (story 289)** is `content-strip.js`: Pages, Media, Approvals, Structure
+and Code, each at its address under Content (story 385), for whoever holds each, and nothing for
+someone with one. It is a row of its own under the header, which the fork draws and a
+`backofficeEntryPoint` defines, shown wherever one of them is open;
+`--crombolo-content-strip-height` makes room for it. It raises `crombolo:mark-section` to keep
+Content's tab marked. Settings has no Build group.
 
 Forms and Workflows are nodes in Structure, below Data Types: two `menuItem`s whose element is
-`definition-tree.js`, told which tree by `meta.kind`. `settings-section.js` routes
-`section/settings/forms` and `section/settings/workflows`, so the tree stays on screen. The same
-elements answer at `section/forms/view/forms` and `section/forms/view/workflows`, views of the
-Forms section with `meta.noTab`, for someone with Forms and not Settings:
-the menu's Structure opens there for them.
+`definition-tree.js`, told which tree by `meta.kind`. Structure's layout routes
+`section/content/structure/forms` and `.../workflows`, so the tree stays on screen. The same
+elements answer at `section/content/forms/view/forms` and `.../workflows`, views of the Forms
+section with `meta.noTab`, for someone with Forms and not Structure: the menu's Structure opens
+there for them.
 
 A page's History box on the Info view is `page-history.js`, a `workspaceInfoApp` that
 `overwrites` Umbraco's audit-log one: the last change, and View, which opens

@@ -120,6 +120,7 @@ export async function siteEntriesFor(db: Db, nodeId: number): Promise<SiteSearch
         'p.site_search',
       ])
       .where('pv.node_id', '=', nodeId)
+      .where('pv.workspace_id', 'is', null)
       .where('pv.event_id', '<=', latest)
       .where('p.retired_at', 'is', null)
       .where('p.searchable', '=', db.dialect.boolValue(true))

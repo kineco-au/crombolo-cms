@@ -459,6 +459,38 @@ const DECLARED = [
       'In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository.',
   },
   {
+    env: 'CROMBOLO_WORKSPACES',
+    kind: 'boolean',
+    default: 'false',
+    section: 'Schema',
+    description:
+      'Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. Off, every workspace route is refused, and nothing else changes.',
+  },
+  {
+    env: 'CROMBOLO_PURGE_AFTER_DAYS',
+    kind: 'number',
+    default: '0',
+    section: 'Schema',
+    description:
+      'The fewest days between removing a property from a type and deleting its values for good. A purge sooner than that is refused.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_VIEWS_LIMIT',
+    kind: 'number',
+    default: '50',
+    section: 'Schema',
+    description:
+      'How many workspaces with changed templates one server keeps ready to show at once. Past it, the one least recently looked at is set aside, and made ready again when next asked for.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACES_REQUIRED',
+    kind: 'boolean',
+    default: 'false',
+    section: 'Schema',
+    description:
+      'Whether every change to a page is made in a workspace. What everyone sees then changes only when a workspace is merged; someone who edits without choosing one works in their own. Needs `CROMBOLO_WORKSPACES=true`.',
+  },
+  {
     env: 'CROMBOLO_SYNC_SCHEMA_AT_BOOT',
     kind: 'boolean',
     default: 'true',

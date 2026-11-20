@@ -49,6 +49,9 @@ const named = (command: CommandClass, id: string | undefined) =>
 
 const SECTIONS: Record<AppAlias, string> = {
   content: 'Content',
+  pages: 'Pages',
+  structure: 'Structure',
+  components: 'Code',
   media: 'Media',
   settings: 'Settings',
   users: 'Users',

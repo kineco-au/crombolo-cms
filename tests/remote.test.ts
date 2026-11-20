@@ -231,6 +231,9 @@ describe(`discovery (${dialectUnderTest})`, () => {
         'media-library',
         'media-access',
         'content-show',
+        // Story 374: the schema files, read and changed by the definition.
+        'schema-files',
+        'schema-edit',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],
@@ -256,6 +259,7 @@ describe(`discovery (${dialectUnderTest})`, () => {
           extensionActivity: true,
           mediaLibrary: true,
           contentShow: true,
+          schemaEdit: true,
         },
       },
     ])

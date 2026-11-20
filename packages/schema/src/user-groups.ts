@@ -10,6 +10,7 @@ import {
   isExtensionSectionAlias,
   isRemotePermission,
   KNOWN_PERMISSIONS,
+  placesRefusal,
   RETIRED_SECTIONS,
   SECTION_ALIASES,
   withoutPrunedPermissions,
@@ -68,6 +69,9 @@ export function parseUserGroup(file: string, source: string): ParseResult<Schema
         `${path}.sections`,
         `"${section}" is not a section: one of ${Object.keys(SECTION_ALIASES).join(', ')}, or an extension's section alias`,
       )
+  // Story 385: every place under Content needs Content too.
+  const withoutContent = placesRefusal(sections)
+  if (withoutContent) r.problem(`${path}.sections`, withoutContent)
   // A verb story 338 took out is read as what replaced it, so a file written before still loads.
   const permissions = withoutPrunedPermissions(r.strs(t, 'permissions', path))
   for (const permission of permissions)

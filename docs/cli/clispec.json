@@ -6381,6 +6381,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -6401,7 +6407,15 @@
           "description": "change it, and leave the database as it is"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "languages update",
@@ -6432,6 +6446,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -6472,7 +6492,15 @@
           "description": "change it, and leave applying it to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "login",
@@ -9740,6 +9768,12 @@
           "items": {
             "type": "object"
           }
+        },
+        {
+          "name": "against",
+          "type": "object",
+          "nullable": true,
+          "description": "with --against: the site, its version, and each definition that differs"
         }
       ],
       "args": [
@@ -9747,14 +9781,24 @@
           "name": "--static",
           "type": "boolean",
           "description": "validate the files only, no database"
+        },
+        {
+          "name": "--against",
+          "type": "string",
+          "description": "list where a hosted site's definitions differ from the files, changing neither"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --against site's environment"
         }
       ],
-      "errors": ["usage", "internal", "not_found"],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable", "auth"],
       "outcomes": ["problems_found", "blocked"]
     },
     {
       "name": "schema export",
-      "description": "write the database's definitions as schema/ files",
+      "description": "write the database's definitions as schema/ files, or a hosted site's with --from",
       "effects": "idempotent",
       "cardinality": "bounded",
       "output_fields": [
@@ -9764,9 +9808,45 @@
           "items": {
             "type": "string"
           }
+        },
+        {
+          "name": "removed",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "nullable": true,
+          "description": "with --from: the version the files now name"
         }
       ],
-      "errors": ["usage", "internal"]
+      "confirmation_bypass_arg": "--yes",
+      "args": [
+        {
+          "name": "--from",
+          "type": "string",
+          "description": "the hosted site to bring them from, by its profile"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --from site's environment"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --from: change the files without asking"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "with --from: say what would change, and change nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "confirmation_required", "unavailable", "auth"]
     },
     {
       "name": "schema new",
@@ -9784,6 +9864,12 @@
         {
           "name": "schema",
           "type": "string"
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -10006,9 +10092,42 @@
           "name": "--set",
           "type": "string[]",
           "description": "data types: store any other setting as given; JSON when it parses"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "conflict", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "conflict",
+        "refused",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "schema purge",
@@ -11250,6 +11369,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -11274,7 +11399,15 @@
           "description": "change it, and leave applying it to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "start",
@@ -11636,6 +11769,12 @@
           "items": {
             "type": "object"
           }
+        },
+        {
+          "name": "against",
+          "type": "object",
+          "nullable": true,
+          "description": "with --against: the site, its version, and each definition that differs"
         }
       ],
       "args": [
@@ -11643,9 +11782,19 @@
           "name": "--static",
           "type": "boolean",
           "description": "validate the files only, no database"
+        },
+        {
+          "name": "--against",
+          "type": "string",
+          "description": "list where a hosted site's definitions differ from the files, changing neither"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --against site's environment"
         }
       ],
-      "errors": ["usage", "internal", "not_found"],
+      "errors": ["usage", "internal", "not_found", "refused", "unavailable", "auth"],
       "outcomes": ["problems_found", "blocked"]
     },
     {
@@ -11710,7 +11859,7 @@
     },
     {
       "name": "types export",
-      "description": "write the database's definitions as schema/ files",
+      "description": "write the database's definitions as schema/ files, or a hosted site's with --from",
       "effects": "idempotent",
       "cardinality": "bounded",
       "output_fields": [
@@ -11720,9 +11869,45 @@
           "items": {
             "type": "string"
           }
+        },
+        {
+          "name": "removed",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "version",
+          "type": "string",
+          "nullable": true,
+          "description": "with --from: the version the files now name"
         }
       ],
-      "errors": ["usage", "internal"]
+      "confirmation_bypass_arg": "--yes",
+      "args": [
+        {
+          "name": "--from",
+          "type": "string",
+          "description": "the hosted site to bring them from, by its profile"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --from site's environment"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --from: change the files without asking"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "with --from: say what would change, and change nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "confirmation_required", "unavailable", "auth"]
     },
     {
       "name": "types list",
@@ -11822,6 +12007,12 @@
         {
           "name": "schema",
           "type": "string"
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12044,9 +12235,42 @@
           "name": "--set",
           "type": "string[]",
           "description": "data types: store any other setting as given; JSON when it parses"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "conflict", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "conflict",
+        "refused",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types property add",
@@ -12077,6 +12301,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12132,10 +12362,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types property move",
@@ -12166,6 +12429,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12210,10 +12479,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types property remove",
@@ -12244,6 +12546,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12273,10 +12581,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types property rename",
@@ -12353,7 +12694,32 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         },
         {
           "name": "--everywhere",
@@ -12392,6 +12758,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12476,10 +12848,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types purge",
@@ -12548,6 +12953,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12576,10 +12987,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types rename",
@@ -12650,7 +13094,32 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         },
         {
           "name": "--everywhere",
@@ -12768,6 +13237,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12807,10 +13282,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types tab move",
@@ -12841,6 +13349,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12880,10 +13394,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types tab remove",
@@ -12914,6 +13461,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -12948,10 +13501,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types tab rename",
@@ -12982,6 +13568,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -13017,10 +13609,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "types update",
@@ -13051,6 +13676,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -13306,10 +13937,43 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "change this hosted site too, by its profile, after the files"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the --to site's environment"
+        },
+        {
+          "name": "--force",
+          "type": "boolean",
+          "description": "with --to: change it there though the site's copy differs from these files"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "with --to: make the site's definitions match these files, not only this change"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "with --to --all: overwrite them there without asking"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "upgrade",
@@ -13613,6 +14277,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -13633,7 +14303,15 @@
           "description": "change it, and leave applying it to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "users groups list",
@@ -13699,6 +14377,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         },
         {
           "name": "placed",
@@ -13938,6 +14622,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -13963,7 +14653,15 @@
           "description": "change it, and leave the database as it is"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "users groups sections",
@@ -14036,6 +14734,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         },
         {
           "name": "placed",
@@ -15204,6 +15908,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -15221,10 +15931,18 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "workflows show",
@@ -15271,6 +15989,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -15325,10 +16049,18 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "workflows stage remove",
@@ -15359,6 +16091,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -15382,10 +16120,18 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "workflows stage update",
@@ -15416,6 +16162,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -15474,10 +16226,18 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     },
     {
       "name": "workflows update",
@@ -15508,6 +16268,12 @@
           "name": "schema",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "hosted",
+          "type": "object",
+          "nullable": true,
+          "description": "with --to: what that site did"
         }
       ],
       "args": [
@@ -15589,10 +16355,18 @@
         {
           "name": "--no-apply",
           "type": "boolean",
-          "description": "change it, and leave applying it to `crombolo types sync`"
+          "description": "change it, and leave applying it here to `crombolo types sync`"
         }
       ],
-      "errors": ["usage", "internal", "not_found", "refused"]
+      "errors": [
+        "usage",
+        "internal",
+        "not_found",
+        "refused",
+        "conflict",
+        "confirmation_required",
+        "unavailable"
+      ]
     }
   ],
   "errors": [

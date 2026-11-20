@@ -95,7 +95,8 @@ async function asGroup(
   h: Harness,
   alias: string,
   permissions: string[],
-  sections = ['Crombolo.Section.Forms'],
+  // A place under Content needs Content too (story 385).
+  sections = ['Umb.Section.Content', 'Crombolo.Section.Forms'],
 ) {
   const created = await h.post(`${V1}/user-group`, {
     name: alias,

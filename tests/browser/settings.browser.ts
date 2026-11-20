@@ -58,7 +58,7 @@ test('a template added to a content type is still shown after save', async ({ pa
   })
   expect(created.status()).toBe(201)
   await page.goto(
-    `/crombolo/section/settings/workspace/document-type/edit/${HOME_PAGE_TYPE}/view/templates`,
+    `/crombolo/section/content/structure/workspace/document-type/edit/${HOME_PAGE_TYPE}/view/templates`,
   )
   await page.getByRole('button', { name: 'Choose' }).first().click()
   const picker = page.locator('umb-template-picker-modal, umb-tree-picker-modal')
@@ -83,7 +83,9 @@ test('a new template starts as a TSX view, and its master template is written as
 }) => {
   const NAME = `Landing ${Math.random().toString(36).slice(2, 7)}`
   await signIn(page)
-  await page.goto('/crombolo/section/settings/workspace/template/create/parent/template-root/null')
+  await page.goto(
+    '/crombolo/section/content/code/workspace/template/create/parent/template-root/null',
+  )
   const editor = page.locator('umb-code-editor')
   await expect(editor).toContainText('export default function Template({ model }: PageProps)')
   await expect(editor).not.toContainText('@inherits')
@@ -129,7 +131,9 @@ test('a new template starts as a TSX view, and its master template is written as
 
 test('the view editor reads TSX, and checks it against the site’s own types', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/settings/workspace/template/create/parent/template-root/null')
+  await page.goto(
+    '/crombolo/section/content/code/workspace/template/create/parent/template-root/null',
+  )
   const editor = page.locator('umb-code-editor')
   await expect(editor).toContainText('export default function Template({ model }: PageProps)')
 
@@ -209,7 +213,7 @@ test('a new partial view starts from a TSX skeleton; a stylesheet and a script s
 
   // Partial view: the editor opens on the Empty snippet, not a blank page
   await page.goto(
-    '/crombolo/section/settings/workspace/partial-view/create/parent/partial-view-root/null',
+    '/crombolo/section/content/code/workspace/partial-view/create/parent/partial-view-root/null',
   )
   const editor = page.locator('umb-code-editor')
   await expect(editor).toContainText("import type { PageProps } from '@crombolo/crombolo'")
@@ -223,13 +227,13 @@ test('a new partial view starts from a TSX skeleton; a stylesheet and a script s
 
   // Stylesheet and script: saved under their own folders, served on the site
   await page.goto(
-    '/crombolo/section/settings/workspace/stylesheet/create/parent/stylesheet-root/null',
+    '/crombolo/section/content/code/workspace/stylesheet/create/parent/stylesheet-root/null',
   )
   await expect(editor).toBeVisible()
   await save(`site${id}`)
   expect((await page.request.get(`/css/site${id}.css`)).status()).toBe(200)
 
-  await page.goto('/crombolo/section/settings/workspace/script/create/parent/script-root/null')
+  await page.goto('/crombolo/section/content/code/workspace/script/create/parent/script-root/null')
   await expect(editor).toBeVisible()
   await save(`site${id}`)
   expect((await page.request.get(`/scripts/site${id}.js`)).status()).toBe(200)
@@ -270,7 +274,7 @@ test('the log viewer shows the overview and searches the log, with no error', as
  */
 test('the Settings tree offers Components, and neither tree it replaced', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/settings/code')
+  await page.goto('/crombolo/section/content/code')
 
   // The Code tree has it, beside Stylesheets and Scripts.
   await expect(page.getByText('Components', { exact: true }).first()).toBeVisible()
@@ -303,8 +307,8 @@ test('a component and a folder can both be created from the Components tree', as
   // And the tree shows the folder it was put in. Scoped to the sidebar: the
   // workspace footer's breadcrumb names the same folder, so an unscoped match
   // finds two.
-  await page.goto('/crombolo/section/settings/code')
-  const tree = page.getByTestId('section-sidebar:Umb.SectionSidebarMenu.Templating')
+  await page.goto('/crombolo/section/content/code')
+  const tree = page.getByTestId('section-sidebar:Crombolo.SectionSidebarMenu.Code')
   await tree.getByText('Components', { exact: true }).first().click()
   await expect(page.getByText(`grp${id}`, { exact: true })).toBeVisible()
 

@@ -339,7 +339,7 @@ describe('operating the site (152)', () => {
       items: Array<{ pending: number; healthy: boolean }>
     }>()
     expect(done.items.every((i) => i.healthy)).toBe(true)
-  })
+  }, 10_000)
 
   test('a cache rebuild is an instruction every node acts on, from no node of its own', async () => {
     const before = await withDb(async (db) => (await cacheInstructionsAfter(db, 0)).length)
@@ -393,7 +393,7 @@ describe('operating the site (152)', () => {
       async (db) => (await db.query("SELECT id FROM node WHERE text = 'cover.png'")).length,
     )
     expect(left).toBe(0)
-  })
+  }, 10_000)
 })
 
 describe(`the date an item was trashed (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {

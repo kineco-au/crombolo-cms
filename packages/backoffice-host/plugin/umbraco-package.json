@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.69.1",
+  "version": "0.70.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -160,6 +160,12 @@
       "alias": "Crombolo.EntryPoint.MediaAccess",
       "name": "Crombolo Media Access",
       "js": "/crombolo-plugin/media-access.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.OwnWorkspace",
+      "name": "Crombolo Own Workspace",
+      "js": "/crombolo-plugin/own-workspace.js"
     },
     {
       "type": "backofficeEntryPoint",
@@ -602,6 +608,74 @@
       "element": "/crombolo-plugin/settings-section.js"
     },
     {
+      "type": "section",
+      "alias": "Crombolo.Section.Structure",
+      "name": "Crombolo Structure Section",
+      "weight": 45,
+      "meta": {
+        "label": "Structure",
+        "pathname": "content/structure"
+      }
+    },
+    {
+      "type": "section",
+      "alias": "Crombolo.Section.Components",
+      "name": "Crombolo Code Section",
+      "weight": 44,
+      "meta": {
+        "label": "Code",
+        "pathname": "content/code"
+      }
+    },
+    {
+      "type": "sectionLayout",
+      "alias": "Crombolo.SectionLayout.Structure",
+      "name": "Crombolo Structure Layout",
+      "forSection": "Crombolo.Section.Structure",
+      "element": "/crombolo-plugin/settings-section.js"
+    },
+    {
+      "type": "sectionLayout",
+      "alias": "Crombolo.SectionLayout.Components",
+      "name": "Crombolo Code Layout",
+      "forSection": "Crombolo.Section.Components",
+      "element": "/crombolo-plugin/settings-section.js"
+    },
+    {
+      "type": "sectionSidebarApp",
+      "kind": "menu",
+      "alias": "Crombolo.SectionSidebarMenu.Structure",
+      "name": "Crombolo Structure Sidebar Menu",
+      "weight": 300,
+      "meta": {
+        "label": "Structure",
+        "menu": "Umb.Menu.StructureSettings"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Crombolo.Section.Structure"
+        }
+      ]
+    },
+    {
+      "type": "sectionSidebarApp",
+      "kind": "menu",
+      "alias": "Crombolo.SectionSidebarMenu.Code",
+      "name": "Crombolo Code Sidebar Menu",
+      "weight": 200,
+      "meta": {
+        "label": "Code",
+        "menu": "Umb.Menu.Templating"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Crombolo.Section.Components"
+        }
+      ]
+    },
+    {
       "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.TsxEditors",
       "name": "Crombolo TSX Template and Partial View Editors",
@@ -697,7 +771,7 @@
       "weight": 50,
       "meta": {
         "label": "Forms",
-        "pathname": "forms"
+        "pathname": "content/forms"
       }
     },
     {
@@ -716,7 +790,7 @@
       "conditions": [
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Umb.Section.Settings"
+          "match": "Crombolo.Section.Structure"
         }
       ]
     },
@@ -736,7 +810,7 @@
       "conditions": [
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Umb.Section.Settings"
+          "match": "Crombolo.Section.Components"
         }
       ]
     },
@@ -753,7 +827,10 @@
       "weight": 100,
       "api": "/crombolo-plugin/form-create-option.js",
       "forEntityTypes": ["document-type-root", "document-type-folder"],
-      "meta": { "icon": "icon-autofill", "label": "Form" }
+      "meta": {
+        "icon": "icon-autofill",
+        "label": "Form"
+      }
     },
     {
       "type": "menuItem",
@@ -768,7 +845,10 @@
         "kind": "Forms"
       },
       "conditions": [
-        { "alias": "Umb.Condition.SectionUserPermission", "match": "Crombolo.Section.Forms" }
+        {
+          "alias": "Umb.Condition.SectionUserPermission",
+          "match": "Crombolo.Section.Forms"
+        }
       ]
     },
     {
@@ -786,7 +866,7 @@
       "conditions": [
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Umb.Section.Settings"
+          "match": "Crombolo.Section.Structure"
         }
       ]
     },
@@ -917,7 +997,7 @@
       "weight": 40,
       "meta": {
         "label": "Approvals",
-        "pathname": "workflow"
+        "pathname": "content/approvals"
       }
     },
     {
@@ -972,7 +1052,7 @@
         },
         {
           "alias": "Umb.Condition.SectionUserPermission",
-          "match": "Umb.Section.Settings"
+          "match": "Crombolo.Section.Structure"
         }
       ]
     },
@@ -983,7 +1063,12 @@
       "element": "/crombolo-plugin/page-history.js",
       "overwrites": ["Umb.WorkspaceInfoApp.Document.History"],
       "weight": 20,
-      "conditions": [{ "alias": "Umb.Condition.WorkspaceAlias", "match": "Umb.Workspace.Document" }]
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.Document"
+        }
+      ]
     },
     {
       "type": "modal",
@@ -1004,10 +1089,19 @@
       "name": "Crombolo Send For Approval",
       "weight": 75,
       "api": "/crombolo-plugin/workflow-send.js",
-      "meta": { "label": "Send for approval", "look": "secondary" },
+      "meta": {
+        "label": "Send for approval",
+        "look": "secondary"
+      },
       "conditions": [
-        { "alias": "Umb.Condition.WorkspaceAlias", "match": "Umb.Workspace.Document" },
-        { "alias": "Crombolo.Condition.Document.MaySendForApproval", "action": "publish" }
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.Document"
+        },
+        {
+          "alias": "Crombolo.Condition.Document.MaySendForApproval",
+          "action": "publish"
+        }
       ]
     },
     {
@@ -1018,9 +1112,15 @@
       "weight": 5,
       "api": "/crombolo-plugin/workflow-send-unpublish.js",
       "forWorkspaceActions": "Umb.WorkspaceAction.Document.SaveAndPublish",
-      "meta": { "label": "Request unpublish", "icon": "icon-globe" },
+      "meta": {
+        "label": "Request unpublish",
+        "icon": "icon-globe"
+      },
       "conditions": [
-        { "alias": "Crombolo.Condition.Document.MaySendForApproval", "action": "unpublish" }
+        {
+          "alias": "Crombolo.Condition.Document.MaySendForApproval",
+          "action": "unpublish"
+        }
       ]
     },
     {
@@ -1039,7 +1139,9 @@
           "alias": "Umb.Condition.WorkspaceAlias",
           "match": "Umb.Workspace.Document"
         },
-        { "alias": "Crombolo.Condition.ApprovalsActive" }
+        {
+          "alias": "Crombolo.Condition.ApprovalsActive"
+        }
       ]
     }
   ]

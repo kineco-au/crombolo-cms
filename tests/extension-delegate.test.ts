@@ -69,14 +69,20 @@ describe('what it reaches', () => {
     expect(all).toContain('content.write')
     expect(all).toContain('identityProviders.write')
     expect(all).not.toContain('users.write')
+    // A person's pages are Pages', a place under Content (story 385).
     const writer = delegatedPermissions(
       [USER_DELEGATE],
-      person({ allowedSections: ['Umb.Section.Content'] }),
+      person({ allowedSections: ['Umb.Section.Content', 'Crombolo.Section.Pages'] }),
     )
     expect(writer).toContain('content.write')
     expect(writer).toContain('redirects.read')
     expect(writer).not.toContain('webhooks.read')
     expect(writer).not.toContain('members.read')
+    const contentAlone = delegatedPermissions(
+      [USER_DELEGATE],
+      person({ allowedSections: ['Umb.Section.Content'] }),
+    )
+    expect(contentAlone).not.toContain('content.write')
   })
 
   test('nobody, or a grant without it, adds nothing', () => {

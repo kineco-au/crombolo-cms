@@ -21,6 +21,7 @@ import {
   readUrlOptions,
   SYSTEM_CONTENT_TYPES,
   SYSTEM_MEDIA_TYPES,
+  type WorkspaceScope,
 } from '@crombolo/data'
 import { decompileBlocks } from './blocks.ts'
 import { BUILTIN_DATA_TYPES, builtInContentTypeSchema, builtInMediaTypeSchema } from './builtin.ts'
@@ -214,14 +215,22 @@ function isUnchangedBuiltin(dataType: SchemaDataType): boolean {
 }
 
 /** Every live definition in the database as a schema set; keys are always present. */
-export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSet> {
+/** The schema the database holds; with `workspace`, as that workspace has it (story 376). */
+export async function exportSchemaSet(
+  db: Db,
+  version: string,
+  options: { workspace?: WorkspaceScope } = {},
+): Promise<SchemaSet> {
+  const workspace = options.workspace
+  const scope = workspace ? { workspace } : {}
   const urls = await readUrlOptions(db)
-  const types = new ContentTypeRepository(db)
-  const dataTypes = new DataTypeRepository(db)
+  const types = new ContentTypeRepository(db, scope)
+  const dataTypes = new DataTypeRepository(db, scope)
   const templates = new ComponentRepository(db)
 
-  const mediaTypeRepo = new ContentTypeRepository(db, { kind: 'media' })
+  const mediaTypeRepo = new ContentTypeRepository(db, { kind: 'media', ...scope })
   const liveTypes = async (repo: ContentTypeRepository) => {
+    if (workspace) return (await repo.all()).filter((type) => !type.formKey)
     const rows = await db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -241,7 +250,9 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
   }
   const aggregates = await liveTypes(types)
   const mediaAggregates = await liveTypes(mediaTypeRepo)
-  const memberAggregates = await liveTypes(new ContentTypeRepository(db, { kind: 'member' }))
+  const memberAggregates = await liveTypes(
+    new ContentTypeRepository(db, { kind: 'member', ...scope }),
+  )
   // Every type by key, so a data type's config names it by alias (story 161).
   const typeAliasByKey = new Map(
     [...aggregates, ...mediaAggregates, ...memberAggregates].map((a) => [
@@ -251,12 +262,15 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
   )
   const typeAliasOf = (key: string) => typeAliasByKey.get(key.toLowerCase())
 
-  const dataTypeRows = await db.q
-    .selectFrom('data_type as d')
-    .innerJoin('node as n', 'n.id', 'd.node_id')
-    .select('n.unique_id')
-    .orderBy('n.text')
-    .execute()
+  const dataTypeRows = workspace
+    ? (await dataTypes.all()).map((d) => ({ unique_id: d.key }))
+    : await db.q
+        .selectFrom('data_type as d')
+        .innerJoin('node as n', 'n.id', 'd.node_id')
+        .select('n.unique_id')
+        .where('d.workspace_id', 'is', null)
+        .orderBy('n.text')
+        .execute()
   const dataTypeAliasByKey = new Map<string, string>()
   const exportedDataTypes: SchemaDataType[] = []
   const taken = new Set<string>()
@@ -379,24 +393,30 @@ export async function exportSchemaSet(db: Db, version: string): Promise<SchemaSe
   }
 }
 
+/** A set as canonical files, by their `/`-separated path in the schema folder. */
+export function schemaSetFiles(set: SchemaSet): Map<string, string> {
+  const files = new Map<string, string>()
+  files.set('schema.toml', writeSchemaVersion(set.version, set.urls))
+  for (const t of set.contentTypes)
+    files.set(`${TYPE_KIND_FILES.document.dir}/${fileNameFor(t.alias)}`, writeContentType(t))
+  for (const t of set.mediaTypes ?? [])
+    files.set(`media-types/${fileNameFor(t.alias)}`, writeMediaType(t))
+  for (const t of set.memberTypes ?? [])
+    files.set(`member-types/${fileNameFor(t.alias)}`, writeMemberType(t))
+  for (const d of set.dataTypes) files.set(`data-types/${fileNameFor(d.alias)}`, writeDataType(d))
+  if (set.languages.length > 0) files.set('languages.toml', writeLanguages(set.languages))
+  return files
+}
+
 /** Writes a set as canonical files; returns the paths written. Never deletes. */
 export function writeSchemaFiles(schemaDir: string, set: SchemaSet): string[] {
   const written: string[] = []
-  const put = (relative: string, content: string) => {
-    const file = join(schemaDir, relative)
+  for (const [relative, content] of schemaSetFiles(set)) {
+    const file = join(schemaDir, ...relative.split('/'))
     mkdirSync(join(file, '..'), { recursive: true })
     writeFileSync(file, content)
     written.push(file)
   }
-  put('schema.toml', writeSchemaVersion(set.version, set.urls))
-  for (const t of set.contentTypes)
-    put(join(TYPE_KIND_FILES.document.dir, fileNameFor(t.alias)), writeContentType(t))
-  for (const t of set.mediaTypes ?? [])
-    put(join('media-types', fileNameFor(t.alias)), writeMediaType(t))
-  for (const t of set.memberTypes ?? [])
-    put(join('member-types', fileNameFor(t.alias)), writeMemberType(t))
-  for (const d of set.dataTypes) put(join('data-types', fileNameFor(d.alias)), writeDataType(d))
-  if (set.languages.length > 0) put('languages.toml', writeLanguages(set.languages))
   return written
 }
 

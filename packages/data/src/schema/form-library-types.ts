@@ -142,6 +142,8 @@ export async function ensureFormLibraryTypes(
     .select(['n.unique_id', 'ct.alias', 'ct.node_id'])
     .where('ct.form_key', 'is not', null)
     .where('ct.retired_at', 'is', null)
+    // A workspace's copies are its own (story 376).
+    .where('ct.workspace_id', 'is', null)
     .execute()
   for (const row of made) {
     const key = String(row.unique_id).toLowerCase()

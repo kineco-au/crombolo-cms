@@ -15,15 +15,18 @@ const here = () => {
   return location.pathname.startsWith(base) ? location.pathname.slice(base.length) : ''
 }
 
+/** Structure, a place under Content (story 385). */
+const STRUCTURE = 'section/content/structure'
+
 /** A form's screens, in Structure for those who have it, else in the Forms section. */
 const formsAt = (view) =>
-  here().startsWith('section/settings')
-    ? `section/settings/forms${view === 'entries' ? '/entries' : ''}`
-    : `section/forms/view/${view}`
+  here().startsWith(STRUCTURE)
+    ? `${STRUCTURE}/forms${view === 'entries' ? '/entries' : ''}`
+    : `section/content/forms/view/${view}`
 
 /** The workflow designer, in Structure for those who have it, else beside forms. */
 const workflowsAt = (query = '') =>
-  `${here().startsWith('section/settings') ? 'section/settings/workflows' : 'section/forms/view/workflows'}${query}`
+  `${here().startsWith(STRUCTURE) ? `${STRUCTURE}/workflows` : 'section/content/forms/view/workflows'}${query}`
 
 const KINDS = {
   Forms: {

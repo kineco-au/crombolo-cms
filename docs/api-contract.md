@@ -252,6 +252,11 @@ endpoints are **absent from `OpenApi.json`** but mandatory. See
 (`/umbraco/serverEventHub`, `/umbraco/backofficeHub`, `/umbraco/PreviewHub`) and
 the back-office shell routes.
 
+Crombolo's own routes under `<backoffice>/crombolo/api/` are outside it too, among
+them workspaces (story `375`, [workspaces](workspaces.md)). The one header crombolo
+adds to the contract's own operations is `Crombolo-Workspace`, which names the
+workspace a page read or write is in.
+
 `POST …/security/back-office/login` has non-obvious status codes:
 200 / **401** invalid / **402 Payment Required** = 2FA required (body
 `RequiresTwoFactorResponseModel`) / **403** locked or not allowed. Umbraco

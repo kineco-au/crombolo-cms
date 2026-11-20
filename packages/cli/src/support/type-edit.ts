@@ -2,7 +2,9 @@
  * The flow every type-editing command shares (story 248): find the type, make
  * the change in memory, check it against a copy of the site's definitions as
  * `types check` would, and only then write it and apply it. A refused apply
- * puts the definition back as it was, so nothing is left half done.
+ * puts the definition back as it was, so nothing is left half done. With --to,
+ * a hosted site checks it before anything is written, and applies it after
+ * (story 374).
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -35,6 +37,13 @@ import {
 import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
 import { describeSync, problemsOf } from './describe.ts'
+import {
+  HostedChange,
+  type HostedOutcome,
+  schemaWritesOf,
+  type ToFlags,
+  toFlags,
+} from './hosted-schema.ts'
 import type { Io } from './site.ts'
 import { siteConfig } from './site.ts'
 import { applySchema, loadTypes, needSchemaDir, refuseProblems } from './types.ts'
@@ -92,10 +101,20 @@ export async function findType(alias: string, kind?: string): Promise<FoundType>
   }
 }
 
-export interface EditFlags {
+/** The flags every definition edit takes, here only. */
+export interface LocalEditFlags {
   'dry-run'?: boolean
   'no-apply'?: boolean
 }
+
+/** A type edit's flags: here, and with --to, a hosted site too. */
+export interface EditFlags extends LocalEditFlags, ToFlags {}
+
+/** Only what makes an edit local, for a command whose own flags share a name with --to's. */
+export const localOnly = (flags: LocalEditFlags): LocalEditFlags => ({
+  'dry-run': flags['dry-run'],
+  'no-apply': flags['no-apply'],
+})
 
 export interface EditOutcome {
   type: string
@@ -104,6 +123,8 @@ export interface EditOutcome {
   /** What the check said the change does to the site's content. */
   findings: string[]
   schema: string | null
+  /** What the --to site did with it; null without --to. */
+  hosted: HostedOutcome | null
 }
 
 /** A definition's file as it is, and as a change would write it (null removes it). */
@@ -131,9 +152,42 @@ export async function commitDefinitionEdit(
   const { config, alias, file, next } = definition
   if (next !== null && next === definition.current) {
     io.say(`  ${alias} is already so: nothing to change.`)
-    return { type: alias, changed: false, applied: false, findings: [], schema: null }
+    return {
+      type: alias,
+      changed: false,
+      applied: false,
+      findings: [],
+      schema: null,
+      hosted: null,
+    }
   }
   return commitFileEdits(io, { config, alias, edits: [{ file, next }] }, change, flags)
+}
+
+/**
+ * The same as `commitDefinitionEdit`, for a command that names no file (the
+ * site's definitions, story 254): a refusal's problems say what and where in
+ * the definition, never which file holds it.
+ */
+export async function commitDefinitionEditUnnamed(
+  io: Io,
+  definition: DefinitionChange,
+  change: string[],
+  flags: EditFlags & { retire?: boolean },
+): Promise<EditOutcome> {
+  try {
+    return await commitDefinitionEdit(io, definition, change, flags)
+  } catch (error) {
+    if (!(error instanceof CliError) || !Array.isArray(error.details)) throw error
+    throw new CliError(error.kind, error.message, {
+      hint: error.hint,
+      details: error.details.map((detail) => {
+        if (!detail || typeof detail !== 'object') return detail
+        const { file: _file, line: _line, ...rest } = detail as Record<string, unknown>
+        return rest
+      }),
+    })
+  }
 }
 
 /** A file a change writes; null removes it. */
@@ -157,11 +211,25 @@ export async function commitFileEdits(
     edits.map(async ({ file }) => (existsSync(file) ? await readFile(file, 'utf8') : null)),
   )
   const findings = await checkAgainstCopy(config, edits, flags.retire === true)
+  const hosted = await HostedChange.prepare(
+    io,
+    config,
+    flags.to ? schemaWritesOf(config, edits, flags.to) : {},
+    flags,
+    { retire: flags.retire === true },
+  )
   for (const line of change) io.say(`  ${line}`)
   for (const finding of findings) io.say(`  note     ${finding}`)
   if (flags['dry-run']) {
     io.say('\nNothing was changed (--dry-run).')
-    return { type: alias, changed: false, applied: false, findings, schema: null }
+    return {
+      type: alias,
+      changed: false,
+      applied: false,
+      findings,
+      schema: null,
+      hosted: hosted?.planned() ?? null,
+    }
   }
   const putBack = () =>
     Promise.all(
@@ -181,17 +249,28 @@ export async function commitFileEdits(
     await putBack()
     throw error
   }
-  if (flags['no-apply']) {
-    io.say('\nNot applied yet: `crombolo types sync` applies it.')
-    return { type: alias, changed: true, applied: false, findings, schema: null }
-  }
-  try {
-    const report = await applySchema(io, config, { forceRetireTypes: flags.retire === true })
-    return { type: alias, changed: true, applied: true, findings, schema: describeSync(report) }
-  } catch (error) {
-    // Put back what was there: a definition the site cannot apply is no change.
-    await putBack()
-    throw error
+  let schema: string | null = null
+  if (flags['no-apply']) io.say('\nNot applied here yet: `crombolo types sync` applies it.')
+  else
+    try {
+      schema = describeSync(
+        await applySchema(io, config, { forceRetireTypes: flags.retire === true }),
+      )
+    } catch (error) {
+      // Put back what was there: a definition the site cannot apply is no change.
+      await putBack()
+      throw error
+    }
+  const there = hosted ? await hosted.apply(io, config) : undefined
+  // The site's later version came into schema.toml: this database takes it too.
+  if (there?.raised && !flags['no-apply']) schema = describeSync(await applySchema(io, config))
+  return {
+    type: alias,
+    changed: true,
+    applied: !flags['no-apply'],
+    findings,
+    schema,
+    hosted: there ? withoutRaised(there) : null,
   }
 }
 
@@ -338,6 +417,8 @@ async function checkAgainstCopy(
   }
 }
 
+const withoutRaised = ({ raised: _, ...outcome }: HostedOutcome & { raised: boolean }) => outcome
+
 /** The flags every type-editing command takes. */
 export const editFlags = {
   kind: Flags.string({
@@ -346,8 +427,9 @@ export const editFlags = {
   }),
   'dry-run': Flags.boolean({ summary: 'say what would change, and change nothing' }),
   'no-apply': Flags.boolean({
-    summary: 'change it, and leave applying it to `crombolo types sync`',
+    summary: 'change it, and leave applying it here to `crombolo types sync`',
   }),
+  ...toFlags,
 }
 
 /** What every type-editing command answers with. */
@@ -360,8 +442,14 @@ export const editSpec = {
     { name: 'applied', type: 'boolean' },
     { name: 'findings', type: 'array', items: { type: 'string' } },
     { name: 'schema', type: 'string', nullable: true },
+    {
+      name: 'hosted',
+      type: 'object',
+      nullable: true,
+      description: 'with --to: what that site did',
+    },
   ],
-  errors: ['not_found', 'usage', 'refused'],
+  errors: ['not_found', 'usage', 'refused', 'conflict', 'confirmation_required', 'unavailable'],
 } as const
 
 /** "Content type", "Element type"… for a message. */

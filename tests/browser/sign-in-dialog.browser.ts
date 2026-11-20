@@ -112,8 +112,9 @@ test('no section of the backoffice names Umbraco', async ({ page, diagnostics })
         .locator('umb-backoffice-header-apps')
         .getByRole('link', { name: 'Settings' })
         .click()
-    // Forms has no tab, for anyone with Content: it opens from the menu there (story 289).
-    else if (section === 'Forms') await page.goto('/crombolo/section/forms')
+    // Forms and Media have no tab: they are places under Content (stories 289, 385).
+    else if (section === 'Forms') await page.goto('/crombolo/section/content/forms')
+    else if (section === 'Media') await page.goto('/crombolo/section/content/media')
     else {
       await page
         .locator('umb-backoffice-header-sections')

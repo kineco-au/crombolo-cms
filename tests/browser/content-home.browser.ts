@@ -49,7 +49,7 @@ test('Content opens the first page, and the back button leaves it', async ({
   ).toBeVisible()
 
   await page.goBack()
-  await expect(page).toHaveURL(/\/section\/media/)
+  await expect(page).toHaveURL(/\/section\/content\/media/)
 })
 
 test('with no page to open, Content says so and offers one', async ({ page }) => {

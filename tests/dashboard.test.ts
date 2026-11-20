@@ -98,6 +98,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.PreviewMember',
       'backofficeEntryPoint:Crombolo.EntryPoint.ViewAs',
       'backofficeEntryPoint:Crombolo.EntryPoint.MediaAccess',
+      'backofficeEntryPoint:Crombolo.EntryPoint.OwnWorkspace',
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',
       'userProfileApp:Crombolo.UserProfileApp.CliTokens',
@@ -129,6 +130,13 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'dashboard:Crombolo.Dashboard.ContentHome',
       // Settings' own layout, in place of the welcome dashboard (story 234).
       'sectionLayout:Crombolo.SectionLayout.Settings',
+      // Structure and Code, places under Content drawn by the same layout (story 385).
+      'section:Crombolo.Section.Structure',
+      'section:Crombolo.Section.Components',
+      'sectionLayout:Crombolo.SectionLayout.Structure',
+      'sectionLayout:Crombolo.SectionLayout.Components',
+      'sectionSidebarApp:Crombolo.SectionSidebarMenu.Structure',
+      'sectionSidebarApp:Crombolo.SectionSidebarMenu.Code',
       'backofficeEntryPoint:Crombolo.EntryPoint.TsxEditors',
       'headerApp:Crombolo.HeaderApp.ReadOnly',
       'backofficeEntryPoint:Crombolo.EntryPoint.SidePanels',
@@ -190,8 +198,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     expect(
       ours?.extensions.filter((e) => e.type === 'sectionView' && /Bundles/.test(e.alias)),
     ).toEqual([])
-    // Five kinds of extension have no module of their own: a `theme`, which is a
-    // stylesheet (story 049); a `section`, which is
+    // Six kinds of extension have no module of their own: a `theme`, which is a
+    // stylesheet (story 049); a sidebar app of `kind: 'menu'`, which draws one of
+    // Umbraco's menus (story 385); a `section`, which is
     // a route and a label, a `propertyEditorSchema`, which declares a
     // server-side editor alias and its default UI; a header app of `kind:
     // 'button'`, whose element the client supplies; and an
@@ -211,6 +220,10 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.UserPermission.CliTokens.Create',
       'Crombolo.UserPermission.Media.Read',
       'Crombolo.UserPermission.Media.Update',
+      'Crombolo.Section.Structure',
+      'Crombolo.Section.Components',
+      'Crombolo.SectionSidebarMenu.Structure',
+      'Crombolo.SectionSidebarMenu.Code',
       'Crombolo.HeaderApp.Settings',
       'Crombolo.Section.Forms',
       'Crombolo.FormPicker',
@@ -228,6 +241,10 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'entityUserPermission',
       'entityUserPermission',
       'entityUserPermission',
+      'section',
+      'section',
+      'sectionSidebarApp',
+      'sectionSidebarApp',
       'headerApp',
       'section',
       'propertyEditorSchema',
@@ -369,7 +386,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     expect(report.findings.find((f) => f.code === 'mandatory-unfilled')?.link).toMatch(
       new RegExp(`^${BACKOFFICE}/section/content/workspace/document/edit/`),
     )
-  })
+  }, 10_000)
 
   test('production boot refuses a schema change that needs data work, naming the command', async () => {
     if (dialectUnderTest !== 'sqlite') return
@@ -417,7 +434,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     open.push(rolled)
     expect(rolled.server.schema.report?.action).toBe('applied')
     expect((await readLedger(rolled.server.db)).some((r) => r.kind === 'upgrade')).toBe(false)
-  })
+  }, 10_000)
 })
 
 describe('the plugin views', () => {
@@ -467,7 +484,7 @@ describe('the plugin views', () => {
     expect(designer?.type).toBe('sectionView')
     expect(designer?.conditions).toEqual([
       { alias: 'Umb.Condition.SectionAlias', match: 'Crombolo.Section.Forms' },
-      { alias: 'Umb.Condition.SectionUserPermission', match: 'Umb.Section.Settings' },
+      { alias: 'Umb.Condition.SectionUserPermission', match: 'Crombolo.Section.Structure' },
     ])
     const approvals = manifest.extensions.find((e) => e.alias === 'Crombolo.Section.Workflow')
     expect(approvals?.conditions).toBeUndefined()

@@ -97,24 +97,38 @@ describe('section requirements', () => {
     return sectionRequirements(operation)
   }
 
-  test("each area asks for Umbraco's sections", () => {
-    expect(need('GetDocumentById')).toEqual([['content']])
+  test("each area asks for Umbraco's sections, with the places under Content each a grant (story 385)", () => {
+    expect(need('GetDocumentById')).toEqual([['pages']])
     expect(need('GetTreeDocumentRoot')).toEqual([
-      ['content', 'media', 'users', 'settings', 'members', 'library'],
+      [
+        'content',
+        'pages',
+        'media',
+        'users',
+        'settings',
+        'structure',
+        'components',
+        'members',
+        'library',
+      ],
     ])
-    expect(need('GetDocumentTypeById')).toEqual([['content', 'library', 'settings']])
-    expect(need('PutDocumentTypeById')).toEqual([['content', 'library', 'settings'], ['settings']])
+    expect(need('GetDocumentTypeById')).toEqual([['content', 'library', 'structure']])
+    expect(need('PutDocumentTypeById')).toEqual([
+      ['content', 'library', 'structure'],
+      ['structure'],
+    ])
     expect(need('GetDocumentTypeConfiguration')).toEqual([
-      ['content', 'library', 'settings'],
-      ['settings'],
+      ['content', 'library', 'structure'],
+      ['structure'],
     ])
-    expect(need('GetTreeDocumentTypeRoot')).toEqual([['settings']])
+    expect(need('GetTreeDocumentTypeRoot')).toEqual([['structure']])
     expect(need('PostDataType')).toEqual([
-      ['content', 'library', 'media', 'members', 'settings'],
-      ['settings'],
+      ['content', 'library', 'media', 'members', 'structure'],
+      ['structure'],
     ])
-    expect(need('GetTemplateById')).toEqual([['settings', 'content']])
-    expect(need('PutTemplateById')).toEqual([['settings', 'content'], ['settings']])
+    expect(need('GetTemplateById')).toEqual([['components', 'content']])
+    expect(need('PutTemplateById')).toEqual([['components', 'content'], ['components']])
+    expect(need('PostPartialView')).toEqual([['components']])
     expect(need('GetMediaById')).toEqual([['media']])
     expect(need('GetDictionary')).toEqual([['translation']])
     expect(need('GetTreeDictionaryRoot')).toEqual([['translation', 'settings']])
@@ -122,8 +136,9 @@ describe('section requirements', () => {
     expect(need('GetUserGroup')).toEqual([['users']])
     expect(need('GetFilterUser')).toEqual([['users']])
     expect(need('PostDocumentBlueprintFromDocument')).toEqual([['content']])
-    expect(need('PostDocumentBlueprint')).toEqual([['settings']])
-    expect(need('GetDocumentBlueprintById')).toEqual([['content', 'settings']])
+    expect(need('PostDocumentBlueprint')).toEqual([['structure']])
+    expect(need('GetDocumentBlueprintById')).toEqual([['content', 'structure']])
+    expect(need('GetRelationTypeById')).toEqual([['settings']])
     expect(need('GetUpgradeSettings')).toEqual(['admin'])
     // Open to every signed-in user
     for (const id of [
@@ -136,7 +151,7 @@ describe('section requirements', () => {
       'PostTemporaryFile',
     ])
       expect([id, need(id)]).toEqual([id, []])
-    expect(need('PostLanguage')).toEqual([['settings']])
+    expect(need('PostLanguage')).toEqual([['structure']])
   })
 
   test('each operation authorized unlike Umbraco is a real one, listed with its reason', () => {
@@ -148,9 +163,9 @@ describe('section requirements', () => {
 
   test('turning URL tracking on or off is a setting; a redirect is still content', () => {
     expect(need('PostRedirectManagementStatus')).toEqual([['settings']])
-    expect(need('GetRedirectManagementStatus')).toEqual([['content']])
-    expect(need('DeleteRedirectManagementById')).toEqual([['content']])
-    expect(need('GetRedirectManagement')).toEqual([['content']])
+    expect(need('GetRedirectManagementStatus')).toEqual([['pages']])
+    expect(need('DeleteRedirectManagementById')).toEqual([['pages']])
+    expect(need('GetRedirectManagement')).toEqual([['pages']])
   })
 
   test('the password-reset endpoints are the ones Umbraco opens while local login is allowed', () => {
@@ -177,7 +192,7 @@ describe('per-node rules on documents', () => {
     isAdmin: false,
     languageIsoCode: undefined,
     avatarUrls: [],
-    allowedSections: ['Umb.Section.Content'],
+    allowedSections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
     permissions: defaults,
     groupKeys: ['writer'],
     hasAccessToAllLanguages: true,

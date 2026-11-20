@@ -8,6 +8,7 @@ import {
   notFound,
   paged,
   parseSkipTake,
+  placesRefusal,
   problemDetails,
   problemResponse,
 } from '@crombolo/core'
@@ -603,8 +604,16 @@ function registerGroups(router: ManagementApiRouter, groups: UserGroupPort): voi
     if (found === 'Forbidden') return status('Forbidden')
     return Response.json(found)
   })
+  /** A place under Content without Content (story 385): refused, saying why. */
+  const withoutContent = (group: UserGroupInput) => {
+    const reason = placesRefusal(group.sections)
+    return reason ? bad('The group needs Content', reason, 'PlacesNeedContent') : undefined
+  }
   router.handle('PostUserGroup', async (ctx) => {
-    const result = await groups.create(me(ctx), readGroup(await body(ctx)))
+    const group = readGroup(await body(ctx))
+    const refused = withoutContent(group)
+    if (refused) return refused
+    const result = await groups.create(me(ctx), group)
     if (result.status !== 'Success' || !result.key) return status(result.status)
     // The toast the backoffice shows, as for every other type it saves.
     ctx.notifications.push({
@@ -615,7 +624,10 @@ function registerGroups(router: ManagementApiRouter, groups: UserGroupPort): voi
     return created(`${ctx.url.origin}${V1}/user-group/${result.key}`, result.key)
   })
   router.handle('PutUserGroupById', async (ctx) => {
-    const result = await groups.update(me(ctx), ctx.params.id as string, readGroup(await body(ctx)))
+    const group = readGroup(await body(ctx))
+    const refused = withoutContent(group)
+    if (refused) return refused
+    const result = await groups.update(me(ctx), ctx.params.id as string, group)
     if (result === 'Success')
       ctx.notifications.push({
         message: 'User group saved',

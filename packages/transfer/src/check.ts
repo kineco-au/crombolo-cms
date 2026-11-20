@@ -14,7 +14,7 @@
  * - **person** — importable, but somebody has to choose. A resolution answers it.
  * - **auto** — what the import will do, reported so it is not a surprise.
  */
-import { ObjectTypes } from '@crombolo/core'
+import { ObjectTypes, threeWay } from '@crombolo/core'
 import {
   type AppliedState,
   appliedValueKey,
@@ -237,17 +237,8 @@ export const PARENT_HANDLE = '@parent'
  * last import applied. Without a record of that, a difference is a question.
  * Pure.
  */
-export function threeWay(
-  mine: unknown,
-  theirs: unknown,
-  base: { value: unknown } | undefined,
-): 'same' | 'take' | 'keep' | 'ask' {
-  if (sameValue(mine, theirs)) return 'same'
-  if (!base) return 'ask'
-  if (sameValue(theirs, base.value)) return 'keep'
-  if (sameValue(mine, base.value)) return 'take'
-  return 'ask'
-}
+/** The three-way rule, now in core, where a workspace's merge shares it (story 380). */
+export { threeWay } from '@crombolo/core'
 
 export interface TransferCheck {
   bundleId: string
@@ -266,22 +257,6 @@ const documentLink = (backOfficePath: string | undefined, key: string): string |
   backOfficePath ? `${backOfficePath}/section/content/workspace/document/edit/${key}` : null
 
 /** Storage-insensitive equality, so a value that round-tripped is not "changed". */
-function sameValue(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  // Absent and empty are the same thing to an editor, and the two spellings
-  // travel differently: a bundle omits nothing, but the database stores null.
-  const empty = (v: unknown) => v === null || v === undefined || v === ''
-  if (empty(a) && empty(b)) return true
-  if (typeof a === 'object' || typeof b === 'object') {
-    try {
-      return JSON.stringify(a) === JSON.stringify(b)
-    } catch {
-      return false
-    }
-  }
-  return String(a) === String(b)
-}
-
 export async function checkBundle(
   db: Db,
   set: ContentSet,

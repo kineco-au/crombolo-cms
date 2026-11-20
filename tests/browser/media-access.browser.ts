@@ -82,7 +82,7 @@ test('Public Access inherits for child files and persists overrides for root fil
     })
     expect(created.status()).toBe(201)
     const key = created.headers()['umb-generated-resource']
-    await page.goto(`/crombolo/section/media/workspace/media/edit/${key}`)
+    await page.goto(`/crombolo/section/content/media/workspace/media/edit/${key}`)
     await expect(page.getByRole('textbox', { name: 'Enter a name...' })).toHaveValue(
       at ? 'Child photo' : 'Root photo',
     )
@@ -152,7 +152,7 @@ test('Public Access inherits for child files and persists overrides for root fil
       expect(inherited.own).toBeNull()
     }
   }
-  await page.goto(`/crombolo/section/media/workspace/media/edit/${parent}`)
+  await page.goto(`/crombolo/section/content/media/workspace/media/edit/${parent}`)
   await expect(page.getByRole('textbox', { name: 'Enter a name...' })).toHaveValue(
     'Permission folder',
   )

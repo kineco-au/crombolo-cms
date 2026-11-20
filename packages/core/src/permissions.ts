@@ -83,6 +83,14 @@ export const CliTokenPermissions = {
 } as const
 
 /**
+ * Workspaces (story 380): merging one into Shared, apart from editing. Group-wide,
+ * held in the groups' fallback permissions; an administrator holds it.
+ */
+export const WorkspacePermissions = {
+  Merge: 'Crombolo.Workspace.Merge',
+} as const
+
+/**
  * Permissions an administrator does not hold by being one (story 241): only a
  * group that names them grants them, so installing code on a site is always a
  * choice somebody made and the audit log recorded.
@@ -156,6 +164,7 @@ export const KNOWN_PERMISSIONS: ReadonlySet<string> = new Set([
   ...Object.values(MediaPermissions),
   ...Object.values(ElementPermissions),
   ...Object.values(CliTokenPermissions),
+  ...Object.values(WorkspacePermissions),
 ])
 
 export const ADMIN_GROUP_ALIAS = 'admin'

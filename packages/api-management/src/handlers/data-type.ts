@@ -119,7 +119,18 @@ export function registerDataTypeHandlers(router: ManagementApiRouter, port: Data
   })
 
   router.handle('DeleteDataTypeById', async (ctx) => {
-    const removed = await port.remove(ctx.params.id as string)
+    const force = ctx.url.searchParams.get('force') === 'true' && ctx.principal?.isAdmin === true
+    const removed = await port.remove(ctx.params.id as string, { force })
+    if (removed === 'in-workspace')
+      return problemResponse(
+        problemDetails({
+          title: 'This data type is being changed in a workspace',
+          status: 409,
+          detail:
+            'It cannot be deleted while that work is open. An administrator can delete it anyway, and the workspace must then settle it when it is merged.',
+          operationStatus: 'InWorkspace',
+        }),
+      )
     if (removed === 'in-use')
       return problemResponse(
         problemDetails({

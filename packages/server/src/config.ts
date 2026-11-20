@@ -433,6 +433,27 @@ export interface CromboloConfig {
   cliTokens: boolean
   /** The most days a command-line token may last. `CROMBOLO_CLI_TOKEN_MAX_DAYS`, 90. */
   cliTokenMaxDays: number
+  /**
+   * Whether people may open workspaces, to change pages apart from Shared
+   * (story 375). `CROMBOLO_WORKSPACES`, off unless set.
+   */
+  workspaces: boolean
+  /**
+   * Whether every change to a page is made in a workspace (story 380): Shared
+   * takes it only by a merge. `CROMBOLO_WORKSPACES_REQUIRED`, off unless set; it
+   * needs workspaces on.
+   */
+  workspacesRequired: boolean
+  /**
+   * How many workspaces' views one process keeps loaded (story 377); past it the
+   * least recently used is dropped. `CROMBOLO_WORKSPACE_VIEWS_LIMIT`, 50.
+   */
+  workspaceViewsLimit: number
+  /**
+   * The fewest days between retiring a property and purging it, with its values
+   * (story 382). `CROMBOLO_PURGE_AFTER_DAYS`, 0.
+   */
+  purgeAfterDays: number
   /** Sync `schema/` at boot; a pipeline that runs `crombolo types sync` turns this off. */
   syncSchemaAtBoot: boolean
   /** Which database engine; from CROMBOLO_DB. */
@@ -995,6 +1016,10 @@ export function loadConfig(
     cliAccess: cliAccessSetting() as CliAccess,
     cliTokens: setting('CROMBOLO_CLI_TOKENS') === 'true',
     cliTokenMaxDays: Math.floor(positiveNumber(setting('CROMBOLO_CLI_TOKEN_MAX_DAYS'), 90)),
+    workspaces: setting('CROMBOLO_WORKSPACES') === 'true',
+    workspacesRequired: setting('CROMBOLO_WORKSPACES_REQUIRED') === 'true',
+    purgeAfterDays: Math.floor(nonNegativeNumber(setting('CROMBOLO_PURGE_AFTER_DAYS'), 0)),
+    workspaceViewsLimit: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_VIEWS_LIMIT'), 50)),
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),
     upgradePolicy:
@@ -1162,6 +1187,10 @@ export function loadConfig(
     throw new Error(
       `cliAccess is "${String(merged.cliAccess)}" in crombolo.config.ts: it is open or sign-in.`,
     )
+  if (merged.workspacesRequired && !merged.workspaces)
+    throw new Error(
+      'Workspaces are required (CROMBOLO_WORKSPACES_REQUIRED) but not turned on: set CROMBOLO_WORKSPACES=true as well.',
+    )
   checkIdentityProviders(merged.memberIdentityProviders, 'member')
   checkIdentityProviders(merged.backofficeIdentityProviders, 'backoffice')
   for (const clash of exchangeAudienceClashes(
@@ -1314,13 +1343,19 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.69.1'
+export const VERSION = '0.70.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */
 function positiveNumber(raw: string | undefined, fallback: number): number {
   const value = Number(raw)
   return raw !== undefined && raw !== '' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** Zero or more from a setting, else the default. */
+function nonNegativeNumber(raw: string | undefined, fallback: number): number {
+  const value = Number(raw)
+  return raw !== undefined && raw !== '' && Number.isFinite(value) && value >= 0 ? value : fallback
 }
 
 function validatorSetting(name: Parameters<typeof setting>[0]): Validator | undefined {

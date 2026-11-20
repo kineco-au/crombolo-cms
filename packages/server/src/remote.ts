@@ -77,8 +77,10 @@ import { createExtensionActivityRoutes } from './remote-extension-activity.ts'
 import { createMediaLibraryRoutes } from './remote-media-library.ts'
 import { createMemberRoutes } from './remote-members.ts'
 import type { PeopleExchange } from './remote-people.ts'
+import { createSchemaRoutes, type SchemaRouteOptions } from './remote-schema.ts'
 import { createUndoRoutes } from './remote-undo.ts'
 import { createUserRoutes } from './remote-users.ts'
+import { createWorkspaceRoutes, type WorkspaceRouteOptions } from './remote-workspaces.ts'
 import { openSecret, sealSecret, usableSecretKey } from './secrets.ts'
 import { exportSite } from './site-file.ts'
 import { REMOTE_DISCOVERY_PATH } from './site-public.ts'
@@ -128,6 +130,10 @@ export interface RemoteOptions {
   activity?: { flush(): Promise<void>; days: number }
   /** Told after a media item's permissions change here (story 355), for this node's media cache. */
   onMediaAccessChange?(key: string): void | Promise<void>
+  /** The site's schema files, read and changed by the definition (story 374); absent, those routes are not offered. */
+  schema?: SchemaRouteOptions['transfer']
+  /** The workspace routes, for a host to merge one (story 380); absent, that route is not offered. */
+  workspaces?: WorkspaceRouteOptions['workspaces']
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -260,6 +266,8 @@ export function createRemote(options: RemoteOptions): Remote {
       ...backgroundJobRoutes.capabilities,
       ...(activityRoutes?.capabilities ?? []),
       ...(mediaLibraryRoutes?.capabilities ?? []),
+      ...(schemaRoutes?.capabilities() ?? []),
+      ...(workspaceRoutes?.capabilities() ?? []),
       ...(settings.approvals ? ['approvals'] : []),
       ...(options.bundles && atLeast('read') ? ['bundle-manage'] : []),
       ...(options.restart && atLeast('all') ? ['restart'] : []),
@@ -302,6 +310,27 @@ export function createRemote(options: RemoteOptions): Remote {
         problem,
         levelRefusal: () =>
           atLeast('content') ? undefined : notAtLevel('content', 'changes to content'),
+      })
+    : undefined
+
+  const schemaRoutes = options.schema
+    ? createSchemaRoutes({
+        transfer: options.schema,
+        problem,
+        atLeast,
+        notAtLevel,
+        may,
+        mayChange,
+      })
+    : undefined
+
+  const workspaceRoutes = options.workspaces
+    ? createWorkspaceRoutes({
+        workspaces: options.workspaces,
+        enabled: () => config.workspaces,
+        problem,
+        atLeast,
+        notAtLevel,
       })
     : undefined
 
@@ -1610,6 +1639,7 @@ export function createRemote(options: RemoteOptions): Remote {
               extensionActivity: activityRoutes?.may(principal) ?? false,
               mediaLibrary: mediaLibraryRoutes?.mayMedia(principal) ?? false,
               contentShow: mediaLibraryRoutes?.mayContent(principal) ?? false,
+              schemaEdit: schemaRoutes?.mayEdit(principal) ?? false,
             },
           },
         ])
@@ -1677,6 +1707,14 @@ export function createRemote(options: RemoteOptions): Remote {
         (what.startsWith('media-items') || what.startsWith('content-items/'))
       ) {
         const answered = await mediaLibraryRoutes.handle(request, url, principal, what)
+        if (answered) return answered
+      }
+      if (workspaceRoutes && what.startsWith('workspaces/')) {
+        const answered = await workspaceRoutes.handle(request, principal, what)
+        if (answered) return answered
+      }
+      if (schemaRoutes && what.startsWith('schema')) {
+        const answered = await schemaRoutes.handle(request, principal, what)
         if (answered) return answered
       }
       if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)

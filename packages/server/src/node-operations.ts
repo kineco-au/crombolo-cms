@@ -4,21 +4,30 @@
  * and shared by the Management API, the jobs and the command line, so a worker
  * (story 223) publishes a schedule exactly as an editor's node does.
  */
+import type { Principal } from '@crombolo/api-management/domain'
 import {
   createDocumentOperations,
   createElementOperations,
   createMediaOperations,
+  createWorkspaceOperations,
   type DocumentOperations,
   type ElementOperations,
   type EventSink,
   type MediaOperations,
+  type MergePlan,
+  previewWorkspaceMerge,
+  runWorkspaceMerge,
   SILENT,
+  userActor,
+  type WorkspaceFileMerging,
+  type WorkspaceMergeOutcome,
 } from '@crombolo/content'
 import {
   appendCacheInstruction,
   type Db,
   type NodeSchemaState,
   RedirectRepository,
+  type Workspace,
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
 import { createElementPort } from './adapters/elements.ts'
@@ -32,15 +41,36 @@ import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
 import type { MediaFileStore } from './media-files.ts'
 import { createRedirectTracker, NO_REDIRECT_TRACKING, type RedirectTracker } from './redirects.ts'
 import type { WebhookService } from './webhooks.ts'
+import { createWorkspaceSchema, type FileMergePlan } from './workspace-schema.ts'
 
 export interface NodeOperations {
   valueIntake: ReturnType<typeof createFileIntake>
   tracker: RedirectTracker
   approvals: Approvals
   documents: DocumentOperations
+  /** The document operations in a workspace (story 375). */
+  documentsIn(workspace: Workspace): DocumentOperations
   media: MediaOperations
   /** Every Library write (story 361). */
   elements: ElementOperations
+  /** Merging a workspace into Shared (story 380). */
+  merge: WorkspaceMerging
+}
+
+/** A workspace's merge: what it would do, and doing it, as the person merging. */
+export interface WorkspaceMerging {
+  preview(workspace: Workspace): Promise<MergePlan>
+  /** One workspace, several as one, or `only` one page of a person's own. */
+  run(
+    workspaces: Workspace | readonly Workspace[],
+    principal: Principal,
+    options: {
+      userId?: number
+      accepted?: readonly string[]
+      rehearse?: boolean
+      only?: string
+    },
+  ): Promise<WorkspaceMergeOutcome>
 }
 
 export interface NodeOperationsOptions {
@@ -138,5 +168,87 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     events: createElementEventSink(),
     onChange: () => cache?.invalidate(),
   })
-  return { valueIntake: repository.valueIntake, tracker, approvals, documents, media, elements }
+  /** The document operations in a workspace (story 375): its pages, audited, announced nowhere else. */
+  const documentsIn = (workspace: Workspace): DocumentOperations =>
+    createWorkspaceOperations(
+      { db, repository, refusalReason },
+      { id: workspace.id, name: workspace.name },
+    )
+  const gate = approvalsGate(approvals)
+  // Story 376: a workspace's files merge before its pages, on the same transaction.
+  const workspaceSchema = options.nodeState
+    ? createWorkspaceSchema(db, options.config, {
+        nodeId: options.nodeId ?? 'node',
+        nodeState: options.nodeState,
+      })
+    : undefined
+  const files: WorkspaceFileMerging | undefined = workspaceSchema && {
+    async plan(workspaceId, tx) {
+      const planned = await workspaceSchema.plan(workspaceId, tx)
+      return {
+        conflicts: [
+          ...planned.conflicts.map(
+            (c) =>
+              `The ${c.definition ? 'definition' : 'file'} ${c.path} was changed in both the workspace and Shared.`,
+          ),
+          // Story 377: a component that would not work with Shared's, saying where.
+          ...planned.problems.map((p) => `A component would break: ${p}`),
+        ],
+        // Story 382: what loses data, removes or renames, each accepted by name or kind.
+        findings: planned.items
+          .filter((i) => i.accept)
+          .map((i) => ({
+            id: i.id,
+            kind: i.kind,
+            says: `${i.says}${i.pages ? ` ${i.pages} page(s) hold a value for it.` : ''} Accept "${i.id}" or "${i.kind}" to go ahead.`,
+          })),
+        ready: planned,
+      }
+    },
+    apply: (tx, ready) => workspaceSchema.apply(tx, ready as FileMergePlan),
+  }
+  const merge: WorkspaceMerging = {
+    preview: (workspace) => previewWorkspaceMerge(db, repository, workspace),
+    async run(chosen, principal, run) {
+      const list: readonly Workspace[] = Array.isArray(chosen) ? chosen : [chosen as Workspace]
+      const names = list.map((w) => `"${w.name}"`).join(', ')
+      const outcome = await runWorkspaceMerge(list, {
+        db,
+        repository,
+        events: options.contentEvents ?? SILENT,
+        actor: userActor(principal, {
+          via: `a merge of ${list.length > 1 ? 'the workspaces' : 'the workspace'} ${names}`,
+        }),
+        userId: run.userId,
+        userKey: principal.id,
+        accepted: run.accepted,
+        rehearse: run.rehearse,
+        ...(run.only === undefined ? {} : { only: run.only }),
+        ...(files ? { files } : {}),
+        publishRefusal: (key, action) => gate.publishRefusal(principal, key, action),
+      })
+      if (!outcome.ok || outcome.rehearsed) return outcome
+      cache?.invalidate()
+      // A page a workflow covers arrives as a draft, and its publish waits for approval.
+      for (const page of outcome.forApproval)
+        await approvals.send(
+          principal,
+          page.key,
+          page.action,
+          page.cultures,
+          `Merged from ${list.length > 1 ? 'the workspaces' : 'the workspace'} ${names}`,
+        )
+      return outcome
+    },
+  }
+  return {
+    valueIntake: repository.valueIntake,
+    tracker,
+    approvals,
+    merge,
+    documents,
+    documentsIn,
+    media,
+    elements,
+  }
 }

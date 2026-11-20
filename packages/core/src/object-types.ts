@@ -13,7 +13,17 @@
 export const ObjectTypes = {
   SystemRoot: 'ea7d8624-4cfe-4578-a871-24aa946bf34d',
   Document: 'c66ba18e-eaf3-4cff-8a22-41b16d66a972',
+  /** A page made in a workspace (story 375), until it is merged: crombolo's own, hidden outside it. */
+  WorkspaceDocument: '5e1c9b70-3f2a-4d8e-a1c6-0375f2b9d375',
   DocumentType: 'a2cb7800-f571-4787-9638-bc48539a0efb',
+  /**
+   * A workspace's copy of a content, media or member type, or a data type (story 376):
+   * crombolo's own, so Shared's node queries, which name their type, never return one.
+   */
+  WorkspaceDocumentType: '7c2e4a61-9b3d-4f08-a5e1-0376d0c7e376',
+  WorkspaceMediaType: '8d3f5b72-ac4e-4019-b6f2-0376e1d8f376',
+  WorkspaceMemberType: '9e406c83-bd5f-412a-87a3-0376f2e9a376',
+  WorkspaceDataType: 'af517d94-ce60-423b-98b4-0376a3fab376',
   DocumentTypeContainer: '2f7a2769-6b0b-4468-90dd-af42d64f7f16',
   DocumentBlueprint: '6ebef410-03aa-48cf-a792-e1c1cb087aca',
   DocumentBlueprintContainer: 'a7eff71b-fa69-4552-93fc-038f7deee453',

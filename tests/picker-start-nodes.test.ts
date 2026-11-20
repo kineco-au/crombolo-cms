@@ -68,7 +68,7 @@ async function editorUnder(admin: Harness, startNode: string) {
   const created = await admin.post(`${V1}/user-group`, {
     name: 'Branch editors',
     alias: 'branch',
-    sections: ['Umb.Section.Content'],
+    sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
     languages: [],
     hasAccessToAllLanguages: true,
     documentRootAccess: false,

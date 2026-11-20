@@ -19,11 +19,13 @@ import {
 import { type Db, prunedPermissionsMigration } from '@crombolo/data'
 import { parseUserGroup } from '@crombolo/schema'
 import {
+  AREAS,
   exceptionSentence,
   exceptionSummary,
   LEVELS,
   levelOf,
   libraryFollowsPages,
+  needsContent,
   OWNED_VERBS,
   SYSTEM_GROUPS,
   shownLevel,
@@ -113,6 +115,33 @@ describe('the words', () => {
     expect(exceptionSummary('Editors', 'pages', 'News', 'see')).toBe(
       'Editors will see, but not change, pages under News.',
     )
+  })
+})
+
+describe('the places under Content (story 385)', () => {
+  const area = (label: string) => AREAS.find((a) => a.label === label) as (typeof AREAS)[number]
+
+  test('each is listed under Content, Settings among the site-wide areas', () => {
+    expect(AREAS.filter((a) => a.under).map((a) => a.label)).toEqual([
+      'Pages',
+      'Media',
+      'Approvals',
+      'Structure',
+      'Code',
+      'Forms',
+    ])
+    expect(area('Settings').under).toBeUndefined()
+  })
+
+  test('a place held without Content is flagged; with Content, or not held, it is not', () => {
+    expect(needsContent(area('Media'), ['Umb.Section.Media'])).toBe(
+      'Media is under Content, so the group needs Content too.',
+    )
+    expect(
+      needsContent(area('Media'), ['Umb.Section.Content', 'Umb.Section.Media']),
+    ).toBeUndefined()
+    expect(needsContent(area('Media'), ['Umb.Section.Settings'])).toBeUndefined()
+    expect(needsContent(area('Settings'), ['Umb.Section.Settings'])).toBeUndefined()
   })
 })
 

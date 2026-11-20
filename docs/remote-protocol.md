@@ -91,6 +91,10 @@ down notices (story 365).
     with what uses it, changed and given folders, and who may see an item read
     and set; `content-show` means a page can be read as `content show` gives it
     (see below).
+  - `schema-files` and `schema-edit` mean the site's schema files can be read,
+    and changed by the definition (see below).
+  - `workspace-merge` means a workspace can be merged into what the site serves
+    (see below).
   - `restart` means the site can be restarted (see below).
   - A client ignores capabilities it doesn't know.
 
@@ -802,6 +806,57 @@ The bundles the environment depends on, managed as its Settings → Extensions d
 - **The audit log** records `Install`, `Uninstall`, `Disable` and `Enable`
   against the bundle, as the back office does.
 
+## The schema files (`schema-files`, `schema-edit`, optional)
+
+The site's `schema/` as the files it holds, read and changed by the definition
+from a checkout (story 374), so a hosted site's schema and its code can be kept
+the same.
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/schema` | `{ version, files }`: every TOML file in the schema folder's layout, by its `/`-separated path |
+| `POST <api>/environments/{id}/schema/edits` `{ edits, base?, retire?, dryRun? }` | writes each file `edits` gives text for and removes each it gives `null` for; answers `{ changed, action?, version, findings }` |
+
+- **The level and permissions:** reading needs `read` and the pull permission;
+  changing needs `content`, the push permission (and PushProtected on a
+  protected environment) and ApplyStructure (403 `forbidden-structure`).
+- **Only schema files:** a path outside the layout, such as `migrations/`, is
+  400; `schema.toml` can be changed, never removed, and brings only its
+  settings, never its version.
+- **`base`** names what each file is expected to hold now, by the SHA-256 of its
+  text, or `null` for no file. One that has moved on is 409 `changed-here`,
+  naming it in `items`, and nothing is written. It is checked again under the
+  schema lock before the write.
+- **Checked as a deploy would check it:** files that don't load are 400
+  `problems`; a change that would alter the site's content is 409 `blocked`, or
+  `removed-with-content` for a type with items, which `retire: true` retires
+  anyway, keeping them.
+- **Applied at once,** as a type saved in the back office is, not held for
+  approval as a Settings upload is. The version is raised as far as the change
+  needs, and `version` is the one after it. A sync that refuses puts the files
+  back. A site whose schema changes only with a deploy answers 409
+  `not-writable`.
+- **`dryRun`** checks it and answers the version it would have, changing
+  nothing.
+- **The audit log** records a `Save` of the schema, naming each file written and
+  removed.
+
+## Workspaces (`workspace-merge`, optional)
+
+A host merges a workspace for a person (story 380), where workspaces are on and the
+level is `content`:
+
+| | |
+| --- | --- |
+| `GET <api>/environments/{id}/workspaces/{key}/merge` | what the merge would do: `{ pages, pending, conflicts, findings, mayMerge, refusals }` |
+| `POST <api>/environments/{id}/workspaces/{key}/merge` `{ accept?, rehearse? }` | merges it, all or nothing: `{ merged, forApproval, done, rehearsed }` |
+
+- **By the same rules as the back office's:** the person must own or be a member of
+  the workspace (otherwise 404), hold `Crombolo.Workspace.Merge` and every change's own
+  permissions (403 `forbidden`, naming each in `items`).
+- **A conflict, a pending change that cannot go, or a finding not accepted** is 409
+  `conflict`, each named in `items`; nothing is written. `accept` names findings by id.
+
 ## Restarting (`restart`, optional)
 
 `POST <api>/environments/{id}/restart` asks for a new server, and answers once
@@ -940,6 +995,10 @@ names it, administrators included, and no group has it until someone gives it.
 - **A site folder's `remotes.toml`** (before story 352) is no longer read.
   A command run where there is one says once how to move it:
   `crombolo profile import`.
+- **A checkout and a hosted site's schema** (story 374): `types check --against`
+  lists where they differ, `types export --from` mirrors the site's definitions
+  into `schema/`, and the type commands' `--to` changes the files and then the
+  site, as described in [schema-as-code](schema-as-code.md).
 - **Passphrases:** each pull and push seals its file with a passphrase made
   for that transfer alone.
 - **A lazily pulled site** reads media through from the remote it came from,

@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_SINGLE_USE_TOKEN,
+  STATE_WORKSPACE_SCHEMA,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -149,10 +149,14 @@ describe('upgrading from the previous release', () => {
       'AddRemoteExchange',
       'AddExchangeActor',
       'RenameSingleUseToken',
+      'AddWorkspaces',
+      'AddContentPlaces',
+      'AddWorkspaceMerge',
+      'AddWorkspaceSchema',
     ])
-    expect(await readState(db)).toBe(STATE_SINGLE_USE_TOKEN)
+    expect(await readState(db)).toBe(STATE_WORKSPACE_SCHEMA)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.69.0', steps: 32 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.70.0', steps: 36 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

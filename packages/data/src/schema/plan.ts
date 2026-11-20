@@ -36,6 +36,7 @@ import { contentCheckpointMigration } from './content-checkpoint.ts'
 import { contentEditingMigration } from './content-editing.ts'
 import { contentEventsMigration } from './content-events.ts'
 import { contentNotificationsMigration } from './content-notifications.ts'
+import { contentPlacesMigration } from './content-places.ts'
 import { contentTypeSeoMigration } from './content-type-seo.ts'
 import { createdPackagesMigration } from './created-packages.ts'
 import { deliveryMemberTokensMigration } from './delivery-member-tokens.ts'
@@ -94,6 +95,9 @@ import { userStartNodesDroppedMigration } from './user-start-nodes-dropped.ts'
 import { usersLocalisationMigration } from './users-localisation.ts'
 import { valuesMigration } from './values.ts'
 import { webhooksMigration } from './webhooks.ts'
+import { workspaceMergeMigration } from './workspace-merge.ts'
+import { workspaceSchemaMigration } from './workspace-schema.ts'
+import { workspacesMigration } from './workspaces.ts'
 
 export const cromboloPlan = new MigrationPlan([
   identityMigration,
@@ -177,4 +181,8 @@ export const cromboloPlan = new MigrationPlan([
   remoteExchangeMigration,
   exchangeActorMigration,
   singleUseTokenMigration,
+  workspacesMigration,
+  contentPlacesMigration,
+  workspaceMergeMigration,
+  workspaceSchemaMigration,
 ])

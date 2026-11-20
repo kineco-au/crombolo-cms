@@ -188,7 +188,11 @@ export interface ContentTypePort extends TreePort {
     aggregate: ContentTypeAggregate,
     principal: Principal,
   ): Promise<{ ok: true } | PortFailure>
-  remove(key: string): Promise<boolean>
+  /**
+   * 'in-workspace' when an open workspace has changed it (story 376): refused,
+   * unless `force`, which only an administrator may ask.
+   */
+  remove(key: string, options?: { force?: boolean }): Promise<boolean | 'in-workspace'>
   /** The type as Umbraco's `.udt` XML, or undefined when it is not there. */
   exportUdt(key: string): Promise<string | undefined>
   /**
@@ -243,8 +247,8 @@ export interface DataTypePort extends TreePort {
   byKeys(keys: readonly string[]): Promise<DataTypeModel[]>
   /** A failure when the save would leave the schema files invalid (story 344). */
   save(model: DataTypeModel, principal: Principal): Promise<PortFailure | undefined>
-  /** 'in-use' when a property type still uses it. */
-  remove(key: string): Promise<boolean | 'in-use'>
+  /** 'in-use' when a property type still uses it; 'in-workspace' as for a type (story 376). */
+  remove(key: string, options?: { force?: boolean }): Promise<boolean | 'in-use' | 'in-workspace'>
   filter(
     criteria: { name?: string; editorAlias?: string; editorUiAlias?: string },
     paging: SkipTake,

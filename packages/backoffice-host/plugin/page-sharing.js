@@ -38,7 +38,7 @@ export const duration = (seconds) => {
 
 /** The editor of a view file, by its path under the views: `/shared/layout.tsx`. */
 export const fileEditorHref = (path, base = backOffice()) =>
-  `${base}/section/settings/workspace/partial-view/edit/${encodeURIComponent(path.replace('.', '%dot%'))}`
+  `${base}/section/content/code/workspace/partial-view/edit/${encodeURIComponent(path.replace('.', '%dot%'))}`
 
 /**
  * The Info tab's words for a page: a headline sentence, and the files that

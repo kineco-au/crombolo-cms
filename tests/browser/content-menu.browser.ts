@@ -1,8 +1,9 @@
 /**
- * Story 289: the menu under Content, which keeps Content's tab marked across
- * Pages, Structure and Code (Approvals, shown only once a workflow exists, is
- * in workflow-section.browser.ts), and the tree beside forms
- * and workflows, with folders.
+ * Stories 289 and 385: the menu under Content, which keeps Content's tab marked
+ * across Pages, Media, Structure and Code, each at its address under Content
+ * (Approvals, shown only once a workflow exists, is in
+ * workflow-section.browser.ts), and the tree beside forms and workflows, with
+ * folders.
  */
 import type { Page } from '@playwright/test'
 import { expect, goToSection, settle, signIn, test } from './fixtures.ts'
@@ -22,8 +23,9 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
   await goToSection(page, 'Content')
   await settle(page)
   for (const [label, address] of [
-    ['Structure', /\/section\/settings\/structure$/],
-    ['Code', /\/section\/settings\/code$/],
+    ['Media', /\/section\/content\/media$/],
+    ['Structure', /\/section\/content\/structure$/],
+    ['Code', /\/section\/content\/code$/],
     ['Pages', /\/section\/content/],
   ] as const) {
     await strip(page).getByRole('link', { name: label }).click()
@@ -35,6 +37,26 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
     await expect(marked(page)).toHaveAttribute('label', 'Content')
     // A section with no tabs once drew the word false where they would be.
     await expect(page.getByText('false', { exact: true })).toHaveCount(0)
+  }
+})
+
+test('each place has no tab of its own, and its old address opens it where it is now', async ({
+  page,
+}) => {
+  await signIn(page)
+  await goToSection(page, 'Content')
+  await settle(page)
+  const tabs = page.locator('umb-backoffice-header-sections uui-tab')
+  for (const place of ['Media', 'Forms', 'Structure', 'Code', 'Approvals'])
+    await expect(tabs.filter({ hasText: place })).toHaveCount(0)
+  for (const [old, now] of [
+    ['/crombolo/section/media', /\/section\/content\/media(\/collection)?$/],
+    ['/crombolo/section/settings/structure', /\/section\/content\/structure$/],
+    ['/crombolo/section/settings/code', /\/section\/content\/code$/],
+    ['/crombolo/section/settings/workflows', /\/section\/content\/structure\/workflows$/],
+  ] as const) {
+    await page.goto(old)
+    await expect(page).toHaveURL(now)
   }
 })
 
@@ -94,7 +116,7 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
   expect(at('Forms')).toBeGreaterThan(at('Data Types'))
   expect(at('Languages')).toBeGreaterThan(at('Forms'))
   await tree.getByRole('link', { name: 'Forms', exact: true }).click()
-  await expect(page).toHaveURL(/\/section\/settings\/forms\/entries/)
+  await expect(page).toHaveURL(/\/section\/content\/structure\/forms\/entries/)
   await expect(tree).toBeVisible()
   await expect(strip(page).getByRole('link', { name: 'Structure' })).toHaveAttribute(
     'aria-current',
@@ -116,7 +138,7 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
     .click()
   await page.getByText('Create…', { exact: true }).click()
   await page.getByText('Form', { exact: true }).click()
-  await expect(page).toHaveURL(/\/section\/settings\/forms\?new=/)
+  await expect(page).toHaveURL(/\/section\/content\/structure\/forms\?new=/)
   await expect(page.locator('crombolo-forms-overview')).toBeVisible()
 })
 
@@ -153,7 +175,7 @@ test('someone with Pages alone sees no menu', async ({ page }) => {
 
 test('forms sit in folders in the tree, and the root lists every entry', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/forms')
+  await page.goto('/crombolo/section/content/forms')
   const tree = page.locator('crombolo-definition-tree')
   await expect(tree.locator('uui-menu-item[label="Forms"]')).toBeVisible()
 
@@ -188,7 +210,7 @@ test('Workflows is a node in Structure, below Forms, started from its tree', asy
     'repository is missing',
   )
   await signIn(page)
-  await page.goto('/crombolo/section/settings/structure')
+  await page.goto('/crombolo/section/content/structure')
   await expect(
     page.locator('umb-section-sidebar uui-menu-item[label="Workflows"]').first(),
   ).toBeVisible({ timeout: 30_000 })
@@ -204,7 +226,7 @@ test('Workflows is a node in Structure, below Forms, started from its tree', asy
   await expect(tree.locator('uui-menu-item[label="Approvals"]')).toHaveCount(0)
 
   await tree.getByRole('link', { name: 'Workflows', exact: true }).click()
-  await expect(page).toHaveURL(/\/section\/settings\/workflows$/)
+  await expect(page).toHaveURL(/\/section\/content\/structure\/workflows$/)
   await expect(page.locator('crombolo-workflow-designer')).toBeVisible()
   await expect(strip(page).getByRole('link', { name: 'Structure' })).toHaveAttribute(
     'aria-current',
@@ -216,7 +238,7 @@ test('Workflows is a node in Structure, below Forms, started from its tree', asy
   await tree.locator('uui-menu-item[label="Workflows"] #menu-item').first().hover()
   // "+" beside "…", as every tree has it for a new item.
   await tree.getByRole('button', { name: 'New workflow' }).click()
-  await expect(page).toHaveURL(/settings\/workflows\?new=/)
+  await expect(page).toHaveURL(/structure\/workflows\?new=/)
   await expect(page.getByRole('button', { name: 'Back to the list' })).toBeVisible()
   await expect(tree).toBeVisible()
 })
@@ -248,7 +270,7 @@ test('a form is opened from the tree, with its entries a tab', async ({ page }) 
     route.fulfill({ json: { items: [], total: 0 } }),
   )
   await signIn(page)
-  await page.goto('/crombolo/section/forms')
+  await page.goto('/crombolo/section/content/forms')
   await page
     .locator('crombolo-definition-tree')
     .getByRole('link', { name: 'From the tree' })
@@ -266,7 +288,7 @@ test('a site that cannot change them says so, and offers no way to', async ({ pa
     await route.fulfill({ response, json: { ...(await response.json()), readOnlyBecause: 'site' } })
   })
   await signIn(page)
-  await page.goto('/crombolo/section/forms')
+  await page.goto('/crombolo/section/content/forms')
   const list = page.locator('crombolo-forms-overview')
   await expect(list.getByRole('status')).toContainText("can't be changed here")
   await expect(list.getByRole('button', { name: 'Create' })).toHaveCount(0)
@@ -280,7 +302,7 @@ test('Structure says when its types cannot be changed here', async ({ page }) =>
     route.fulfill({ json: { writable: false } }),
   )
   await signIn(page)
-  await page.goto('/crombolo/section/settings/structure')
+  await page.goto('/crombolo/section/content/structure')
   await expect(page.locator('umb-section-sidebar .read-only')).toContainText(
     "can't be changed here",
   )
@@ -322,7 +344,7 @@ test('a page leads to its content type', async ({ page }) => {
       .first()
       .click({ timeout: 2_000 })
   }).toPass({ timeout: 20_000 })
-  await expect(page).toHaveURL(/\/section\/settings\/workspace\/document-type\/edit\//)
+  await expect(page).toHaveURL(/\/section\/content\/structure\/workspace\/document-type\/edit\//)
 })
 
 test('the tree beside each place keeps the one width the reader chose', async ({ page }) => {
@@ -331,10 +353,10 @@ test('the tree beside each place keeps the one width the reader chose', async ({
   await page.evaluate(() => localStorage.setItem('umb-split-panel-position', '360px'))
   for (const [address, tree] of [
     ['/crombolo/section/content', 'umb-section-sidebar'],
-    ['/crombolo/section/settings/structure', 'umb-section-sidebar:not([hidden])'],
-    ['/crombolo/section/settings/code', 'umb-section-sidebar:not([hidden])'],
-    ['/crombolo/section/forms', 'umb-section-sidebar'],
-    ['/crombolo/section/workflow', 'umb-section-sidebar'],
+    ['/crombolo/section/content/structure', 'umb-section-sidebar:not([hidden])'],
+    ['/crombolo/section/content/code', 'umb-section-sidebar:not([hidden])'],
+    ['/crombolo/section/content/forms', 'umb-section-sidebar'],
+    ['/crombolo/section/content/approvals', 'umb-section-sidebar'],
   ] as const) {
     await page.goto(address)
     const sidebar = page.locator(tree).first()

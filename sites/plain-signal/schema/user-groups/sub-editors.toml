@@ -3,6 +3,6 @@ alias = "subEditors"
 name = "Sub-editors"
 description = "Check copy, facts and headlines: the first stage of article approval"
 icon = "icon-checkbox"
-sections = ["content", "media"]
+sections = ["content", "pages", "media"]
 permissions = ["Umb.Document.Read", "Umb.Document.Create", "Umb.Document.Update", "Umb.Document.Sort", "Crombolo.Media.Read", "Crombolo.Media.Update"]
 languages = "all"

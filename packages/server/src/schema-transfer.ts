@@ -9,7 +9,12 @@
  * and runs the sync a deploy runs, putting the files back if the sync refuses.
  * Only TOML in the folder's own layout is taken: `migrations/` is code, and an
  * upload never brings code.
+ *
+ * The command line reads the files and changes them by the definition (story
+ * 374): an edit names each file it writes or removes, with a hash of what it
+ * expects there, and is applied at once, as a type saved in the back office is.
  */
+import { createHash } from 'node:crypto'
 import {
   cpSync,
   existsSync,
@@ -114,8 +119,8 @@ function placeLoose(
 
 const aliasOf = (text: string) => /^\s*alias\s*=\s*"([^"]+)"/m.exec(text)?.[1]
 
-/** Every TOML file under `dir`, by its `/`-separated path in it. */
-function schemaFiles(dir: string): Map<string, string> {
+/** Every TOML file under `dir` in the schema folder's layout, by its `/`-separated path in it. */
+export function schemaFilesIn(dir: string): Map<string, string> {
   const out = new Map<string, string>()
   const walk = (at: string) => {
     if (!existsSync(at)) return
@@ -161,10 +166,43 @@ export interface PendingSchemaImportView {
 
 export type SchemaOutcome<T = object> =
   | ({ ok: true } & T)
-  | { ok: false; status: number; message: string; problems?: string[] }
+  | { ok: false; status: number; message: string; problems?: string[]; code?: string }
 
-const refused = (status: number, message: string, problems?: string[]) =>
-  ({ ok: false, status, message, ...(problems ? { problems } : {}) }) as const
+const refused = (status: number, message: string, problems?: string[], code?: string) =>
+  ({
+    ok: false,
+    status,
+    message,
+    ...(problems ? { problems } : {}),
+    ...(code ? { code } : {}),
+  }) as const
+
+/** The hash an edit's `base` names a file by; null for no file. */
+export const schemaFileHash = (text: string | undefined): string | null =>
+  text === undefined ? null : createHash('sha256').update(text).digest('hex')
+
+/** Files written (text) or removed (null), by their path in `schema/`. */
+export type SchemaWrites = Record<string, string | null>
+
+/** A change to `schema/` by the definition, from the command line (story 374). */
+export interface SchemaEdit {
+  edits: SchemaWrites
+  /** What each file is expected to hold now, by `schemaFileHash`; absent, it is not checked. */
+  base?: Record<string, string | null>
+  /** Retire a type the edit removes though items of it exist. */
+  retire?: boolean
+  dryRun?: boolean
+}
+
+export interface SchemaEditResult {
+  changed: boolean
+  /** What the sync did; absent for a dry run or no change. */
+  action?: string
+  /** The schema's version after it, or as it would be. */
+  version: string
+  /** What the check said the change does to the site's content. */
+  findings: string[]
+}
 
 export function createSchemaTransfer(
   db: Db,
@@ -237,11 +275,15 @@ export function createSchemaTransfer(
    * the change needs, as the back office raises it for a type it saves, and
    * `schemaToml` is the file to write with it.
    */
-  async function check(files: Record<string, string>) {
+  async function check(files: SchemaWrites) {
     const dir = mkdtempSync(join(tmpdir(), 'crombolo-import-'))
     try {
       if (existsSync(config.schemaDir)) cpSync(config.schemaDir, dir, { recursive: true })
       for (const [path, text] of Object.entries(files)) {
+        if (text === null) {
+          rmSync(join(dir, path), { force: true })
+          continue
+        }
         mkdirSync(dirname(join(dir, path)), { recursive: true })
         writeFileSync(join(dir, path), text)
       }
@@ -251,7 +293,7 @@ export function createSchemaTransfer(
         .map((p) => `${p.file}${p.path ? ` (${p.path})` : ''}: ${p.message}`)
         .map((line) => line.replaceAll(dir, 'schema'))
       for (const [path, text] of Object.entries(files))
-        if (path.startsWith('webhooks/'))
+        if (path.startsWith('webhooks/') && text !== null)
           problems.push(...parseWebhookFile(path, text).problems.map((p) => `${path}: ${p}`))
       if (problems.length > 0) return { problems, findings: [] as Finding[], schemaToml: undefined }
       const run = () =>
@@ -289,12 +331,75 @@ export function createSchemaTransfer(
 
   const blocking = (findings: readonly Finding[]) => findings.some((f) => f.kind === 'blocking')
 
+  /** The paths among `base` whose file no longer holds what it names. */
+  const movedOn = (base: Record<string, string | null>) => {
+    const current = schemaFilesIn(config.schemaDir)
+    return Object.entries(base)
+      .filter(([path, hash]) => schemaFileHash(current.get(path)) !== hash)
+      .map(([path]) => path)
+      .sort()
+  }
+
+  /**
+   * Writes the files into `schema/` and syncs them, putting them back when the
+   * sync refuses; `base`, when given, is checked again under the lock.
+   */
+  async function commit(
+    writes: SchemaWrites,
+    how: { retire?: boolean; base?: Record<string, string | null>; what?: string } = {},
+  ): Promise<SchemaOutcome<{ action?: string }>> {
+    const before = new Map<string, string | undefined>()
+    const moved = await db.locks.withLock(Locks.Schema, async () => {
+      const moved = how.base ? movedOn(how.base) : []
+      if (moved.length > 0) return moved
+      for (const [path, text] of Object.entries(writes)) {
+        const target = join(config.schemaDir, path)
+        before.set(path, existsSync(target) ? readFileSync(target, 'utf8') : undefined)
+        if (text === null) rmSync(target, { force: true })
+        else {
+          mkdirSync(dirname(target), { recursive: true })
+          writeFileSync(target, text)
+        }
+      }
+      return []
+    })
+    if (moved.length > 0) return changedHere(moved)
+    const result = await importSchema(db, config, options.boot, {
+      materialise: false,
+      forceRetireTypes: how.retire === true,
+    })
+    if (result.report?.action === 'refused') {
+      await db.locks.withLock(Locks.Schema, async () => {
+        for (const [path, text] of before) {
+          const target = join(config.schemaDir, path)
+          if (text === undefined) rmSync(target, { force: true })
+          else writeFileSync(target, text)
+        }
+      })
+      return refused(
+        409,
+        `The ${how.what ?? 'change'} was refused, and the schema is as it was: ${result.report.reason ?? 'see the server log'}.`,
+      )
+    }
+    if (config.schemaStore) await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
+    await options.afterApply?.(result.report)
+    return { ok: true, action: result.report?.action }
+  }
+
+  const changedHere = (paths: string[]) =>
+    refused(
+      409,
+      'The schema here has changed since those files were read.',
+      paths.map((path) => `${path}: changed here`),
+      'changed-here',
+    )
+
   return {
     /** Every TOML file in `schema/`, as a zip that unpacks to a `schema` folder. */
     exportZip(): Uint8Array<ArrayBuffer> {
       const encoder = new TextEncoder()
       return writeZip(
-        [...schemaFiles(config.schemaDir)]
+        [...schemaFilesIn(config.schemaDir)]
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([path, text]) => ({ path: `schema/${path}`, bytes: encoder.encode(text) })),
       )
@@ -333,7 +438,7 @@ export function createSchemaTransfer(
       try {
         if (/\.toml$/i.test(fileName)) {
           const text = decoder.decode(bytes)
-          const path = placeLoose(fileName, text, schemaFiles(config.schemaDir))
+          const path = placeLoose(fileName, text, schemaFilesIn(config.schemaDir))
           if (!path) outside.push(fileName)
           else files[path] = text
         } else {
@@ -359,7 +464,7 @@ export function createSchemaTransfer(
         if (settings === undefined) delete files['schema.toml']
         else files['schema.toml'] = settings
       }
-      const current = schemaFiles(config.schemaDir)
+      const current = schemaFilesIn(config.schemaDir)
       const added = Object.keys(files).filter((path) => !current.has(path))
       const changed = Object.keys(files).filter(
         (path) => current.has(path) && current.get(path) !== files[path],
@@ -411,33 +516,9 @@ export function createSchemaTransfer(
           'Something on the Changes dashboard stops this import. Discard it, or fix the files and upload them again.',
         )
 
-      const before = new Map<string, string | undefined>()
-      await db.locks.withLock(Locks.Schema, async () => {
-        const writes = { ...pending.files, ...(schemaToml ? { 'schema.toml': schemaToml } : {}) }
-        for (const [path, text] of Object.entries(writes)) {
-          const target = join(config.schemaDir, path)
-          before.set(path, existsSync(target) ? readFileSync(target, 'utf8') : undefined)
-          mkdirSync(dirname(target), { recursive: true })
-          writeFileSync(target, text)
-        }
-      })
-      const result = await importSchema(db, config, options.boot, { materialise: false })
-      if (result.report?.action === 'refused') {
-        await db.locks.withLock(Locks.Schema, async () => {
-          for (const [path, text] of before) {
-            const target = join(config.schemaDir, path)
-            if (text === undefined) rmSync(target, { force: true })
-            else writeFileSync(target, text)
-          }
-        })
-        return refused(
-          409,
-          `The import was refused, and the schema is as it was: ${result.report.reason ?? 'see the server log'}.`,
-        )
-      }
-      if (config.schemaStore)
-        await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
-      await options.afterApply?.(result.report)
+      const writes = { ...pending.files, ...(schemaToml ? { 'schema.toml': schemaToml } : {}) }
+      const committed = await commit(writes, { what: 'import' })
+      if (!committed.ok) return committed
       await write(undefined)
       await writeReport(db, [], { source: 'import', scope: SCOPE })
       await audit(
@@ -445,7 +526,114 @@ export function createSchemaTransfer(
         'Apply',
         `${pending.fileName}: ${describe(pending.added, pending.changed)} (${[...pending.added, ...pending.changed].join(', ')})`,
       )
-      return { ok: true, action: result.report?.action }
+      return { ok: true, action: committed.action }
+    },
+
+    /** Every TOML file in `schema/` by its path, with the version (story 374). */
+    files(): { version: string; files: Record<string, string> } {
+      const files = schemaFilesIn(config.schemaDir)
+      return {
+        version: currentSettings().version,
+        files: Object.fromEntries([...files].sort(([a], [b]) => a.localeCompare(b))),
+      }
+    },
+
+    /**
+     * Writes and removes the files an edit names, checked as an upload is, and
+     * syncs them at once (story 374). Refused, changing nothing, when a file no
+     * longer holds what `base` says, when the check finds problems, or when
+     * something would block it.
+     */
+    async edit(actor: SchemaActor, asked: SchemaEdit): Promise<SchemaOutcome<SchemaEditResult>> {
+      if (!config.schemaWritable)
+        return refused(
+          409,
+          "This site's schema changes only with a deploy, so it can't be changed here.",
+          undefined,
+          'not-writable',
+        )
+      const paths = Object.keys(asked.edits)
+      const wrong = paths.filter((path) => schemaPathOf(path) !== path)
+      if (wrong.length > 0)
+        return refused(
+          400,
+          'Only schema files can be changed: TOML, in the folders a schema folder has.',
+          wrong.slice(0, 20).map((path) => `${path}: not a schema file`),
+        )
+      const texts = Object.values(asked.edits).filter((text): text is string => text !== null)
+      if (
+        paths.length > UPLOAD_LIMITS.maxEntries ||
+        texts.some((text) => text.length > UPLOAD_LIMITS.maxEntryBytes) ||
+        texts.reduce((sum, text) => sum + text.length, 0) > UPLOAD_LIMITS.maxTotalBytes
+      )
+        return refused(413, 'That is too large to be a schema.')
+      if (asked.edits['schema.toml'] === null)
+        return refused(400, 'schema.toml is kept: it can be changed, not removed.')
+      if (asked.base) {
+        const moved = movedOn(asked.base)
+        if (moved.length > 0) return changedHere(moved)
+      }
+
+      const current = schemaFilesIn(config.schemaDir)
+      const edits: SchemaWrites = {}
+      for (const [path, text] of Object.entries(asked.edits)) {
+        if (path === 'schema.toml') {
+          const settings = settingsFrom(text as string)
+          if (settings !== undefined) edits[path] = settings
+        } else if (text === null ? current.has(path) : current.get(path) !== text)
+          edits[path] = text
+      }
+      const version = currentSettings().version
+      if (Object.keys(edits).length === 0)
+        return { ok: true, changed: false, version, findings: [] }
+
+      const { problems, findings, schemaToml } = await check(edits)
+      if (problems.length > 0)
+        return refused(400, 'The site would not accept it.', problems.slice(0, 50), 'problems')
+      const stopping = findings.filter(
+        (f) => f.kind === 'blocking' && !(asked.retire && f.code === 'type-removed-with-content'),
+      )
+      if (stopping.length > 0)
+        return refused(
+          409,
+          "It would change the site's content.",
+          stopping.map((f) => f.message),
+          stopping.some((f) => f.code === 'type-removed-with-content')
+            ? 'removed-with-content'
+            : 'blocked',
+        )
+      const notes = findings
+        .filter((f) => f.kind === 'auto' || f.kind === 'person')
+        .map((f) => f.message)
+      const next = schemaToml
+        ? (parseSchemaSettings('schema.toml', schemaToml).value?.version ?? version)
+        : version
+      if (asked.dryRun) return { ok: true, changed: false, version: next, findings: notes }
+
+      const committed = await commit(
+        { ...edits, ...(schemaToml ? { 'schema.toml': schemaToml } : {}) },
+        { retire: asked.retire, base: asked.base },
+      )
+      if (!committed.ok) return committed
+      const written = Object.keys(edits).filter((path) => edits[path] !== null)
+      const removed = Object.keys(edits).filter((path) => edits[path] === null)
+      await audit(
+        actor,
+        'Save',
+        `from the command line: ${[
+          written.length > 0 ? `wrote ${written.sort().join(', ')}` : '',
+          removed.length > 0 ? `removed ${removed.sort().join(', ')}` : '',
+        ]
+          .filter(Boolean)
+          .join('; ')}`,
+      )
+      return {
+        ok: true,
+        changed: true,
+        action: committed.action,
+        version: next,
+        findings: notes,
+      }
     },
 
     async discard(actor: SchemaActor): Promise<SchemaOutcome> {

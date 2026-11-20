@@ -23,6 +23,8 @@ export interface NodeRow {
   createDate: Date | undefined
   /** 0 for a media folder, which a tree lists before the files beside it (story 246); 1 otherwise. */
   treeGroup: number
+  /** The workspace a page made in one belongs to (story 375); null for Shared's. */
+  workspaceId?: number | null
 }
 
 export function mapNode(row: Record<string, unknown>): NodeRow {
@@ -38,6 +40,8 @@ export function mapNode(row: Record<string, unknown>): NodeRow {
     objectType: row.node_object_type ? normaliseUuid(String(row.node_object_type)) : null,
     createDate: DbDate.fromDb(row.create_date),
     treeGroup: row.tree_group === undefined || row.tree_group === null ? 1 : Number(row.tree_group),
+    workspaceId:
+      row.workspace_id === undefined || row.workspace_id === null ? null : Number(row.workspace_id),
   }
 }
 
@@ -53,6 +57,7 @@ const NODE_COLUMNS = [
   'node_object_type',
   'create_date',
   'tree_group',
+  'workspace_id',
 ] as const
 
 export interface CreateNodeInit {
@@ -64,6 +69,8 @@ export interface CreateNodeInit {
   sortOrder?: number
   /** 0 for a media folder (story 246); 1, the default, for everything else. */
   treeGroup?: number
+  /** A page made in a workspace (story 375). */
+  workspaceId?: number
 }
 
 export class NodeRepository {
@@ -126,6 +133,7 @@ export class NodeRepository {
         node_object_type: init.objectType,
         create_date: now,
         tree_group: init.treeGroup ?? 1,
+        workspace_id: init.workspaceId ?? null,
       })
       .execute()
     const created = await this.byKey(key)
@@ -156,11 +164,23 @@ export class NodeRepository {
     take: number,
     trashed = false,
     excludeKeys: readonly string[] = [],
+    /** With a workspace, its own pages are children too (story 375). */
+    workspaceId?: number,
   ): Promise<Page<NodeRow>> {
     const matching = this.#db.q
       .selectFrom('node')
       .where('parent_id', '=', parentId)
-      .where('node_object_type', '=', objectType)
+      .where((eb) =>
+        workspaceId === undefined
+          ? eb('node_object_type', '=', objectType)
+          : eb.or([
+              eb('node_object_type', '=', objectType),
+              eb.and([
+                eb('node_object_type', '=', ObjectTypes.WorkspaceDocument),
+                eb('workspace_id', '=', workspaceId),
+              ]),
+            ]),
+      )
       .where('trashed', '=', this.#db.dialect.boolValue(trashed))
       .$if(excludeKeys.length > 0, (q) =>
         q.where('unique_id', 'not in', excludeKeys.map(normaliseUuid)),

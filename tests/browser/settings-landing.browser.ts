@@ -6,8 +6,8 @@
 import { expect, signIn, test } from './fixtures.ts'
 
 const SETTINGS = '/crombolo/section/settings'
-const STRUCTURE_TREE = 'section-sidebar:Umb.SectionSidebarMenu.Settings'
-const CODE_TREE = 'section-sidebar:Umb.SectionSidebarMenu.Templating'
+const STRUCTURE_TREE = 'section-sidebar:Crombolo.SectionSidebarMenu.Structure'
+const CODE_TREE = 'section-sidebar:Crombolo.SectionSidebarMenu.Code'
 
 test('Settings opens on cards, and each tool or tree opens from one', async ({ page }) => {
   const errors: string[] = []

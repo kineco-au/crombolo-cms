@@ -224,6 +224,8 @@ export interface DocumentRepositoryOptions {
    * transaction for the run, rather than one of each per node.
    */
   inTreeLock?: boolean
+  /** The workspace it reads and writes in (story 375); absent, Shared. */
+  workspace?: number
 }
 
 /** Thrown when a publish is refused by a business rule rather than failing. */
@@ -239,6 +241,59 @@ export class PublishBlockedError extends Error {
 
 /** The parent named for a new item is gone, or in the recycle bin. */
 export class InvalidParentError extends Error {}
+
+/**
+ * One field of a page as a merge compares it (story 380): a value by
+ * `alias|culture|segment`, `@name` or `@name:<iso>`, or `@template` (a key).
+ * `undefined` is "not there".
+ */
+export interface MergeField {
+  field: string
+  base: unknown
+  mine: unknown
+  theirs: unknown
+  /** Which value it is, when the field is a value. */
+  value?: { alias: string; culture: string | null; segment: string | null }
+}
+
+/** A page a workspace changed or made, as its merge reads it. */
+export interface WorkspacePageMerge {
+  key: string
+  nodeId: number
+  made: boolean
+  level: number
+  contentTypeKey: string
+  parentKey: string | null
+  /** Shared's latest event now, and the one the workspace began from. */
+  sharedHead: number | null
+  baseEvent: number | null
+  fields: MergeField[]
+  /**
+   * Published state for the page, and per language: as begun, in the workspace, in
+   * Shared now. `here` says the workspace published its own version, which a merge
+   * publishes; `sharedEdited` says Shared has changes it has not published.
+   */
+  published: {
+    base: boolean | null
+    mine: boolean
+    theirs: boolean
+    here: boolean
+    sharedEdited: boolean
+  }
+  cultures: Array<{ iso: string; base: boolean | null; mine: boolean; theirs: boolean }>
+}
+
+/** Something a workspace cannot hold yet (story 375), said in the editor's words. */
+export class WorkspaceRefusedError extends Error {}
+
+/** A page a workspace has touched: where it started from, and where it stands there. */
+interface WorkspaceDocumentRow {
+  baseEventId: number | null
+  created: boolean
+  published: boolean
+  publishedEventId: number | null
+  edited: boolean
+}
 
 /** The draft changed after the revision a write was based on (story 172). */
 export class StaleRevisionError extends Error {
@@ -370,6 +425,7 @@ export class DocumentRepository {
   #recycleBin: number | undefined
   #intake: ValueIntake | undefined
   #inTreeLock: boolean
+  #workspace: number | undefined
 
   constructor(db: Db, options: DocumentRepositoryOptions = {}) {
     this.#db = db
@@ -381,6 +437,24 @@ export class DocumentRepository {
     this.#recycleBin = KINDS[this.kind].recycleBin
     this.#intake = options.valueIntake
     this.#inTreeLock = options.inTreeLock ?? false
+    this.#workspace = options.workspace
+  }
+
+  /** The workspace it reads and writes in (story 375); undefined for Shared. */
+  get workspace(): number | undefined {
+    return this.#workspace
+  }
+
+  /** The same repository, in a workspace (undefined: Shared). */
+  inWorkspace(workspace: number | undefined): DocumentRepository {
+    return new DocumentRepository(this.#db, {
+      nodeState: this.#nodeState,
+      nodeId: this.#nodeId,
+      kind: this.kind,
+      valueIntake: this.#intake,
+      inTreeLock: this.#inTreeLock,
+      workspace,
+    })
   }
 
   get nodes(): NodeRepository {
@@ -413,14 +487,910 @@ export class DocumentRepository {
       valueIntake: this.#intake,
       // A child runs inside whatever its parent took.
       inTreeLock: true,
+      workspace: this.#workspace,
     })
+  }
+
+  // ---------------------------------------------------------------- workspaces (story 375)
+
+  /** Whether a node is one this repository may see: Shared's, or its workspace's own. */
+  sees(node: NodeRow): boolean {
+    if (node.objectType === this.objectType) return true
+    return (
+      this.#workspace !== undefined &&
+      node.objectType === ObjectTypes.WorkspaceDocument &&
+      node.workspaceId === this.#workspace
+    )
+  }
+
+  async #workspaceDocument(nodeId: number): Promise<WorkspaceDocumentRow | undefined> {
+    if (this.#workspace === undefined) return undefined
+    const rows = await this.#db.q
+      .selectFrom('workspace_document')
+      .selectAll()
+      .where('workspace_id', '=', this.#workspace)
+      .where('node_id', '=', nodeId)
+      .execute()
+    const row = rows[0]
+    if (!row) return undefined
+    return {
+      baseEventId: row.base_event_id === null ? null : Number(row.base_event_id),
+      created: fromDbBool(row.created),
+      published: fromDbBool(row.published),
+      publishedEventId: row.published_event_id === null ? null : Number(row.published_event_id),
+      edited: fromDbBool(row.edited),
+    }
+  }
+
+  /**
+   * The workspace's row for a Shared page, made the first time it writes one:
+   * the event it starts from, and Shared's published state and languages as
+   * they stand, which it then keeps apart.
+   */
+  async #touch(node: NodeRow): Promise<WorkspaceDocumentRow> {
+    const workspace = this.#workspace as number
+    const existing = await this.#workspaceDocument(node.id)
+    if (existing) return existing
+    const head = await this.#headEvent(node.id)
+    const document = (
+      await this.#db.q
+        .selectFrom('document')
+        .select(['published', 'edited'])
+        .where('node_id', '=', node.id)
+        .execute()
+    )[0]
+    const row: WorkspaceDocumentRow = {
+      baseEventId: head?.id ?? null,
+      created: false,
+      published: fromDbBool(document?.published),
+      publishedEventId: (await this.#publishedEventId(node.id)) ?? null,
+      edited: fromDbBool(document?.edited),
+    }
+    await this.#db.q
+      .insertInto('workspace_document')
+      .values({
+        workspace_id: workspace,
+        node_id: node.id,
+        base_event_id: row.baseEventId,
+        created: this.#db.dialect.boolValue(false) as boolean,
+        published: this.#db.dialect.boolValue(row.published) as boolean,
+        published_event_id: row.publishedEventId,
+        edited: this.#db.dialect.boolValue(row.edited) as boolean,
+        // What Shared had published when the workspace began, for the merge (story 380).
+        base_published: this.#db.dialect.boolValue(row.published) as boolean,
+      })
+      .execute()
+    await this.#db.q
+      .insertInto('workspace_document_culture')
+      .columns([
+        'workspace_id',
+        'node_id',
+        'language_id',
+        'name',
+        'available',
+        'published',
+        'edited',
+        'published_event_id',
+        'published_name',
+        'base_published',
+        'base_published_event_id',
+      ])
+      .expression((eb) =>
+        eb
+          .selectFrom('document_culture_variation')
+          .select([
+            eb.val(workspace).as('workspace_id'),
+            'node_id',
+            'language_id',
+            'name',
+            'available',
+            'published',
+            'edited',
+            'published_event_id',
+            'published_name',
+            'published as base_published',
+            'published_event_id as base_published_event_id',
+          ])
+          .where('node_id', '=', node.id),
+      )
+      .execute()
+    return row
+  }
+
+  async #setWorkspaceDocument(
+    nodeId: number,
+    change: Partial<Pick<WorkspaceDocumentRow, 'published' | 'publishedEventId' | 'edited'>>,
+  ): Promise<void> {
+    const b = (value: boolean) => this.#db.dialect.boolValue(value) as boolean
+    await this.#db.q
+      .updateTable('workspace_document')
+      .set({
+        ...(change.published === undefined ? {} : { published: b(change.published) }),
+        ...(change.publishedEventId === undefined
+          ? {}
+          : { published_event_id: change.publishedEventId }),
+        ...(change.edited === undefined ? {} : { edited: b(change.edited) }),
+      })
+      .where('workspace_id', '=', this.#workspace as number)
+      .where('node_id', '=', nodeId)
+      .execute()
+  }
+
+  /** An event of the workspace's: never current, never Shared's head. */
+  async #insertWorkspaceEvent(
+    nodeId: number,
+    kind: EventKind,
+    name: string,
+    userId: number | undefined,
+    templateId: number | null,
+  ): Promise<number> {
+    const workspace = this.#workspace as number
+    await this.#db.q
+      .insertInto('content_version')
+      .values({
+        node_id: nodeId,
+        kind,
+        version_date: DbDate.toDb(new Date()),
+        user_id: userId ?? null,
+        current: this.#db.dialect.boolValue(false) as boolean,
+        text: name,
+        prevent_cleanup: this.#db.dialect.boolValue(false) as boolean,
+        workspace_id: workspace,
+      })
+      .execute()
+    const rows = await this.#db.q
+      .selectFrom('content_version')
+      .select((eb) => eb.fn.max('id').as('id'))
+      .where('node_id', '=', nodeId)
+      .where('workspace_id', '=', workspace)
+      .execute()
+    const eventId = Number(rows[0]?.id)
+    await this.#db.q
+      .insertInto('document_version')
+      .values({
+        id: eventId,
+        template_id: templateId,
+        published: this.#db.dialect.boolValue(false) as boolean,
+      })
+      .execute()
+    return eventId
+  }
+
+  /** The workspace's latest event for a page, with its name, template and date. */
+  async #workspaceHead(nodeId: number) {
+    const rows = await this.#db.q
+      .selectFrom('content_version as cv')
+      .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+      .leftJoin('node as tn', 'tn.id', 'dv.template_id')
+      .select([
+        'cv.id',
+        'cv.text',
+        'cv.version_date',
+        'dv.template_id',
+        'tn.unique_id as template_key',
+      ])
+      .where('cv.node_id', '=', nodeId)
+      .where('cv.workspace_id', '=', this.#workspace as number)
+      .orderBy('cv.id', 'desc')
+      .limit(1)
+      .execute()
+    return rows[0]
+  }
+
+  /**
+   * The page as the workspace sees it: Shared's values as of the event it
+   * started from, newest per key, with the workspace's own laid over them. The
+   * workspace's row wins whatever its id, since an upgrade can append a Shared
+   * twin under an old event after the workspace wrote.
+   */
+  async #workspaceView(nodeId: number, wd: WorkspaceDocumentRow): Promise<ValueRow[]> {
+    const workspace = this.#workspace as number
+    const rows = await this.#db.q
+      .selectFrom('property_value')
+      .select([
+        'id',
+        'event_id',
+        'property_type_id',
+        'language_id',
+        'segment',
+        'int_value',
+        'decimal_value',
+        'date_value',
+        'varchar_value',
+        'text_value',
+        'workspace_id',
+      ])
+      .where('node_id', '=', nodeId)
+      .where((eb) =>
+        wd.baseEventId === null
+          ? eb('workspace_id', '=', workspace)
+          : eb.or([
+              eb.and([eb('workspace_id', 'is', null), eb('event_id', '<=', wd.baseEventId)]),
+              eb('workspace_id', '=', workspace),
+            ]),
+      )
+      .orderBy('id')
+      .execute()
+    const shared = new Map<string, ValueRow>()
+    const mine = new Map<string, ValueRow>()
+    for (const row of rows) {
+      const value = this.#toValueRow(row)
+      const key = keyOf(value.propertyTypeId, value.languageId, value.segment)
+      ;(row.workspace_id === null ? shared : mine).set(key, value)
+    }
+    return [...new Map([...shared, ...mine]).values()]
+  }
+
+  /** A page the workspace has touched, as an editor in it sees it. */
+  async #loadInWorkspace(
+    node: NodeRow,
+    wd: WorkspaceDocumentRow,
+  ): Promise<DocumentAggregate | undefined> {
+    const workspace = this.#workspace as number
+    const rows = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .innerJoin('node as ctn', 'ctn.id', 'ct.node_id')
+      .select([
+        'c.content_type_id',
+        'ct.alias as content_type_alias',
+        'ct.icon as content_type_icon',
+        'ct.list_view as content_type_collection',
+        'ctn.unique_id as content_type_key',
+        'ct.origin_key as content_type_origin_key',
+      ])
+      .where('c.node_id', '=', node.id)
+      .execute()
+    const row = rows[0]
+    const head = await this.#workspaceHead(node.id)
+    if (!row || !head) return undefined
+    const propertyTypes = await this.#propertyTypes(Number(row.content_type_id))
+    const languages = await this.#languages()
+    const values = this.#valuesFromRows(
+      await this.#workspaceView(node.id, wd),
+      propertyTypes,
+      languages,
+    )
+    const createDate = node.createDate ?? new Date()
+    const updateDate = DbDate.fromDb(head.version_date) ?? createDate
+    const cultureRows = await this.#db.q
+      .selectFrom('workspace_document_culture as wdc')
+      .innerJoin('language as l', 'l.id', 'wdc.language_id')
+      .select(['wdc.name', 'wdc.published', 'wdc.edited', 'wdc.available', 'l.iso_code'])
+      .where('wdc.workspace_id', '=', workspace)
+      .where('wdc.node_id', '=', node.id)
+      .execute()
+    const variants: DocumentVariant[] =
+      cultureRows.length === 0
+        ? [
+            {
+              culture: null,
+              segment: null,
+              name: String(head.text ?? node.text ?? ''),
+              state: stateFor(wd.published, wd.edited, node.trashed),
+              createDate,
+              updateDate,
+              publishDate: null,
+            },
+          ]
+        : cultureRows.map((culture) => ({
+            culture: String(culture.iso_code),
+            segment: null,
+            name: String(culture.name ?? ''),
+            state: stateFor(
+              fromDbBool(culture.published),
+              fromDbBool(culture.edited),
+              node.trashed,
+              fromDbBool(culture.available),
+            ),
+            createDate,
+            updateDate,
+            publishDate: null,
+          }))
+    const parent = node.parentId > 0 ? await this.#nodes.byId(node.parentId) : undefined
+    return {
+      key: node.key,
+      // A type made in the workspace is stored under a key of its own (story 376).
+      contentTypeKey: normaliseUuid(String(row.content_type_origin_key ?? row.content_type_key)),
+      contentTypeAlias: String(row.content_type_alias),
+      contentTypeIcon: String(row.content_type_icon ?? 'icon-document'),
+      contentTypeCollectionKey: row.content_type_collection
+        ? normaliseUuid(String(row.content_type_collection))
+        : null,
+      componentKey: head.template_key ? normaliseUuid(String(head.template_key)) : null,
+      parentKey: parent && parent.id !== SystemNodes.Root ? parent.key : null,
+      sortOrder: node.sortOrder,
+      isTrashed: node.trashed,
+      published: wd.published,
+      edited: wd.edited,
+      values,
+      variants,
+      revision: await this.#revision(node.id),
+    }
+  }
+
+  /** Names and languages a workspace save gives a page, kept apart from Shared's. */
+  async #writeWorkspaceCultures(
+    nodeId: number,
+    eventId: number,
+    variants: ReadonlyArray<{ culture: string | null; name: string }>,
+  ): Promise<void> {
+    const workspace = this.#workspace as number
+    const cultured = variants.filter((variant) => variant.culture !== null)
+    if (cultured.length === 0) return
+    const languages = await this.#languages()
+    const idByIso = new Map(languages.map((l) => [l.isoCode.toLowerCase(), l.id]))
+    const t = this.#db.dialect.boolValue(true) as boolean
+    const f = this.#db.dialect.boolValue(false) as boolean
+    for (const variant of cultured) {
+      const languageId = idByIso.get(String(variant.culture).toLowerCase())
+      if (!languageId) continue
+      await this.#db.q
+        .insertInto('content_version_culture_variation')
+        .values({
+          version_id: eventId,
+          language_id: languageId,
+          name: variant.name,
+          date: DbDate.toDb(new Date()),
+        })
+        .execute()
+      const changed = await this.#db.q
+        .updateTable('workspace_document_culture')
+        .set({ name: variant.name, available: t, edited: t })
+        .where('workspace_id', '=', workspace)
+        .where('node_id', '=', nodeId)
+        .where('language_id', '=', languageId)
+        .executeTakeFirst()
+      if (Number(changed.numUpdatedRows ?? 0) === 0)
+        await this.#db.q
+          .insertInto('workspace_document_culture')
+          .values({
+            workspace_id: workspace,
+            node_id: nodeId,
+            language_id: languageId,
+            name: variant.name,
+            available: t,
+            published: f,
+            edited: t,
+            published_event_id: null,
+            published_name: null,
+          })
+          .execute()
+    }
+  }
+
+  /** The languages of a page in the workspace: those it has, or those published there. */
+  async #workspaceCultures(nodeId: number, which: 'available' | 'published'): Promise<string[]> {
+    const rows = await this.#db.q
+      .selectFrom('workspace_document_culture as wdc')
+      .innerJoin('language as l', 'l.id', 'wdc.language_id')
+      .select('l.iso_code')
+      .where('wdc.workspace_id', '=', this.#workspace as number)
+      .where('wdc.node_id', '=', nodeId)
+      .where(`wdc.${which}`, '=', this.#db.dialect.boolValue(true) as boolean)
+      .execute()
+    return rows.map((row) => String(row.iso_code))
+  }
+
+  /** Whether every ancestor is published as the workspace sees it. */
+  async #ancestorsPublishedInWorkspace(node: NodeRow): Promise<boolean> {
+    const ids = node.path
+      .split(',')
+      .map(Number)
+      .filter((id) => id > 0 && id !== node.id)
+    for (const id of ids) {
+      const mine = await this.#workspaceDocument(id)
+      if (mine) {
+        if (!mine.published) return false
+        continue
+      }
+      const shared = await this.#db.q
+        .selectFrom('document')
+        .select('published')
+        .where('node_id', '=', id)
+        .execute()
+      if (!fromDbBool(shared[0]?.published)) return false
+    }
+    return true
+  }
+
+  /**
+   * Publishes a page in the workspace only (story 375): Shared's published
+   * page, its flags and the published cache are untouched, and the usual rules
+   * are checked against what the workspace sees.
+   */
+  async #publishInWorkspace(
+    node: NodeRow,
+    cultures: readonly string[] | null,
+  ): Promise<DocumentAggregate | undefined> {
+    if (node.trashed) throw new PublishBlockedError('The document is in the recycle bin.')
+    if (!(await this.#ancestorsPublishedInWorkspace(node)))
+      throw new PublishBlockedError('An ancestor is not published.')
+    await this.#touch(node)
+    const variant = await this.#variesByCulture(node.id)
+    const available = variant ? await this.#workspaceCultures(node.id, 'available') : []
+    const targets = variant ? (cultures && cultures.length > 0 ? [...cultures] : available) : null
+    if (targets) {
+      const missing = targets.filter(
+        (c) => !available.some((a) => a.toLowerCase() === c.toLowerCase()),
+      )
+      if (missing.length > 0)
+        throw new PublishBlockedError(
+          `The document has no ${missing.join(', ')} variant to publish.`,
+        )
+      const published = await this.#workspaceCultures(node.id, 'published')
+      const settled = new Set([...targets, ...published].map((c) => c.toLowerCase()))
+      const mandatory = (await this.#languages()).filter(
+        (l) => l.isMandatory && !settled.has(l.isoCode.toLowerCase()),
+      )
+      if (mandatory.length > 0)
+        throw new PublishBlockedError(
+          `The mandatory ${mandatory.map((l) => l.isoCode).join(', ')} must be published too.`,
+        )
+    }
+    await this.#assertMandatoryFilled(node, targets)
+    const head = (await this.#workspaceHead(node.id)) ?? undefined
+    const shared = head ? undefined : await this.#headEvent(node.id)
+    const eventId = await this.#insertWorkspaceEvent(
+      node.id,
+      'publish',
+      String(head?.text ?? shared?.name ?? node.text ?? ''),
+      undefined,
+      head
+        ? head.template_id === null
+          ? null
+          : Number(head.template_id)
+        : (shared?.templateId ?? null),
+    )
+    await this.#setWorkspaceDocument(node.id, {
+      published: true,
+      publishedEventId: eventId,
+      edited: false,
+    })
+    const languages = await this.#languages()
+    for (const iso of targets ?? []) {
+      const languageId = languages.find((l) => l.isoCode.toLowerCase() === iso.toLowerCase())?.id
+      if (!languageId) continue
+      await this.#db.q
+        .updateTable('workspace_document_culture')
+        .set((eb) => ({
+          published: this.#db.dialect.boolValue(true) as boolean,
+          edited: this.#db.dialect.boolValue(false) as boolean,
+          published_event_id: eventId,
+          published_name: eb.ref('name'),
+        }))
+        .where('workspace_id', '=', this.#workspace as number)
+        .where('node_id', '=', node.id)
+        .where('language_id', '=', languageId)
+        .execute()
+    }
+    return this.#load(node)
+  }
+
+  /** Unpublishes a page in the workspace only, or the languages named. */
+  async #unpublishInWorkspace(
+    node: NodeRow,
+    cultures: readonly string[] | null,
+  ): Promise<DocumentAggregate | undefined> {
+    await this.#touch(node)
+    const languages = await this.#languages()
+    const mandatory = new Set(
+      languages.filter((l) => l.isMandatory).map((l) => l.isoCode.toLowerCase()),
+    )
+    const everything =
+      !cultures || cultures.length === 0 || cultures.some((c) => mandatory.has(c.toLowerCase()))
+    const isoCodes = everything ? await this.#workspaceCultures(node.id, 'available') : cultures
+    for (const iso of isoCodes) {
+      const languageId = languages.find((l) => l.isoCode.toLowerCase() === iso.toLowerCase())?.id
+      if (!languageId) continue
+      await this.#db.q
+        .updateTable('workspace_document_culture')
+        .set({
+          published: this.#db.dialect.boolValue(false) as boolean,
+          edited: this.#db.dialect.boolValue(true) as boolean,
+        })
+        .where('workspace_id', '=', this.#workspace as number)
+        .where('node_id', '=', node.id)
+        .where('language_id', '=', languageId)
+        .execute()
+    }
+    if (everything || (await this.#workspaceCultures(node.id, 'published')).length === 0)
+      await this.#setWorkspaceDocument(node.id, { published: false, edited: true })
+    return this.#load(node)
+  }
+
+  // ---------------------------------------------------------------- merging (story 380)
+
+  /** Each page the workspace changed or made, with every field as begun, in it, and in Shared now. */
+  async workspaceMergePages(): Promise<WorkspacePageMerge[]> {
+    const workspace = this.#workspace
+    if (workspace === undefined) return []
+    const rows = await this.#db.q
+      .selectFrom('workspace_document as wd')
+      .innerJoin('node as n', 'n.id', 'wd.node_id')
+      .select(['wd.node_id', 'n.level'])
+      .where('wd.workspace_id', '=', workspace)
+      .orderBy('n.level')
+      .orderBy('n.id')
+      .execute()
+    const out: WorkspacePageMerge[] = []
+    for (const row of rows) {
+      const node = await this.#nodes.byId(Number(row.node_id))
+      const wd = node ? await this.#workspaceDocument(node.id) : undefined
+      if (node && wd) out.push(await this.#mergePage(node, wd))
+    }
+    return out
+  }
+
+  async #mergePage(node: NodeRow, wd: WorkspaceDocumentRow): Promise<WorkspacePageMerge> {
+    const workspace = this.#workspace as number
+    const contentTypeNodeId = (await this.#contentTypeNodeId(node.id)) as number
+    const propertyTypes = await this.#propertyTypes(contentTypeNodeId)
+    const languages = await this.#languages()
+    const isoById = new Map(languages.map((l) => [l.id, l.isoCode]))
+    type Held = { value: unknown; alias: string; culture: string | null; segment: string | null }
+    const asValues = (rows: readonly ValueRow[]) => {
+      const map = new Map<string, Held>()
+      for (const v of this.#valuesFromRows(rows, propertyTypes, languages))
+        map.set(`${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}`, {
+          value: v.value,
+          alias: v.alias,
+          culture: v.culture,
+          segment: v.segment,
+        })
+      return map
+    }
+    const base =
+      wd.baseEventId === null
+        ? new Map<string, Held>()
+        : asValues(await this.#valueRowsAsOf(node.id, { eventId: wd.baseEventId }))
+    const mine = asValues(await this.#workspaceView(node.id, wd))
+    const theirs = wd.created
+      ? new Map<string, Held>()
+      : asValues(await this.#currentValueRows(node.id))
+    const fields: MergeField[] = []
+    for (const field of new Set([...base.keys(), ...mine.keys(), ...theirs.keys()])) {
+      const known = mine.get(field) ?? theirs.get(field) ?? base.get(field)
+      fields.push({
+        field,
+        base: wd.created ? undefined : (base.get(field)?.value ?? null),
+        mine: mine.get(field)?.value ?? null,
+        theirs: wd.created ? undefined : (theirs.get(field)?.value ?? null),
+        ...(known
+          ? { value: { alias: known.alias, culture: known.culture, segment: known.segment } }
+          : {}),
+      })
+    }
+
+    // Names and the template: as begun, in the workspace, and in Shared now.
+    const eventFacts = async (eventId: number | null | undefined) => {
+      if (eventId === null || eventId === undefined) return undefined
+      const found = await this.#db.q
+        .selectFrom('content_version as cv')
+        .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+        .leftJoin('node as tn', 'tn.id', 'dv.template_id')
+        .select(['cv.text', 'tn.unique_id as template_key'])
+        .where('cv.id', '=', eventId)
+        .execute()
+      const cultureNames = await this.#db.q
+        .selectFrom('content_version_culture_variation')
+        .select(['language_id', 'name'])
+        .where('version_id', '=', eventId)
+        .execute()
+      return {
+        name: String(found[0]?.text ?? ''),
+        template: found[0]?.template_key ? normaliseUuid(String(found[0].template_key)) : null,
+        cultures: new Map(
+          cultureNames.map((c) => [isoById.get(Number(c.language_id)) ?? '', String(c.name ?? '')]),
+        ),
+      }
+    }
+    const head = await this.#workspaceHead(node.id)
+    const baseFacts = await eventFacts(wd.baseEventId)
+    const mineFacts = await eventFacts(head ? Number(head.id) : null)
+    const sharedHead = wd.created ? undefined : await this.#headEvent(node.id)
+    const theirsFacts = await eventFacts(sharedHead?.id)
+    fields.push(
+      { field: '@name', base: baseFacts?.name, mine: mineFacts?.name, theirs: theirsFacts?.name },
+      {
+        field: '@template',
+        base: baseFacts?.template,
+        mine: mineFacts?.template ?? null,
+        theirs: theirsFacts?.template,
+      },
+    )
+
+    // Per language: names and published state.
+    const mineCultures = await this.#db.q
+      .selectFrom('workspace_document_culture as wdc')
+      .innerJoin('language as l', 'l.id', 'wdc.language_id')
+      .select(['l.iso_code', 'wdc.name', 'wdc.published', 'wdc.base_published'])
+      .where('wdc.workspace_id', '=', workspace)
+      .where('wdc.node_id', '=', node.id)
+      .execute()
+    const theirsCultures = new Map(
+      (
+        await this.#db.q
+          .selectFrom('document_culture_variation as dcv')
+          .innerJoin('language as l', 'l.id', 'dcv.language_id')
+          .select(['l.iso_code', 'dcv.name', 'dcv.published'])
+          .where('dcv.node_id', '=', node.id)
+          .execute()
+      ).map((c) => [String(c.iso_code), c]),
+    )
+    const cultures: WorkspacePageMerge['cultures'] = []
+    for (const c of mineCultures) {
+      const iso = String(c.iso_code)
+      const theirsCulture = theirsCultures.get(iso)
+      fields.push({
+        field: `@name:${iso}`,
+        base: wd.created ? undefined : (baseFacts?.cultures.get(iso) ?? null),
+        mine: String(c.name ?? ''),
+        theirs: wd.created ? undefined : theirsCulture ? String(theirsCulture.name ?? '') : null,
+      })
+      cultures.push({
+        iso,
+        base: c.base_published === null ? null : fromDbBool(c.base_published),
+        mine: fromDbBool(c.published),
+        theirs: fromDbBool(theirsCulture?.published),
+      })
+    }
+    const document = (
+      await this.#db.q
+        .selectFrom('document')
+        .select(['published', 'edited'])
+        .where('node_id', '=', node.id)
+        .execute()
+    )[0]
+    const publishedHere =
+      wd.published &&
+      wd.publishedEventId !== null &&
+      (
+        await this.#db.q
+          .selectFrom('content_version')
+          .select('id')
+          .where('id', '=', wd.publishedEventId)
+          .where('workspace_id', '=', workspace)
+          .execute()
+      ).length > 0
+    const based = (
+      await this.#db.q
+        .selectFrom('workspace_document')
+        .select('base_published')
+        .where('workspace_id', '=', workspace)
+        .where('node_id', '=', node.id)
+        .execute()
+    )[0]
+    const parent = node.parentId > 0 ? await this.#nodes.byId(node.parentId) : undefined
+    const typeRow = (
+      await this.#db.q
+        .selectFrom('node')
+        .select('unique_id')
+        .where('id', '=', contentTypeNodeId)
+        .execute()
+    )[0]
+    return {
+      key: node.key,
+      nodeId: node.id,
+      made: wd.created,
+      level: node.level,
+      contentTypeKey: normaliseUuid(String(typeRow?.unique_id)),
+      parentKey: parent && parent.id !== SystemNodes.Root ? parent.key : null,
+      sharedHead: sharedHead?.id ?? null,
+      baseEvent: wd.baseEventId,
+      fields,
+      published: {
+        base:
+          based === undefined || based.base_published === null
+            ? null
+            : fromDbBool(based.base_published),
+        mine: wd.published,
+        theirs: wd.created ? false : fromDbBool(document?.published),
+        here: publishedHere,
+        sharedEdited: wd.created ? false : fromDbBool(document?.edited),
+      },
+      cultures,
+    }
+  }
+
+  /** Shared's latest event for a page, which a pending change is checked against (story 380). */
+  async sharedHeadEvent(nodeId: number): Promise<number | null> {
+    return (await this.#headEvent(nodeId))?.id ?? null
+  }
+
+  /**
+   * Answers a page's conflicts in the workspace (story 380): it begins again from
+   * Shared's latest, keeping its own value where the answer is `mine` and taking
+   * Shared's where it is `theirs`, so a merge then finds nothing to ask.
+   */
+  async rebaseWorkspacePage(
+    key: string,
+    answers: Readonly<Record<string, 'mine' | 'theirs'>>,
+  ): Promise<boolean> {
+    const workspace = this.#workspace
+    if (workspace === undefined) throw new WorkspaceRefusedError('Only a workspace rebases a page.')
+    return this.#withTree(() =>
+      this.#db.transaction(async (tx) => {
+        const repo = this.#child(tx)
+        const node = await repo.nodes.byKey(key)
+        const wd = node ? await repo.#workspaceDocument(node.id) : undefined
+        if (!node || !wd || wd.created) return false
+        const merge = await repo.#mergePage(node, wd)
+        const head = await repo.#headEvent(node.id)
+        await tx.q
+          .updateTable('workspace_document')
+          .set({ base_event_id: head?.id ?? null })
+          .where('workspace_id', '=', workspace)
+          .where('node_id', '=', node.id)
+          .execute()
+        const types = new Map(
+          (await repo.#propertyTypes((await repo.#contentTypeNodeId(node.id)) as number)).map(
+            (p) => [p.alias, p],
+          ),
+        )
+        const languages = await repo.#languages()
+        for (const field of merge.fields) {
+          const value = field.value
+          if (answers[field.field] !== 'theirs' || !value) continue
+          // Taking Shared's: the workspace's own rows for the field go, so it reads Shared's.
+          const type = types.get(value.alias)
+          if (!type) continue
+          const languageId = value.culture
+            ? (languages.find((l) => l.isoCode.toLowerCase() === value.culture?.toLowerCase())
+                ?.id ?? null)
+            : null
+          await tx.q
+            .deleteFrom('property_value')
+            .where('workspace_id', '=', workspace)
+            .where('node_id', '=', node.id)
+            .where('property_type_id', '=', type.id)
+            .where('language_id', languageId === null ? 'is' : '=', languageId)
+            .where('segment', value.segment === null ? 'is' : '=', value.segment)
+            .execute()
+        }
+        // A language's name taken from Shared is the workspace's for that language now.
+        for (const field of merge.fields) {
+          if (!field.field.startsWith('@name:') || answers[field.field] !== 'theirs') continue
+          const language = languages.find(
+            (l) => l.isoCode.toLowerCase() === field.field.slice(6).toLowerCase(),
+          )
+          if (!language) continue
+          await tx.q
+            .updateTable('workspace_document_culture')
+            .set({ name: String(field.theirs ?? '') })
+            .where('workspace_id', '=', workspace)
+            .where('node_id', '=', node.id)
+            .where('language_id', '=', language.id)
+            .execute()
+        }
+        const name = answers['@name'] === 'theirs'
+        const template = answers['@template'] === 'theirs'
+        if ((name || template) && head) {
+          const mineHead = await repo.#workspaceHead(node.id)
+          await repo.#insertWorkspaceEvent(
+            node.id,
+            'save',
+            name ? head.name : String(mineHead?.text ?? head.name),
+            undefined,
+            template
+              ? head.templateId
+              : mineHead?.template_id === null || mineHead?.template_id === undefined
+                ? null
+                : Number(mineHead.template_id),
+          )
+        }
+        return true
+      }),
+    )
+  }
+
+  /**
+   * A page made in a workspace becomes Shared's (story 380): its node is a
+   * document of the site's again, and the workspace's own rows for it go, the
+   * merge writing it as a Shared save next. Called inside the merge.
+   */
+  /** Whether a page is of a type only its workspace has (story 376). */
+  async madeOfWorkspaceType(nodeId: number): Promise<boolean> {
+    const rows = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+      .select('ct.workspace_id')
+      .where('c.node_id', '=', nodeId)
+      .execute()
+    return rows[0]?.workspace_id !== null && rows[0]?.workspace_id !== undefined
+  }
+
+  async adoptWorkspacePage(nodeId: number): Promise<void> {
+    // A page of a type made in the workspace takes Shared's type of that key, which
+    // the merge's files have just made (story 376).
+    const type = (
+      await this.#db.q
+        .selectFrom('content as c')
+        .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
+        .select('ct.origin_key')
+        .where('c.node_id', '=', nodeId)
+        .where('ct.workspace_id', 'is not', null)
+        .execute()
+    )[0]
+    if (type?.origin_key) {
+      const shared = await this.#nodes.byKey(String(type.origin_key))
+      if (shared)
+        await this.#db.q
+          .updateTable('content')
+          .set({ content_type_id: shared.id })
+          .where('node_id', '=', nodeId)
+          .execute()
+    }
+    const versions = () =>
+      this.#db.q
+        .selectFrom('content_version')
+        .select('id')
+        .where('node_id', '=', nodeId)
+        .where('workspace_id', 'is not', null)
+    await this.#db.q
+      .deleteFrom('property_value')
+      .where('node_id', '=', nodeId)
+      .where('workspace_id', 'is not', null)
+      .execute()
+    await this.#db.q
+      .deleteFrom('content_version_culture_variation')
+      .where('version_id', 'in', versions())
+      .execute()
+    await this.#db.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
+    await this.#db.q
+      .deleteFrom('content_version')
+      .where('node_id', '=', nodeId)
+      .where('workspace_id', 'is not', null)
+      .execute()
+    for (const table of ['workspace_document_culture', 'workspace_document'] as const)
+      await this.#db.q.deleteFrom(table).where('node_id', '=', nodeId).execute()
+    await this.#db.q
+      .updateTable('node')
+      .set({ node_object_type: this.objectType, workspace_id: null })
+      .where('id', '=', nodeId)
+      .execute()
+  }
+
+  /**
+   * Records a move, reorder or delete of a Shared page, to be done at merge, with
+   * where the page stood then, so the merge can tell what Shared did since (story
+   * 380). The latest of a kind stands for the page.
+   */
+  async #recordPending(
+    node: NodeRow,
+    kind: 'move' | 'sort' | 'trash' | 'delete',
+    change: { targetParentId?: number | null; sortOrder?: number | null; userId?: number } = {},
+  ): Promise<void> {
+    const workspace = this.#workspace as number
+    await this.#db.q
+      .deleteFrom('workspace_pending')
+      .where('workspace_id', '=', workspace)
+      .where('node_id', '=', node.id)
+      .where('kind', '=', kind)
+      .execute()
+    await this.#db.q
+      .insertInto('workspace_pending')
+      .values({
+        workspace_id: workspace,
+        node_id: node.id,
+        kind,
+        target_parent_id: change.targetParentId ?? null,
+        sort_order: change.sortOrder ?? null,
+        user_id: change.userId ?? null,
+        recorded_at: DbDate.toDb(new Date()),
+        base_parent_id: node.parentId,
+        base_sort_order: node.sortOrder,
+        base_event_id: (await this.#headEvent(node.id))?.id ?? null,
+        name: node.text,
+      })
+      .execute()
   }
 
   // ---------------------------------------------------------------- reads
 
   async byKey(key: string): Promise<DocumentAggregate | undefined> {
     const node = await this.#nodes.byKey(key)
-    if (!node || node.objectType !== this.objectType) return undefined
+    if (!node || !this.sees(node)) return undefined
     return this.#load(node)
   }
 
@@ -437,7 +1407,15 @@ export class DocumentRepository {
   ): Promise<Page<NodeRow>> {
     const parentId = parentKey ? (await this.#nodes.byKey(parentKey))?.id : SystemNodes.Root
     if (parentId === undefined) return { total: 0, items: [] }
-    return this.#nodes.children(parentId, this.objectType, skip, take, false, excludeKeys)
+    return this.#nodes.children(
+      parentId,
+      this.objectType,
+      skip,
+      take,
+      false,
+      excludeKeys,
+      this.#workspace,
+    )
   }
 
   /** The recycle bin's tree: trashed documents, top level being what was trashed directly. */
@@ -483,6 +1461,7 @@ export class DocumentRepository {
         'u.key as user_key',
       ])
       .where('cv.node_id', '=', node.id)
+      .where('cv.workspace_id', 'is', null)
       .orderBy('cv.id', 'desc')
       .execute()
     return rows.map((row) => ({
@@ -830,19 +1809,28 @@ export class DocumentRepository {
       this.#db.transaction(async (tx) => {
         const repo = this.#child(tx)
         const state = await assertNodeMayWrite(tx, this.#nodeState)
-        const contentTypeNode = await repo.nodes.byKey(input.contentTypeKey)
+        const contentTypeNode =
+          (await repo.nodes.byKey(input.contentTypeKey)) ??
+          (await repo.#workspaceTypeNode(input.contentTypeKey))
         if (!contentTypeNode) throw new Error(`Unknown content type '${input.contentTypeKey}'.`)
 
         const parent = input.parentKey ? await repo.nodes.byKey(input.parentKey) : undefined
         if (input.parentKey && !parent)
           throw new InvalidParentError('The parent could not be found.')
         if (parent?.trashed) throw new InvalidParentError('The parent is in the recycle bin.')
+        const workspace = this.#workspace
+        if (workspace !== undefined && this.kind !== 'document')
+          throw new WorkspaceRefusedError('Only pages can be made in a workspace for now.')
+        if (parent && workspace !== undefined && !repo.sees(parent))
+          throw new InvalidParentError('The parent could not be found.')
         const parentId = parent?.id ?? SystemNodes.Root
         const name = input.variants[0]?.name ?? ''
         const node = await repo.nodes.create({
           key: input.key,
           parentId,
-          objectType: this.objectType,
+          // A page made in a workspace is its own until it is merged (story 375).
+          objectType: workspace === undefined ? this.objectType : ObjectTypes.WorkspaceDocument,
+          ...(workspace === undefined ? {} : { workspaceId: workspace }),
           text: name,
           userId: input.userId,
           // A media folder comes before the files beside it in the tree (story 246).
@@ -869,6 +1857,33 @@ export class DocumentRepository {
         const templateId = input.componentKey
           ? ((await repo.nodes.byKey(input.componentKey))?.id ?? null)
           : null
+        if (workspace !== undefined) {
+          const f = tx.dialect.boolValue(false) as boolean
+          await tx.q
+            .insertInto('workspace_document')
+            .values({
+              workspace_id: workspace,
+              node_id: node.id,
+              base_event_id: null,
+              created: tx.dialect.boolValue(true) as boolean,
+              published: f,
+              published_event_id: null,
+              edited: tx.dialect.boolValue(true) as boolean,
+            })
+            .execute()
+          const eventId = await repo.#insertWorkspaceEvent(
+            node.id,
+            'save',
+            name,
+            input.userId,
+            templateId,
+          )
+          await repo.#appendValues(node.id, eventId, state, contentTypeNode.id, input.values)
+          await repo.#writeWorkspaceCultures(node.id, eventId, input.variants)
+          const made = await repo.#load({ ...node, text: name })
+          if (!made) throw new Error('Document could not be read back after creation.')
+          return made
+        }
         const eventId = await repo.#insertEvent(
           node.id,
           'save',
@@ -1055,16 +2070,31 @@ export class DocumentRepository {
       const repo = this.#child(tx)
       const state = await assertNodeMayWrite(tx, this.#nodeState)
       const node = await repo.nodes.byKey(input.key)
-      if (!node) return undefined
+      if (!node || !repo.sees(node)) return undefined
       await repo.#assertRevision(node.id, input.expectedRevision)
       const contentTypeNodeId = await repo.#contentTypeNodeId(node.id)
       if (!contentTypeNodeId) return undefined
 
       const name = input.variants[0]?.name ?? node.text ?? ''
-      await repo.nodes.rename(node.id, name)
       const templateId = input.componentKey
         ? ((await repo.nodes.byKey(input.componentKey))?.id ?? null)
         : null
+      if (repo.#workspace !== undefined) {
+        // Shared's node, its tree name and its files are untouched until a merge.
+        await repo.#touch(node)
+        const eventId = await repo.#insertWorkspaceEvent(
+          node.id,
+          'save',
+          name,
+          input.userId,
+          templateId,
+        )
+        await repo.#appendValues(node.id, eventId, state, contentTypeNodeId, input.values)
+        await repo.#writeWorkspaceCultures(node.id, eventId, input.variants)
+        await repo.#setWorkspaceDocument(node.id, { edited: true })
+        return repo.#load(node)
+      }
+      await repo.nodes.rename(node.id, name)
       const eventId = await repo.#insertEvent(
         node.id,
         'save',
@@ -1104,8 +2134,9 @@ export class DocumentRepository {
         const repo = this.#child(tx)
         await assertNodeMayWrite(tx, this.#nodeState)
         const node = await repo.nodes.byKey(key)
-        if (!node) return undefined
+        if (!node || !repo.sees(node)) return undefined
         await repo.#assertRevision(node.id, options.expectedRevision)
+        if (repo.#workspace !== undefined) return repo.#publishInWorkspace(node, cultures)
         if (options.expectedHead !== undefined) {
           const head = (await repo.#headEvent(node.id))?.id
           if (head !== options.expectedHead)
@@ -1153,7 +2184,11 @@ export class DocumentRepository {
           .updateTable('document_version')
           .set({ published: f })
           .where('id', 'in', (eb) =>
-            eb.selectFrom('content_version').select('id').where('node_id', '=', node.id),
+            eb
+              .selectFrom('content_version')
+              .select('id')
+              .where('node_id', '=', node.id)
+              .where('workspace_id', 'is', null),
           )
           .execute()
         const eventId = await repo.#insertEvent(
@@ -1247,7 +2282,8 @@ export class DocumentRepository {
       const repo = this.#child(tx)
       await assertNodeMayWrite(tx, this.#nodeState)
       const node = await repo.nodes.byKey(key)
-      if (!node) return undefined
+      if (!node || !repo.sees(node)) return undefined
+      if (repo.#workspace !== undefined) return repo.#unpublishInWorkspace(node, cultures)
 
       const mandatory = new Set(
         (await repo.#languages()).filter((l) => l.isMandatory).map((l) => l.isoCode.toLowerCase()),
@@ -1262,7 +2298,11 @@ export class DocumentRepository {
           .updateTable('document_version')
           .set({ published: tx.dialect.boolValue(false) as boolean })
           .where('id', 'in', (eb) =>
-            eb.selectFrom('content_version').select('id').where('node_id', '=', node.id),
+            eb
+              .selectFrom('content_version')
+              .select('id')
+              .where('node_id', '=', node.id)
+              .where('workspace_id', 'is', null),
           )
           .execute()
         await tx.q
@@ -1302,6 +2342,7 @@ export class DocumentRepository {
     versionId: string,
     options: { expectedRevision?: string } = {},
   ): Promise<DocumentAggregate | undefined> {
+    this.#refuseInWorkspace('An earlier version can be brought back in Shared only, for now.')
     return this.#withTree(() => this.#rollback(versionId, options.expectedRevision))
   }
 
@@ -1316,17 +2357,39 @@ export class DocumentRepository {
   }
 
   async #revision(nodeId: number): Promise<string> {
+    if (await this.#workspaceDocument(nodeId)) {
+      const workspace = this.#workspace as number
+      const mine = await this.#db.q
+        .selectNoFrom((eb) => [
+          eb
+            .selectFrom('content_version')
+            .select((e) => e.fn.max('id').as('id'))
+            .where('node_id', '=', nodeId)
+            .where('workspace_id', '=', workspace)
+            .as('head'),
+          eb
+            .selectFrom('property_value')
+            .select((e) => e.fn.max('id').as('id'))
+            .where('node_id', '=', nodeId)
+            .where('workspace_id', '=', workspace)
+            .as('value'),
+        ])
+        .execute()
+      return revisionString(mine[0]?.head, mine[0]?.value)
+    }
     const rows = await this.#db.q
       .selectNoFrom((eb) => [
         eb
           .selectFrom('content_version')
           .select((e) => e.fn.max('id').as('id'))
           .where('node_id', '=', nodeId)
+          .where('workspace_id', 'is', null)
           .as('head'),
         eb
           .selectFrom('property_value')
           .select((e) => e.fn.max('id').as('id'))
           .where('node_id', '=', nodeId)
+          .where('workspace_id', 'is', null)
           .as('value'),
       ])
       .execute()
@@ -1410,6 +2473,7 @@ export class DocumentRepository {
   async moveToRecycleBin(key: string): Promise<boolean> {
     const bin = this.#recycleBin
     if (bin === undefined) return false
+    if (this.#workspace !== undefined) return this.#removeInWorkspace(key, 'trash')
     return this.#withTree(() =>
       this.#db.transaction(async (tx) => {
         const repo = this.#child(tx)
@@ -1465,7 +2529,29 @@ export class DocumentRepository {
   }
 
   async delete(key: string): Promise<boolean> {
+    if (this.#workspace !== undefined) return this.#removeInWorkspace(key, 'delete')
     return this.#withTree(() => this.#delete(key))
+  }
+
+  /**
+   * A delete in a workspace: a page made there goes, with its branch; a Shared
+   * page is recorded as going, and goes at merge (story 375).
+   */
+  async #removeInWorkspace(key: string, kind: 'trash' | 'delete'): Promise<boolean> {
+    return this.#withTree(() =>
+      this.#db.transaction(async (tx) => {
+        const repo = this.#child(tx)
+        const node = await repo.nodes.byKey(key)
+        if (!node || !repo.sees(node)) return false
+        if (node.workspaceId === this.#workspace) await deleteNodeRows(tx, { branch: node })
+        else await repo.#recordPending(node, kind)
+        return true
+      }),
+    )
+  }
+
+  #refuseInWorkspace(reason: string): void {
+    if (this.#workspace !== undefined) throw new WorkspaceRefusedError(reason)
   }
 
   async #delete(key: string): Promise<boolean> {
@@ -1500,7 +2586,21 @@ export class DocumentRepository {
         const repo = this.#child(tx)
         await assertNodeMayWrite(tx, this.#nodeState)
         const node = await repo.nodes.byKey(key)
-        if (!node || node.objectType !== this.objectType) return 'notFound'
+        if (!node || !repo.sees(node)) return 'notFound'
+        if (this.#workspace !== undefined) {
+          const target = targetKey ? await repo.nodes.byKey(targetKey) : undefined
+          if (targetKey && (!target || !repo.sees(target))) return 'notFound'
+          if (target && (target.id === node.id || target.path.startsWith(`${node.path},`)))
+            return 'invalid'
+          // A page made here moves; a Shared page's move waits for the merge.
+          if (node.workspaceId === this.#workspace)
+            await repo.nodes.move(node.id, target?.id ?? SystemNodes.Root)
+          else
+            await repo.#recordPending(node, 'move', {
+              targetParentId: target?.id ?? SystemNodes.Root,
+            })
+          return 'moved'
+        }
         const target = targetKey ? await repo.nodes.byKey(targetKey) : undefined
         const container = KINDS[this.kind].container
         if (
@@ -1562,6 +2662,7 @@ export class DocumentRepository {
     targetKey: string | null,
     options: { includeDescendants: boolean; userId?: number },
   ): Promise<string | undefined> {
+    this.#refuseInWorkspace('Copying a page is done in Shared only, for now.')
     const source = await this.byKey(key)
     if (!source) return undefined
     if (targetKey) {
@@ -1617,17 +2718,21 @@ export class DocumentRepository {
         const byKey = new Map(nodes.map((n) => [n.key, n]))
         for (const item of sorting) {
           const node = byKey.get(normaliseUuid(item.key))
-          if (!node || node.parentId !== parentId || node.objectType !== this.objectType)
-            return 'notFound'
+          if (!node || node.parentId !== parentId || !this.sees(node)) return 'notFound'
         }
         for (const item of sorting) {
           const node = byKey.get(normaliseUuid(item.key)) as NodeRow
+          if (this.#workspace !== undefined && node.workspaceId !== this.#workspace) {
+            // Shared's order is kept until the merge.
+            await this.#child(tx).#recordPending(node, 'sort', { sortOrder: item.sortOrder })
+            continue
+          }
           await tx.q
             .updateTable('node')
             .set({ sort_order: item.sortOrder })
             .where('id', '=', node.id)
             .execute()
-          await this.#child(tx).#instructContent(node.key)
+          if (this.#workspace === undefined) await this.#child(tx).#instructContent(node.key)
         }
         return 'sorted'
       }),
@@ -1671,6 +2776,7 @@ export class DocumentRepository {
     key: string,
     targetKey: string | null | undefined,
   ): Promise<'restored' | 'notFound' | 'invalid'> {
+    this.#refuseInWorkspace('The recycle bin is Shared’s: restore a page there.')
     return this.#withTree(async () =>
       this.#db.transaction(async (tx) => {
         const repo = this.#child(tx)
@@ -1718,6 +2824,9 @@ export class DocumentRepository {
     cultures: readonly string[] | null,
     includeUnpublished: boolean,
   ): Promise<{ published: string[]; failed: Array<{ key: string; reason: string }> } | undefined> {
+    this.#refuseInWorkspace(
+      'Publish each page in a workspace; a whole branch is published in Shared.',
+    )
     return this.#withTree(() => this.#publishBranch(key, cultures, includeUnpublished))
   }
 
@@ -1826,8 +2935,9 @@ export class DocumentRepository {
     }>,
   ): Promise<boolean> {
     const node = await this.#nodes.byKey(key)
-    if (!node || node.objectType !== this.objectType) return false
+    if (!node || !this.sees(node)) return false
     const languages = await this.#languages()
+    const workspace = this.#workspace ?? null
     await this.#db.transaction(async (tx) => {
       for (const entry of entries) {
         const languageId = entry.culture
@@ -1838,12 +2948,19 @@ export class DocumentRepository {
           .deleteFrom('content_schedule')
           .where('node_id', '=', node.id)
           .where('language_id', languageId === null ? 'is' : '=', languageId)
+          .where('workspace_id', workspace === null ? 'is' : '=', workspace)
           .execute()
         const add = async (action: 'Release' | 'Expire', date: Date | null) => {
           if (!date) return
           await tx.q
             .insertInto('content_schedule')
-            .values({ node_id: node.id, language_id: languageId, action, date: DbDate.toDb(date) })
+            .values({
+              node_id: node.id,
+              language_id: languageId,
+              action,
+              date: DbDate.toDb(date),
+              workspace_id: workspace,
+            })
             .execute()
         }
         await add('Release', entry.publishTime)
@@ -1865,6 +2982,10 @@ export class DocumentRepository {
       .leftJoin('language as l', 'l.id', 's.language_id')
       .select(['s.id', 's.action', 's.date', 'l.iso_code'])
       .where('s.node_id', '=', node.id)
+      .$if(this.#workspace === undefined, (q) => q.where('s.workspace_id', 'is', null))
+      .$if(this.#workspace !== undefined, (q) =>
+        q.where('s.workspace_id', '=', this.#workspace as number),
+      )
       .orderBy('s.date')
       .execute()
     return rows.map((row) => ({
@@ -1888,6 +3009,8 @@ export class DocumentRepository {
       .select(['s.id', 's.action', 'n.unique_id', 'l.iso_code'])
       .where('s.date', '<=', DbDate.toDb(now))
       .where('n.node_object_type', '=', this.objectType)
+      // A workspace's schedules wait for it to be served (story 379).
+      .where('s.workspace_id', 'is', null)
       .orderBy('s.date')
       .orderBy('s.id')
       .execute()
@@ -1973,6 +3096,7 @@ export class DocumentRepository {
         .innerJoin('document_version as dv', 'dv.id', 'cv.id')
         .select(['cv.id', 'cv.version_date', 'cv.current', 'cv.prevent_cleanup', 'dv.published'])
         .where('cv.node_id', '=', nodeId)
+        .where('cv.workspace_id', 'is', null)
         .orderBy('cv.id')
         .execute()
     ).map((row) => ({
@@ -1981,6 +3105,18 @@ export class DocumentRepository {
       pinned:
         fromDbBool(row.current) || fromDbBool(row.published) || fromDbBool(row.prevent_cleanup),
     }))
+    // A workspace reads Shared as of the event it started from, so that event stays (story 375).
+    const bases = new Set(
+      (
+        await this.#db.q
+          .selectFrom('workspace_document')
+          .select('base_event_id')
+          .where('node_id', '=', nodeId)
+          .where('base_event_id', 'is not', null)
+          .execute()
+      ).map((row) => Number(row.base_event_id)),
+    )
+    for (const event of events) if (bases.has(event.id)) event.pinned = true
     const kept = new Set<number>()
     const latestPerDay = new Map<string, number>()
     for (const event of events) {
@@ -2000,6 +3136,7 @@ export class DocumentRepository {
       .selectFrom('property_value')
       .select(['id', 'property_type_id', 'language_id', 'segment', 'event_id'])
       .where('node_id', '=', nodeId)
+      .where('workspace_id', 'is', null)
       .orderBy('event_id')
       .orderBy('id')
       .execute()
@@ -2085,6 +3222,8 @@ export class DocumentRepository {
   // ------------------------------------------------------------ internals
 
   async #load(node: NodeRow): Promise<DocumentAggregate | undefined> {
+    const touched = await this.#workspaceDocument(node.id)
+    if (touched) return this.#loadInWorkspace(node, touched)
     const t = this.#db.dialect.boolValue(true) as boolean
     const rows = await this.#db.q
       .selectFrom('node as n')
@@ -2128,11 +3267,13 @@ export class DocumentRepository {
           .selectFrom('content_version as cvm')
           .select((e) => e.fn.max('cvm.id').as('id'))
           .whereRef('cvm.node_id', '=', 'n.id')
+          .where('cvm.workspace_id', 'is', null)
           .as('head_id'),
         eb
           .selectFrom('property_value as pvm')
           .select((e) => e.fn.max('pvm.id').as('id'))
           .whereRef('pvm.node_id', '=', 'n.id')
+          .where('pvm.workspace_id', 'is', null)
           .as('last_value_id'),
       ])
       .where('n.id', '=', node.id)
@@ -2233,12 +3374,50 @@ export class DocumentRepository {
   }
 
   /** Property types of a content type, including everything it composes; retired ones excluded. */
+  /** A type made in this workspace, by the key it stands for (story 376). */
+  async #workspaceTypeNode(key: string): Promise<NodeRow | undefined> {
+    if (this.#workspace === undefined) return undefined
+    const rows = await this.#db.q
+      .selectFrom('content_type')
+      .select('node_id')
+      .where('workspace_id', '=', this.#workspace)
+      .where('origin_key', '=', normaliseUuid(key))
+      .where('retired_at', 'is', null)
+      .execute()
+    return rows[0] ? this.#nodes.byId(Number(rows[0].node_id)) : undefined
+  }
+
+  /**
+   * The type a page is read and written by: in a workspace, its copy of the
+   * page's type where it has one (story 376), and the page's own otherwise.
+   */
+  async #readTypeNodeId(contentTypeNodeId: number): Promise<number> {
+    if (this.#workspace === undefined) return contentTypeNodeId
+    const key = (await this.#nodes.byId(contentTypeNodeId))?.key
+    if (!key) return contentTypeNodeId
+    const rows = await this.#db.q
+      .selectFrom('content_type')
+      .select('node_id')
+      .where('workspace_id', '=', this.#workspace)
+      .where('origin_key', '=', normaliseUuid(key))
+      .where('retired_at', 'is', null)
+      .execute()
+    return rows[0] ? Number(rows[0].node_id) : contentTypeNodeId
+  }
+
   async #propertyTypes(contentTypeNodeId: number): Promise<PropertyTypeRow[]> {
-    const rows = await this.#withAncestry(contentTypeNodeId)
+    const rows = await this.#withAncestry(await this.#readTypeNodeId(contentTypeNodeId))
       .selectFrom('property_type as p')
       .innerJoin('data_type as d', 'd.node_id', 'p.data_type_id')
       .leftJoin('schema_state as ss', 'ss.id', 'p.since_state_id')
+      // A workspace's copy of a property reads and writes Shared's values while
+      // they are stored the same way; a changed storage reads empty (story 376).
+      .leftJoin('property_type as sp', 'sp.unique_id', 'p.origin_key')
+      .leftJoin('data_type as sd', 'sd.node_id', 'sp.data_type_id')
       .select([
+        'sp.id as shared_id',
+        'sd.db_type as shared_db_type',
+        'sp.variations as shared_variations',
         'p.id',
         'p.alias',
         'p.name',
@@ -2260,7 +3439,13 @@ export class DocumentRepository {
       .orderBy('p.id')
       .execute()
     return rows.map((row) => ({
-      id: Number(row.id),
+      id:
+        row.shared_id !== null &&
+        row.shared_id !== undefined &&
+        String(row.shared_db_type) === String(row.db_type) &&
+        Number(row.shared_variations) === Number(row.variations)
+          ? Number(row.shared_id)
+          : Number(row.id),
       alias: String(row.alias),
       name: String(row.name),
       variesByCulture: flagVariesByCulture(Number(row.variations)),
@@ -2290,6 +3475,8 @@ export class DocumentRepository {
    * to the editor on an old node as well as to its renderer.
    */
   async #visibleValueRows(nodeId: number): Promise<ValueRow[]> {
+    const touched = await this.#workspaceDocument(nodeId)
+    if (touched) return this.#workspaceView(nodeId, touched)
     const stateId = await visibleStateIdFor(this.#db, this.#nodeState)
     return stateId === undefined
       ? this.#currentValueRows(nodeId)
@@ -2331,6 +3518,7 @@ export class DocumentRepository {
             .selectFrom('property_value')
             .select((e) => ['property_type_id', 'language_id', 'segment', e.fn.max('id').as('id')])
             .where('node_id', '=', nodeId)
+            .where('workspace_id', 'is', null)
             .$if(eventId !== undefined, (q) => q.where('event_id', '<=', eventId as number))
             .$if(schemaStateId !== undefined, (q) =>
               q.where('schema_state_id', '<=', schemaStateId as number),
@@ -2474,10 +3662,10 @@ export class DocumentRepository {
       ]),
     )
     const trueCurrent = new Map(
-      (await this.#currentValueRows(nodeId)).map((row) => [
-        keyOf(row.propertyTypeId, row.languageId, row.segment),
-        row,
-      ]),
+      (this.#workspace !== undefined
+        ? [...current.values()]
+        : await this.#currentValueRows(nodeId)
+      ).map((row) => [keyOf(row.propertyTypeId, row.languageId, row.segment), row]),
     )
 
     const seen = new Set<string>()
@@ -2624,7 +3812,9 @@ export class DocumentRepository {
     supersedes: number | undefined,
   ): Promise<void> {
     const column = STORAGE_COLUMN[propertyType.storage]
-    if (supersedes !== undefined) {
+    // A workspace's value is never current: Shared's stays what everyone reads.
+    const inWorkspace = this.#workspace !== undefined
+    if (supersedes !== undefined && !inWorkspace) {
       await this.#db.q
         .updateTable('property_value')
         .set({ is_current: this.#db.dialect.boolValue(false) as boolean })
@@ -2640,7 +3830,8 @@ export class DocumentRepository {
         segment,
         event_id: eventId,
         schema_state_id: schemaStateId,
-        is_current: this.#db.dialect.boolValue(true) as boolean,
+        is_current: this.#db.dialect.boolValue(!inWorkspace) as boolean,
+        workspace_id: this.#workspace ?? null,
         [column]: this.#toStorage(value, propertyType.storage),
         sortable_value: typeof value === 'string' ? value.slice(0, 512) : null,
       } as Insertable<CoreTables['property_value']>)
@@ -2805,6 +3996,15 @@ export class DocumentRepository {
     if (rows.length === 0) return []
     const ids = rows.map((row) => row.id)
     const counts = await this.#nodes.childCounts(ids, this.objectType)
+    if (this.#workspace !== undefined)
+      for (const row of await this.#db.q
+        .selectFrom('node')
+        .select((eb) => ['parent_id', eb.fn.countAll().as('n')])
+        .where('parent_id', 'in', ids)
+        .where('workspace_id', '=', this.#workspace)
+        .groupBy('parent_id')
+        .execute())
+        counts.set(Number(row.parent_id), (counts.get(Number(row.parent_id)) ?? 0) + Number(row.n))
     const facts = await this.#db.q
       .selectFrom('node as n')
       .innerJoin('content as c', 'c.node_id', 'n.id')
@@ -2890,7 +4090,36 @@ export class DocumentRepository {
 
     const items: DocumentTreeItem[] = []
     for (const row of rows) {
+      // A page the workspace changed or made is named and stated as it is there.
+      const touched = await this.#workspaceDocument(row.id)
+      const mine = touched ? await this.#loadInWorkspace(row, touched) : undefined
       const fact = factsById.get(row.id)
+      if (mine) {
+        const parent = row.parentId > 0 ? above.get(row.parentId) : undefined
+        items.push({
+          key: row.key,
+          name: mine.variants[0]?.name ?? row.text ?? '',
+          hasChildren: (counts.get(row.id) ?? 0) > 0,
+          parentKey: parent ? parent.key : null,
+          contentTypeKey: mine.contentTypeKey,
+          contentTypeCollectionKey: mine.contentTypeCollectionKey,
+          icon: mine.contentTypeIcon,
+          isTrashed: row.trashed,
+          createDate: row.createDate ?? new Date(),
+          ancestorKeys: pathIds(row)
+            .map((id) => above.get(id))
+            .filter((n): n is NodeRow => n !== undefined && this.sees(n))
+            .map((a) => a.key),
+          isProtected: guarded.has(row.id) || pathIds(row).some((id) => guarded.has(id)),
+          variants: mine.variants.map((v) => ({
+            culture: v.culture,
+            name: v.name,
+            state: v.state,
+            scheduledForPublish: scheduled(row.id, v.culture),
+          })),
+        })
+        continue
+      }
       if (!fact) continue
       const ancestors = pathIds(row)
         .map((id) => above.get(id))
@@ -2974,6 +4203,7 @@ export class DocumentRepository {
       .updateTable('content_version')
       .set({ current: f })
       .where('node_id', '=', nodeId)
+      .where('workspace_id', 'is', null)
       .execute()
     await this.#db.q
       .insertInto('content_version')
@@ -2991,6 +4221,7 @@ export class DocumentRepository {
       .selectFrom('content_version')
       .select((eb) => eb.fn.max('id').as('id'))
       .where('node_id', '=', nodeId)
+      .where('workspace_id', 'is', null)
       .execute()
     const eventId = Number(rows[0]?.id)
     await this.#db.q
@@ -3016,6 +4247,7 @@ export class DocumentRepository {
       .innerJoin('document_version as dv', 'dv.id', 'cv.id')
       .select(['cv.id', 'cv.text', 'cv.user_id', 'dv.template_id'])
       .where('cv.node_id', '=', nodeId)
+      .where('cv.workspace_id', 'is', null)
       .orderBy('cv.id', 'desc')
       .limit(1)
       .execute()
@@ -3050,6 +4282,7 @@ export class DocumentRepository {
         .selectFrom('property_value')
         .select((eb) => eb.fn.countAll().as('n'))
         .where('node_id', '=', nodeId)
+        .where('workspace_id', 'is', null)
         .where('event_id', '>', publishedId)
         .execute()
       const names = await this.#db.q
@@ -3058,6 +4291,7 @@ export class DocumentRepository {
             .selectFrom('content_version')
             .select('text')
             .where('node_id', '=', nodeId)
+            .where('workspace_id', 'is', null)
             .orderBy('id', 'desc')
             .limit(1)
             .as('head'),
@@ -3077,6 +4311,7 @@ export class DocumentRepository {
         .selectFrom('property_value')
         .select((eb) => eb.fn.countAll().as('n'))
         .where('node_id', '=', nodeId)
+        .where('workspace_id', 'is', null)
         .where('event_id', '>', culture.eventId)
         .where((eb) =>
           eb.or([eb('language_id', '=', culture.languageId), eb('language_id', 'is', null)]),
@@ -3334,6 +4569,7 @@ export class DocumentRepository {
         'text_value',
       ])
       .where('node_id', 'in', ids)
+      .where('workspace_id', 'is', null)
       .$if(schemaStateId !== undefined, (q) =>
         q.where('schema_state_id', '<=', schemaStateId as number),
       )
@@ -3410,6 +4646,7 @@ export class DocumentRepository {
           'text_value',
         ])
         .where('node_id', '=', nodeId)
+        .where('workspace_id', 'is', null)
         .where('event_id', '<=', latest)
         .$if(schemaStateId !== undefined, (q) =>
           q.where('schema_state_id', '<=', schemaStateId as number),
@@ -3492,8 +4729,41 @@ export async function latestContentVersionId(db: Db): Promise<number> {
   const rows = await db.q
     .selectFrom('content_version')
     .select((eb) => eb.fn.max('id').as('n'))
+    .where('workspace_id', 'is', null)
     .execute()
   return Number(rows[0]?.n ?? 0)
+}
+
+/** Each top-most workspace page beneath `branch`, moved to the top of the tree and marked orphaned. */
+async function keepWorkspacePages(tx: Db, branch: Pick<NodeRow, 'id' | 'path'>): Promise<void> {
+  const found = await tx.q
+    .selectFrom('node')
+    .select(['id', 'path', 'workspace_id'])
+    .where('path', 'like', `${branch.path},%`)
+    .where('workspace_id', 'is not', null)
+    .orderBy('level')
+    .execute()
+  const nodes = new NodeRepository(tx)
+  const moved: string[] = []
+  for (const row of found) {
+    const path = String(row.path)
+    if (moved.some((top) => path.startsWith(`${top},`))) continue
+    const id = Number(row.id)
+    await nodes.move(id, SystemNodes.Root)
+    moved.push(path)
+    await tx.q
+      .insertInto('workspace_pending')
+      .values({
+        workspace_id: Number(row.workspace_id),
+        node_id: id,
+        kind: 'orphaned',
+        target_parent_id: null,
+        sort_order: null,
+        user_id: null,
+        recorded_at: DbDate.toDb(new Date()),
+      })
+      .execute()
+  }
 }
 
 /**
@@ -3501,7 +4771,7 @@ export async function latestContentVersionId(db: Db): Promise<number> {
  * below it, by path) or a set of nodes (`ids`), a statement per table over the
  * whole set rather than one per node (story 246).
  */
-async function deleteNodeRows(
+export async function deleteNodeRows(
   tx: Db,
   among: { branch: Pick<NodeRow, 'id' | 'path'> } | { ids: readonly number[] },
 ): Promise<void> {
@@ -3514,8 +4784,39 @@ async function deleteNodeRows(
           ? eb('id', 'in', [...among.ids])
           : eb.or([eb('id', '=', among.branch.id), eb('path', 'like', `${among.branch.path},%`)]),
       )
+  // A page made in a workspace beneath a Shared page that goes is that workspace's
+  // work: it moves to the top, marked for the merge to resolve (story 375).
+  if (!('ids' in among)) await keepWorkspacePages(tx, among.branch)
   const versions = () =>
     tx.q.selectFrom('content_version').select('id').where('node_id', 'in', nodes())
+  // A Shared page a workspace changed leaves a marker its merge must answer (story 380).
+  const gone = await tx.q
+    .selectFrom('workspace_document as wd')
+    .innerJoin('node as n', 'n.id', 'wd.node_id')
+    .select(['wd.workspace_id', 'n.id', 'n.text'])
+    .where('n.id', 'in', nodes())
+    .where('n.workspace_id', 'is', null)
+    .execute()
+  for (const table of [
+    'workspace_pending',
+    'workspace_document_culture',
+    'workspace_document',
+  ] as const)
+    await tx.q.deleteFrom(table).where('node_id', 'in', nodes()).execute()
+  for (const row of gone)
+    await tx.q
+      .insertInto('workspace_pending')
+      .values({
+        workspace_id: Number(row.workspace_id),
+        node_id: Number(row.id),
+        kind: 'gone',
+        target_parent_id: null,
+        sort_order: null,
+        user_id: null,
+        recorded_at: DbDate.toDb(new Date()),
+        name: (row.text as string | null) ?? null,
+      })
+      .execute()
   // Search providers outside the database lose nothing by cascade, so they are told (story 273).
   await recordSearchRemovals(
     tx,

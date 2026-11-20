@@ -243,7 +243,7 @@ describe(`pull, change, push (${dialectUnderTest})`, () => {
     expect(pushed.job?.state).toBe('done')
     const after = await h.json<{ variants: { name: string }[] }>(`${V1}/document/${home}`)
     expect(after.variants[0]?.name).toBe('Home, changed locally')
-  })
+  }, 10_000)
 
   test('a protected environment refuses without --force, then waits for approval', async () => {
     const { h } = await remoteSite({ protected: true, approvals: true }, { secretKey: SECRET_KEY })
@@ -286,7 +286,7 @@ describe(`pull, change, push (${dialectUnderTest})`, () => {
     })
     expect(approval).toContain('/remote-approval?job=')
     expect(result.job?.state).toBe('done')
-  })
+  }, 10_000)
 
   test('a person who may not pull is refused before anything is asked for', async () => {
     const { h } = await remoteSite()

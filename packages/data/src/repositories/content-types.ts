@@ -30,6 +30,7 @@ import { DbDate, fromDbBool } from '../dialect.ts'
 import { pendingUntil } from '../pending.ts'
 import type { NodeSchemaState } from '../schema-state.ts'
 import { queueContentTypesForSearch, queueEverythingForSearch } from '../search.ts'
+import { type WorkspaceScope, workspaceRowKey } from '../workspace-keys.ts'
 import { NodeRepository } from './nodes.ts'
 
 const GROUP_TYPE_NAMES = ['Group', 'Tab'] as const
@@ -112,11 +113,37 @@ export const CONTENT_TYPE_OBJECT_TYPES: Record<
   member: { item: ObjectTypes.MemberType, container: ObjectTypes.MemberTypeContainer },
 }
 
+/** The object type a workspace's copy of each kind carries (story 376). */
+export const WORKSPACE_TYPE_OBJECT_TYPES: Record<ContentTypeKind, string> = {
+  document: ObjectTypes.WorkspaceDocumentType,
+  media: ObjectTypes.WorkspaceMediaType,
+  member: ObjectTypes.WorkspaceMemberType,
+}
+
 export interface ContentTypeRepositoryOptions {
   /** The state this node runs at; elements newer than it are marked pending. */
   nodeState?: NodeSchemaState
   /** Which kind of type this repository reads and writes. Default document. */
   kind?: ContentTypeKind
+  /**
+   * A workspace's view (story 376): its copies of types where it has them, and
+   * Shared's otherwise, each under the key it stands for.
+   */
+  workspace?: WorkspaceScope
+  /** Internal: rows written as this workspace's copies, under their stored keys. */
+  copiesOf?: number
+}
+
+/** A type's row as a workspace's listing merges it over Shared's. */
+interface ListedType {
+  key: string
+  alias: string
+  name: string
+  allowAtRoot: boolean
+  isElement: boolean
+  allowInLibrary: boolean
+  siteSettings: boolean
+  seo: unknown
 }
 
 export class ContentTypeRepository {
@@ -125,13 +152,283 @@ export class ContentTypeRepository {
   #nodeState: NodeSchemaState | undefined
   #objectType: string
   #kind: ContentTypeKind
+  #workspace: WorkspaceScope | undefined
+  #copiesOf: number | undefined
 
   constructor(db: Db, options: ContentTypeRepositoryOptions = {}) {
     this.#db = db
     this.#nodes = new NodeRepository(db)
     this.#nodeState = options.nodeState
     this.#kind = options.kind ?? 'document'
-    this.#objectType = CONTENT_TYPE_OBJECT_TYPES[this.#kind].item
+    this.#workspace = options.workspace
+    this.#copiesOf = options.copiesOf
+    this.#objectType =
+      this.#copiesOf === undefined
+        ? CONTENT_TYPE_OBJECT_TYPES[this.#kind].item
+        : WORKSPACE_TYPE_OBJECT_TYPES[this.#kind]
+  }
+
+  /** The same repository in a workspace's view (undefined: Shared's). */
+  inWorkspace(workspace: WorkspaceScope | undefined): ContentTypeRepository {
+    return new ContentTypeRepository(this.#db, {
+      nodeState: this.#nodeState,
+      kind: this.#kind,
+      ...(workspace ? { workspace } : {}),
+    })
+  }
+
+  // ---------------------------------------------------------------- workspaces (story 376)
+
+  #shared(db: Db = this.#db): ContentTypeRepository {
+    return new ContentTypeRepository(db, { nodeState: this.#nodeState, kind: this.#kind })
+  }
+
+  #copies(db: Db = this.#db): ContentTypeRepository {
+    return new ContentTypeRepository(db, {
+      nodeState: this.#nodeState,
+      kind: this.#kind,
+      copiesOf: (this.#workspace as WorkspaceScope).id,
+    })
+  }
+
+  #stored(key: string): string {
+    return workspaceRowKey((this.#workspace as WorkspaceScope).key, normaliseUuid(key))
+  }
+
+  /** The workspace's copy of a type, live or retired, by the key it stands for. */
+  async #copyOf(key: string): Promise<{ nodeId: number; retired: boolean } | undefined> {
+    const rows = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select(['ct.node_id', 'ct.retired_at'])
+      .where('n.unique_id', '=', this.#stored(key))
+      .where('ct.workspace_id', '=', (this.#workspace as WorkspaceScope).id)
+      .execute()
+    const row = rows[0]
+    return row ? { nodeId: Number(row.node_id), retired: row.retired_at !== null } : undefined
+  }
+
+  /**
+   * The node a type is read from in the workspace: its copy where it has one, or
+   * Shared's. Takes a node id, which a page's `content_type_id` is.
+   */
+  async readNodeId(nodeId: number): Promise<number> {
+    if (!this.#workspace) return nodeId
+    const node = await this.#nodes.byId(nodeId)
+    if (!node || node.objectType !== CONTENT_TYPE_OBJECT_TYPES[this.#kind].item) return nodeId
+    return (await this.#copyOf(node.key))?.nodeId ?? nodeId
+  }
+
+  /** Every type the workspace sees: its live copies over Shared's, each by the key it stands for. */
+  async #listed(): Promise<ListedType[]> {
+    const workspace = this.#workspace as WorkspaceScope
+    const columns = [
+      'ct.alias',
+      'n.text',
+      'ct.allow_at_root',
+      'ct.is_element',
+      'ct.allow_in_library',
+      'ct.site_settings',
+      'ct.seo',
+      'ct.retired_at',
+    ] as const
+    const toListed = (key: string, row: Record<string, unknown>): ListedType => ({
+      key: normaliseUuid(key),
+      alias: String(row.alias),
+      name: String(row.text ?? ''),
+      allowAtRoot: fromDbBool(row.allow_at_root),
+      isElement: fromDbBool(row.is_element),
+      allowInLibrary: fromDbBool(row.allow_in_library),
+      siteSettings: fromDbBool(row.site_settings),
+      seo: row.seo,
+    })
+    const copies = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select([...columns, 'ct.origin_key'])
+      .where('ct.workspace_id', '=', workspace.id)
+      .where('n.node_object_type', '=', WORKSPACE_TYPE_OBJECT_TYPES[this.#kind])
+      .execute()
+    const copied = new Set(copies.map((row) => normaliseUuid(String(row.origin_key))))
+    const shared = await this.#db.q
+      .selectFrom('content_type as ct')
+      .innerJoin('node as n', 'n.id', 'ct.node_id')
+      .select([...columns, 'n.unique_id'])
+      .where('ct.retired_at', 'is', null)
+      .where('n.node_object_type', '=', CONTENT_TYPE_OBJECT_TYPES[this.#kind].item)
+      .execute()
+    return [
+      ...copies
+        .filter((row) => row.retired_at === null)
+        .map((row) => toListed(String(row.origin_key), row)),
+      ...shared
+        .filter((row) => !copied.has(normaliseUuid(String(row.unique_id))))
+        .map((row) => toListed(String(row.unique_id), row)),
+    ].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  /** Keys as stored, back to the keys they stand for. */
+  async #origins(keys: readonly string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>()
+    const wanted = [...new Set(keys.map(normaliseUuid))]
+    if (wanted.length === 0) return out
+    const typeRows = await this.#db.q
+      .selectFrom('content_type as t')
+      .innerJoin('node as n', 'n.id', 't.node_id')
+      .select(['n.unique_id', 't.origin_key'])
+      .where('n.unique_id', 'in', wanted)
+      .where('t.origin_key', 'is not', null)
+      .execute()
+    const dataTypeRows = await this.#db.q
+      .selectFrom('data_type as t')
+      .innerJoin('node as n', 'n.id', 't.node_id')
+      .select(['n.unique_id', 't.origin_key'])
+      .where('n.unique_id', 'in', wanted)
+      .where('t.origin_key', 'is not', null)
+      .execute()
+    for (const row of [...typeRows, ...dataTypeRows])
+      out.set(normaliseUuid(String(row.unique_id)), normaliseUuid(String(row.origin_key)))
+    for (const table of ['property_type', 'property_type_group'] as const)
+      for (const row of await this.#db.q
+        .selectFrom(table)
+        .select(['unique_id', 'origin_key'])
+        .where('unique_id', 'in', wanted)
+        .where('origin_key', 'is not', null)
+        .execute())
+        out.set(normaliseUuid(String(row.unique_id)), normaliseUuid(String(row.origin_key)))
+    return out
+  }
+
+  /** A copy as the workspace reads it: every key the one it stands for. */
+  async #asRead(stored: ContentTypeAggregate): Promise<ContentTypeAggregate> {
+    const origins = await this.#origins([
+      stored.key,
+      ...stored.containers.flatMap((c) => [c.key, ...(c.parentKey ? [c.parentKey] : [])]),
+      ...stored.properties.flatMap((p) => [p.key, p.dataTypeKey]),
+      ...stored.compositions.map((c) => c.contentTypeKey),
+      ...stored.allowedContentTypes.map((c) => c.contentTypeKey),
+    ])
+    const back = (key: string) => origins.get(normaliseUuid(key)) ?? key
+    return {
+      ...stored,
+      key: back(stored.key),
+      containers: stored.containers.map((c) => ({
+        ...c,
+        key: back(c.key),
+        parentKey: c.parentKey ? back(c.parentKey) : null,
+      })),
+      properties: stored.properties.map((p) => ({
+        ...p,
+        key: back(p.key),
+        dataTypeKey: back(p.dataTypeKey),
+        containerKey: p.containerKey ? back(p.containerKey) : null,
+      })),
+      compositions: stored.compositions.map((c) => ({
+        ...c,
+        contentTypeKey: back(c.contentTypeKey),
+      })),
+      allowedContentTypes: stored.allowedContentTypes.map((c) => ({
+        ...c,
+        contentTypeKey: back(c.contentTypeKey),
+      })),
+    }
+  }
+
+  /** A type as the workspace saves it: its own keys stored, references to what it copied too. */
+  async #asStored(db: Db, aggregate: ContentTypeAggregate): Promise<ContentTypeAggregate> {
+    const workspace = this.#workspace as WorkspaceScope
+    const copied = async (table: 'content_type' | 'data_type', key: string) => {
+      const stored = this.#stored(key)
+      const rows =
+        table === 'content_type'
+          ? await db.q
+              .selectFrom('content_type as t')
+              .innerJoin('node as n', 'n.id', 't.node_id')
+              .select('t.node_id')
+              .where('n.unique_id', '=', stored)
+              .where('t.workspace_id', '=', workspace.id)
+              .execute()
+          : await db.q
+              .selectFrom('data_type as t')
+              .innerJoin('node as n', 'n.id', 't.node_id')
+              .select('t.node_id')
+              .where('n.unique_id', '=', stored)
+              .where('t.workspace_id', '=', workspace.id)
+              .execute()
+      return rows.length > 0 ? stored : key
+    }
+    const own = (key: string) => this.#stored(key)
+    const properties: PropertyTypeModel[] = []
+    for (const p of aggregate.properties)
+      properties.push({
+        ...p,
+        key: own(p.key),
+        dataTypeKey: await copied('data_type', p.dataTypeKey),
+        containerKey: p.containerKey ? own(p.containerKey) : null,
+      })
+    const compositions = []
+    for (const c of aggregate.compositions)
+      compositions.push({ ...c, contentTypeKey: await copied('content_type', c.contentTypeKey) })
+    const allowedContentTypes = []
+    for (const c of aggregate.allowedContentTypes)
+      allowedContentTypes.push({
+        ...c,
+        contentTypeKey: await copied('content_type', c.contentTypeKey),
+      })
+    return {
+      ...aggregate,
+      key: own(aggregate.key),
+      containers: aggregate.containers.map((c) => ({
+        ...c,
+        key: own(c.key),
+        parentKey: c.parentKey ? own(c.parentKey) : null,
+      })),
+      properties,
+      compositions,
+      allowedContentTypes,
+    }
+  }
+
+  /** Saves the workspace's copy of a type, marking each row with the key it stands for. */
+  async #saveCopy(
+    aggregate: ContentTypeAggregate,
+    options: SaveContentTypeOptions,
+  ): Promise<ContentTypeAggregate> {
+    return this.#db.transaction(async (tx) => {
+      const stored = await this.#asStored(tx, aggregate)
+      await this.#copies(tx).save(stored, options)
+      const node = await new NodeRepository(tx).byKey(stored.key)
+      if (!node) throw new Error(`The copy of "${aggregate.alias}" was not saved.`)
+      await tx.q
+        .updateTable('content_type')
+        .set({ origin_key: normaliseUuid(aggregate.key) })
+        .where('node_id', '=', node.id)
+        .execute()
+      for (const p of aggregate.properties)
+        await tx.q
+          .updateTable('property_type')
+          .set({ origin_key: normaliseUuid(p.key) })
+          .where('unique_id', '=', this.#stored(p.key))
+          .execute()
+      for (const c of aggregate.containers)
+        await tx.q
+          .updateTable('property_type_group')
+          .set({ origin_key: normaliseUuid(c.key) })
+          .where('unique_id', '=', this.#stored(c.key))
+          .execute()
+      return (await this.inWorkspace(this.#workspace)
+        .#within(tx)
+        .byKey(aggregate.key)) as ContentTypeAggregate
+    })
+  }
+
+  #within(db: Db): ContentTypeRepository {
+    return new ContentTypeRepository(db, {
+      nodeState: this.#nodeState,
+      kind: this.#kind,
+      ...(this.#workspace ? { workspace: this.#workspace } : {}),
+      ...(this.#copiesOf === undefined ? {} : { copiesOf: this.#copiesOf }),
+    })
   }
 
   /** The node object type this repository's types carry. */
@@ -157,6 +454,15 @@ export class ContentTypeRepository {
   }
 
   async byKey(key: string): Promise<ContentTypeAggregate | undefined> {
+    if (this.#workspace) {
+      const copy = await this.#copyOf(key)
+      if (copy?.retired) return undefined
+      if (copy) {
+        const stored = await this.#copies().byKey(this.#stored(key))
+        return stored ? this.#asRead(stored) : undefined
+      }
+      return this.#shared().byKey(key)
+    }
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== this.#objectType) return undefined
     return this.#load(node.id, node.key, node.text ?? '', node.parentId)
@@ -167,6 +473,21 @@ export class ContentTypeRepository {
     alias: string,
     options: { includeRetired?: boolean } = {},
   ): Promise<ContentTypeAggregate | undefined> {
+    if (this.#workspace) {
+      const found = (await this.#listed()).find((t) => t.alias === alias)
+      if (found) return this.byKey(found.key)
+      // A retired copy comes back by alias, as Shared's retired types do.
+      if (!options.includeRetired) return undefined
+      const retired = await this.#db.q
+        .selectFrom('content_type')
+        .select('origin_key')
+        .where('workspace_id', '=', this.#workspace.id)
+        .where('alias', '=', alias)
+        .execute()
+      if (!retired[0]) return undefined
+      const stored = await this.#copies().byKey(this.#stored(String(retired[0].origin_key)))
+      return stored ? this.#asRead(stored) : undefined
+    }
     const rows = await this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -179,11 +500,24 @@ export class ContentTypeRepository {
   }
 
   async aliasExists(alias: string, exceptKey?: string): Promise<boolean> {
+    if (this.#workspace) {
+      const except = exceptKey ? normaliseUuid(exceptKey) : undefined
+      const kinds: ContentTypeKind[] = ['document', 'media', 'member']
+      for (const kind of kinds) {
+        const listed = await new ContentTypeRepository(this.#db, {
+          kind,
+          workspace: this.#workspace,
+        }).#listed()
+        if (listed.some((t) => t.alias === alias && t.key !== except)) return true
+      }
+      return false
+    }
     const rows = await this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
       .select((eb) => eb.fn.countAll().as('n'))
       .where('ct.alias', '=', alias)
+      .where('ct.workspace_id', 'is', null)
       .$if(Boolean(exceptKey), (q) =>
         q.where('n.unique_id', '<>', normaliseUuid(exceptKey as string)),
       )
@@ -196,6 +530,7 @@ export class ContentTypeRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
+    if (this.#workspace) return this.#listedPage((t) => t.allowAtRoot, skip, take)
     const matching = this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -229,6 +564,7 @@ export class ContentTypeRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
+    if (this.#workspace) return this.#listedPage((t) => t.isElement && t.allowInLibrary, skip, take)
     const matching = this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -254,11 +590,47 @@ export class ContentTypeRepository {
     return { total: Number(totals[0]?.n ?? 0) - hidden, items }
   }
 
+  /** A page of the workspace's listed types that pass `keep`, loaded. */
+  async #listedPage(
+    keep: (t: ListedType) => boolean,
+    skip: number,
+    take: number,
+  ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
+    const items: ContentTypeAggregate[] = []
+    for (const t of (await this.#listed()).filter(keep)) {
+      const aggregate = await this.byKey(t.key)
+      if (aggregate && !aggregate.pending) items.push(aggregate)
+    }
+    return { total: items.length, items: items.slice(skip, skip + take) }
+  }
+
   /**
    * Why an item of type `typeKey` may not sit under `parentKey` (null: the top
    * level), as its parent's type allows children; nothing when it may.
    */
   async placementRefusal(typeKey: string, parentKey: string | null): Promise<string | undefined> {
+    if (this.#workspace) {
+      const type = await this.byKey(typeKey)
+      if (!type) return undefined
+      if (parentKey === null)
+        return type.allowedAsRoot ? undefined : `"${type.name}" isn't allowed at the top level.`
+      const parents = await this.#db.q
+        .selectFrom('node as n')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('node as tn', 'tn.id', 'c.content_type_id')
+        .leftJoin('content_type as tct', 'tct.node_id', 'tn.id')
+        .select(['n.text', 'tn.unique_id', 'tct.origin_key'])
+        .where('n.unique_id', '=', normaliseUuid(parentKey))
+        .execute()
+      const parent = parents[0]
+      if (!parent) return undefined
+      const parentType = await this.byKey(String(parent.origin_key ?? parent.unique_id))
+      return parentType?.allowedContentTypes.some(
+        (c) => normaliseUuid(c.contentTypeKey) === normaliseUuid(typeKey),
+      )
+        ? undefined
+        : `"${type.name}" isn't allowed under "${parent.text ?? parentKey}".`
+    }
     const types = await this.#db.q
       .selectFrom('node as n')
       .innerJoin('content_type as ct', 'ct.node_id', 'n.id')
@@ -296,6 +668,14 @@ export class ContentTypeRepository {
     skip: number,
     take: number,
   ): Promise<{ total: number; items: ContentTypeAggregate[] }> {
+    if (this.#workspace) {
+      const items: ContentTypeAggregate[] = []
+      for (const child of (await this.byKey(key))?.allowedContentTypes ?? []) {
+        const aggregate = await this.byKey(child.contentTypeKey)
+        if (aggregate && !aggregate.pending) items.push(aggregate)
+      }
+      return { total: items.length, items: items.slice(skip, skip + take) }
+    }
     const node = await this.#nodes.byKey(key)
     if (!node) return { total: 0, items: [] }
     const rows = await this.#db.q
@@ -318,8 +698,9 @@ export class ContentTypeRepository {
     aggregate: ContentTypeAggregate,
     options: SaveContentTypeOptions = {},
   ): Promise<ContentTypeAggregate> {
+    if (this.#workspace) return this.#saveCopy(aggregate, options)
     return this.#db.transaction(async (tx) => {
-      const repo = new ContentTypeRepository(tx, { nodeState: this.#nodeState, kind: this.#kind })
+      const repo = this.#within(tx)
       const bool = (value: boolean) => tx.dialect.boolValue(value)
       const now = DbDate.toDb(new Date())
       const existing = await repo.nodes.byKey(aggregate.key)
@@ -374,6 +755,7 @@ export class ContentTypeRepository {
           .values({
             node_id: nodeId,
             ...typeValues,
+            workspace_id: this.#copiesOf ?? null,
             thumbnail: 'folder.png',
             since_state_id: options.sinceStateId ?? null,
           })
@@ -676,6 +1058,8 @@ export class ContentTypeRepository {
       .select(['p.id', 'p.alias', 'ct.alias as type_alias'])
       .where('p.retired_at', 'is not', null)
       .where('p.retired_at', '<', DbDate.toDb(olderThan))
+      // A workspace's copies are its own, and go when it does (story 376).
+      .where('ct.workspace_id', 'is', null)
       .execute()
     const purged: Array<{ type: string; alias: string }> = []
     await this.#db.transaction(async (tx) => {
@@ -702,6 +1086,7 @@ export class ContentTypeRepository {
 
   /** Every live type, cheap enough while types number in the dozens. */
   async all(): Promise<ContentTypeAggregate[]> {
+    if (this.#workspace) return this.byKeys((await this.#listed()).map((t) => t.key))
     const rows = await this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -733,6 +1118,7 @@ export class ContentTypeRepository {
 
   /** Every live type's alias by its key, without loading the types themselves. */
   async aliasesByKey(): Promise<Map<string, string>> {
+    if (this.#workspace) return new Map((await this.#listed()).map((t) => [t.key, t.alias]))
     const rows = await this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -745,6 +1131,8 @@ export class ContentTypeRepository {
 
   /** The aliases of the types that are a site's settings (story 058). */
   async siteSettingsAliases(): Promise<string[]> {
+    if (this.#workspace)
+      return (await this.#listed()).filter((t) => t.siteSettings).map((t) => t.alias)
     const rows = await this.#db.q
       .selectFrom('content_type as ct')
       .innerJoin('node as n', 'n.id', 'ct.node_id')
@@ -900,6 +1288,28 @@ export class ContentTypeRepository {
   }
 
   async delete(key: string): Promise<boolean> {
+    if (this.#workspace) {
+      const copy = await this.#copyOf(key)
+      if (copy?.retired) return false
+      const shared =
+        (await this.#nodes.byKey(key))?.objectType === CONTENT_TYPE_OBJECT_TYPES[this.#kind].item
+      // A Shared type removed in the workspace is a retired copy, which hides Shared's.
+      if (shared) {
+        if (!copy) {
+          const type = await this.#shared().byKey(key)
+          if (!type) return false
+          await this.#saveCopy(type, {})
+        }
+        await this.#db.q
+          .updateTable('content_type')
+          .set({ retired_at: DbDate.toDb(new Date()) })
+          .where('workspace_id', '=', this.#workspace.id)
+          .where('origin_key', '=', normaliseUuid(key))
+          .execute()
+        return true
+      }
+      return copy ? this.#copies().delete(this.#stored(key)) : false
+    }
     const node = await this.#nodes.byKey(key)
     if (!node || node.objectType !== this.#objectType) return false
     return this.#db.transaction(async (tx) => {

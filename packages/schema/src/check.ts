@@ -42,7 +42,10 @@ const SAID_ONLY = new Set([
   'property-renamed',
 ])
 
-export type ChangeClass = 'none' | 'additive' | 'data-requiring' | 'breaking'
+/** The four classes, now `@crombolo/core`'s (story 382). */
+export type { ChangeClass } from '@crombolo/core'
+
+import type { ChangeClass } from '@crombolo/core'
 
 export interface CheckOptions extends Omit<SyncOptions, 'dryRun' | 'status'> {
   /** `--set type.property=value`: a value to apply wherever the property is missing. */

@@ -135,6 +135,55 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
+    // 085 (story 376), then 084.
+    for (const table of ['workspace_file', 'file_blob']) sqlite.exec(`DROP TABLE ${table}`)
+    for (const index of [
+      'ux_content_type_workspace_alias',
+      'ix_content_type_workspace',
+      'ix_data_type_workspace',
+      'ux_content_type_alias',
+    ])
+      sqlite.exec(`DROP INDEX ${index}`)
+    for (const [table, columns] of [
+      ['workspace', ['schema_built']],
+      ['content_type', ['workspace_id', 'origin_key']],
+      ['data_type', ['workspace_id', 'origin_key']],
+      ['property_type', ['origin_key']],
+      ['property_type_group', ['origin_key']],
+    ] as const)
+      for (const column of columns) sqlite.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+    sqlite.exec('CREATE UNIQUE INDEX ux_content_type_alias ON content_type (alias)')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceSchema'")
+    for (const [table, columns] of [
+      ['workspace', ['state', 'merged_at', 'merged_by', 'personal']],
+      ['workspace_document', ['base_published']],
+      ['workspace_document_culture', ['base_published', 'base_published_event_id']],
+      ['workspace_pending', ['base_parent_id', 'base_sort_order', 'base_event_id', 'name']],
+    ] as const)
+      for (const column of columns) sqlite.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceMerge'")
+    sqlite.exec(
+      "DELETE FROM user_group_section WHERE app_alias IN ('pages', 'structure', 'components')",
+    )
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddContentPlaces'")
+    for (const [table, index] of [
+      ['node', 'ix_node_workspace'],
+      ['content_version', 'ix_content_version_workspace'],
+      ['property_value', 'ix_property_value_workspace'],
+      ['content_schedule', 'ix_content_schedule_workspace'],
+    ]) {
+      sqlite.exec(`DROP INDEX IF EXISTS ${index}`)
+      sqlite.exec(`ALTER TABLE ${table} DROP COLUMN workspace_id`)
+    }
+    for (const table of [
+      'workspace_pending',
+      'workspace_document_culture',
+      'workspace_document',
+      'workspace_member',
+      'workspace',
+    ])
+      sqlite.exec(`DROP TABLE IF EXISTS ${table}`)
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaces'")
     sqlite.exec('ALTER TABLE audit_entry DROP COLUMN actor_name')
     sqlite.exec('ALTER TABLE audit_entry DROP COLUMN actor_id')
     sqlite.exec('ALTER TABLE device_authorization DROP COLUMN actor_name')

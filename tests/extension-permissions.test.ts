@@ -108,7 +108,8 @@ describe('an extension acting as itself', () => {
   test('holds only what its grant gives, and is never an administrator', () => {
     const principal = extensionPrincipal({ id: 'crm', name: 'CRM' }, ['content.read'])
     expect(principal.isAdmin).toBe(false)
-    expect(principal.allowedSections).toEqual(['Umb.Section.Content'])
+    // Reading pages is Pages', a place under Content (story 385).
+    expect(principal.allowedSections).toEqual(['Umb.Section.Content', 'Crombolo.Section.Pages'])
     expect(principal.permissions).toContain('Umb.Document.Read')
     expect(principal.permissions).not.toContain('Umb.Document.Update')
     expect(principal.name).toBe('Extension CRM')

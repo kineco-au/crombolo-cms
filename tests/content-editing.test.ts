@@ -731,7 +731,7 @@ describe('story 024 preview', () => {
     const created = await h.post(`${V1}/user-group`, {
       name: 'Harbour editors',
       alias: 'harbourEditors',
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: false,

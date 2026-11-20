@@ -214,12 +214,14 @@ crombolo schema
 Check the site's definitions, and what applying them would do to this database. Changes nothing.
 
 ```
-crombolo schema check [--static]
+crombolo schema check [--static] [--against <against>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `--static` | boolean | Validate the files only, no database. |
+| `--against` | string | List where a hosted site's definitions differ from the files, changing neither. |
+| `--env` | string | The --against site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -232,31 +234,41 @@ crombolo schema check [--static]
 - `problems` (array of object)
 - `classification` (string)
 - `findings` (array of object)
+- `against` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`, `auth`.
 
 **Outcomes:** `problems_found`, `blocked`.
 
 ### `crombolo schema export`
 
-Write the database's definitions as schema/ files. Safe to run again: a second run changes nothing more.
+Write the database's definitions as schema/ files, or a hosted site's with --from. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo schema export
+crombolo schema export [--from <from>] [--env <env>] [--yes] [--dry-run]
 ```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--from` | string | The hosted site to bring them from, by its profile. |
+| `--env` | string | The --from site's environment. |
+| `--yes` | boolean | With --from: change the files without asking. |
+| `--dry-run` | boolean | With --from: say what would change, and change nothing. |
 
 **Output** (bounded, with `-o json`):
 
 - `wrote` (array of string)
+- `removed` (array of string)
+- `version` (string)
 
-**Fails with:** `usage`, `internal`.
+**Fails with:** `usage`, `internal`, `refused`, `confirmation_required`, `unavailable`, `auth`.
 
 ### `crombolo schema new`
 
 Write a type or data type file, and the view it points at, then apply it. Each run acts again.
 
 ```
-crombolo schema new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--block <block>] [--set <set>]
+crombolo schema new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--block <block>] [--set <set>] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -304,13 +316,19 @@ crombolo schema new <kind> <alias> [--name <name>] [--description <description>]
 | `--value-type` | string | Data types: what a label holds. One of `string`, `long-string`, `decimal`, `integer`, `big-integer`, `date`, `time`. |
 | `--block` | string[] | Data types: an element type offered as a block. |
 | `--set` | string[] | Data types: store any other setting as given; JSON when it parses. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
 - `created` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `confirmation_required`, `unavailable`.
 
 ### `crombolo schema purge`
 
@@ -377,12 +395,14 @@ Check, apply and change the content model kept in schema/: types, languages, for
 Check the site's definitions, and what applying them would do to this database. Changes nothing.
 
 ```
-crombolo types check [--static]
+crombolo types check [--static] [--against <against>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `--static` | boolean | Validate the files only, no database. |
+| `--against` | string | List where a hosted site's definitions differ from the files, changing neither. |
+| `--env` | string | The --against site's environment. |
 
 **Output** (single, with `-o json`):
 
@@ -395,8 +415,9 @@ crombolo types check [--static]
 - `problems` (array of object)
 - `classification` (string)
 - `findings` (array of object)
+- `against` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`, `auth`.
 
 **Outcomes:** `problems_found`, `blocked`.
 
@@ -427,17 +448,26 @@ crombolo types editors [<editor>] [--all]
 
 ### `crombolo types export`
 
-Write the database's definitions as schema/ files. Safe to run again: a second run changes nothing more.
+Write the database's definitions as schema/ files, or a hosted site's with --from. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types export
+crombolo types export [--from <from>] [--env <env>] [--yes] [--dry-run]
 ```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--from` | string | The hosted site to bring them from, by its profile. |
+| `--env` | string | The --from site's environment. |
+| `--yes` | boolean | With --from: change the files without asking. |
+| `--dry-run` | boolean | With --from: say what would change, and change nothing. |
 
 **Output** (bounded, with `-o json`):
 
 - `wrote` (array of string)
+- `removed` (array of string)
+- `version` (string)
 
-**Fails with:** `usage`, `internal`.
+**Fails with:** `usage`, `internal`, `refused`, `confirmation_required`, `unavailable`, `auth`.
 
 ### `crombolo types list`
 
@@ -474,7 +504,7 @@ crombolo types list [--kind <kind>] [--own] [--from-database]
 Write a type or data type file, and the view it points at, then apply it. Each run acts again.
 
 ```
-crombolo types new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--block <block>] [--set <set>]
+crombolo types new <kind> <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--tab <tab>] [--title] [--no-view] [--compose <compose>] [--allow-child <allow-child>] [--vary-by-culture] [--vary-by-segment] [--library] [--list-view] [--list-view-type <list-view-type>] [--editor <editor>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--block <block>] [--set <set>] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -522,20 +552,26 @@ crombolo types new <kind> <alias> [--name <name>] [--description <description>] 
 | `--value-type` | string | Data types: what a label holds. One of `string`, `long-string`, `decimal`, `integer`, `big-integer`, `date`, `time`. |
 | `--block` | string[] | Data types: an element type offered as a block. |
 | `--set` | string[] | Data types: store any other setting as given; JSON when it parses. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
 - `created` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `conflict`, `refused`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types property add`
 
 Add a property to a type. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types property add <type> <alias> --type <type> [--name <name>] [--description <description>] [--mandatory] [--tab <tab>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types property add <type> <alias> --type <type> [--name <name>] [--description <description>] [--mandatory] [--tab <tab>] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -549,7 +585,12 @@ crombolo types property add <type> <alias> --type <type> [--name <name>] [--desc
 | `--tab` | string | The tab it goes in. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -558,15 +599,16 @@ crombolo types property add <type> <alias> --type <type> [--name <name>] [--desc
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types property move`
 
 Move a property to another tab, or before or after another property. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types property move <type> <property> [--tab <tab>] [--before <before>] [--after <after>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types property move <type> <property> [--tab <tab>] [--before <before>] [--after <after>] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -578,7 +620,12 @@ crombolo types property move <type> <property> [--tab <tab>] [--before <before>]
 | `--after` | string | The property it goes after. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -587,15 +634,16 @@ crombolo types property move <type> <property> [--tab <tab>] [--before <before>]
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types property remove`
 
 Remove a property from a type; its values are kept until `types purge`. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types property remove <type> <property> [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types property remove <type> <property> [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -604,7 +652,12 @@ crombolo types property remove <type> <property> [--kind <kind>] [--dry-run] [--
 | `property` | string | The property's alias. Required. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -613,15 +666,16 @@ crombolo types property remove <type> <property> [--kind <kind>] [--dry-run] [--
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types property rename`
 
 Rename a property's alias, keeping its values. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types property rename <type> <property> <to> [--kind <kind>] [--dry-run] [--no-apply] [--everywhere]
+crombolo types property rename <type> <property> <to> [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes] [--everywhere]
 ```
 
 | Argument | Type | What it is |
@@ -631,7 +685,12 @@ crombolo types property rename <type> <property> <to> [--kind <kind>] [--dry-run
 | `to` | string | Its new alias. Required. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 | `--everywhere` | boolean | Rename it wherever the site names it too: definitions, content files and views. |
 
 **Output** (single, with `-o json`):
@@ -651,7 +710,7 @@ crombolo types property rename <type> <property> <to> [--kind <kind>] [--dry-run
 Change a property's name, description, validation, variance or data type. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types property update <type> <property> [--name <name>] [--description <description>] [--mandatory] [--regex <regex>] [--regex-message <regex-message>] [--vary-by-culture] [--vary-by-segment] [--type <type>] [--member-can-view] [--member-can-edit] [--sensitive] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types property update <type> <property> [--name <name>] [--description <description>] [--mandatory] [--regex <regex>] [--regex-message <regex-message>] [--vary-by-culture] [--vary-by-segment] [--type <type>] [--member-can-view] [--member-can-edit] [--sensitive] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -671,7 +730,12 @@ crombolo types property update <type> <property> [--name <name>] [--description 
 | `--sensitive` | boolean | Member types: hidden from users who may not see sensitive data. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -680,8 +744,9 @@ crombolo types property update <type> <property> [--name <name>] [--description 
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types purge`
 
@@ -709,7 +774,7 @@ crombolo types purge --older-than <older-than> [--backup-taken]
 Remove a type or data type the site no longer needs. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types remove <alias> [--retire] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types remove <alias> [--retire] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -718,7 +783,12 @@ crombolo types remove <alias> [--retire] [--kind <kind>] [--dry-run] [--no-apply
 | `--retire` | boolean | Types: retire it though items use it; they stay, with their values. |
 | `--kind` | string | The kind, when two share the alias. One of `content`, `element`, `media`, `member`, `data`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -727,15 +797,16 @@ crombolo types remove <alias> [--retire] [--kind <kind>] [--dry-run] [--no-apply
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types rename`
 
 Rename a type's or a data type's alias, keeping its content. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types rename <alias> <to> [--kind <kind>] [--dry-run] [--no-apply] [--everywhere]
+crombolo types rename <alias> <to> [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes] [--everywhere]
 ```
 
 | Argument | Type | What it is |
@@ -744,7 +815,12 @@ crombolo types rename <alias> <to> [--kind <kind>] [--dry-run] [--no-apply] [--e
 | `to` | string | Its new alias. Required. |
 | `--kind` | string | The kind, when two share the alias. One of `content`, `element`, `media`, `member`, `data`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 | `--everywhere` | boolean | Rename it wherever the site names it too: definitions, content files and views. |
 
 **Output** (single, with `-o json`):
@@ -817,7 +893,7 @@ crombolo types sync [--force-retire-types]
 Add a tab to a type. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types tab add <type> <name> [--before <before>] [--after <after>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types tab add <type> <name> [--before <before>] [--after <after>] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -828,7 +904,12 @@ crombolo types tab add <type> <name> [--before <before>] [--after <after>] [--ki
 | `--after` | string | The tab it goes after. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -837,15 +918,16 @@ crombolo types tab add <type> <name> [--before <before>] [--after <after>] [--ki
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types tab move`
 
 Move a tab before or after another. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types tab move <type> <name> [--before <before>] [--after <after>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types tab move <type> <name> [--before <before>] [--after <after>] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -856,7 +938,12 @@ crombolo types tab move <type> <name> [--before <before>] [--after <after>] [--k
 | `--after` | string | The tab it goes after. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -865,15 +952,16 @@ crombolo types tab move <type> <name> [--before <before>] [--after <after>] [--k
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types tab remove`
 
 Remove a type's tab, moving its properties to another. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types tab remove <type> <name> [--move-to <move-to>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types tab remove <type> <name> [--move-to <move-to>] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -883,7 +971,12 @@ crombolo types tab remove <type> <name> [--move-to <move-to>] [--kind <kind>] [-
 | `--move-to` | string | The tab its properties go to. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -892,15 +985,16 @@ crombolo types tab remove <type> <name> [--move-to <move-to>] [--kind <kind>] [-
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types tab rename`
 
 Rename a type's tab. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types tab rename <type> <name> <to> [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types tab rename <type> <name> <to> [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -910,7 +1004,12 @@ crombolo types tab rename <type> <name> <to> [--kind <kind>] [--dry-run] [--no-a
 | `to` | string | Its new name. Required. |
 | `--kind` | string | The kind, when two types share the alias. One of `content`, `element`, `media`, `member`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -919,15 +1018,16 @@ crombolo types tab rename <type> <name> <to> [--kind <kind>] [--dry-run] [--no-a
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo types update`
 
 Change a type's or a data type's settings. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo types update <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--library] [--vary-by-culture] [--vary-by-segment] [--list-view <list-view>] [--allow-child <allow-child>] [--disallow-child <disallow-child>] [--compose <compose>] [--decompose <decompose>] [--view <view>] [--remove-view <remove-view>] [--default-view <default-view>] [--set <set>] [--unset <unset>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--add-block <add-block>] [--block-label <block-label>] [--block-settings <block-settings>] [--remove-block <remove-block>] [--start-at <start-at>] [--kind <kind>] [--dry-run] [--no-apply]
+crombolo types update <alias> [--name <name>] [--description <description>] [--icon <icon>] [--at-root] [--element] [--library] [--vary-by-culture] [--vary-by-segment] [--list-view <list-view>] [--allow-child <allow-child>] [--disallow-child <disallow-child>] [--compose <compose>] [--decompose <decompose>] [--view <view>] [--remove-view <remove-view>] [--default-view <default-view>] [--set <set>] [--unset <unset>] [--max-chars <max-chars>] [--rows <rows>] [--min <min>] [--max <max>] [--step <step>] [--range] [--default-on] [--label <label>] [--with-time] [--option <option>] [--multiple] [--allow <allow>] [--of <of>] [--columns <columns>] [--group <group>] [--color <color>] [--alpha] [--palette] [--extension <extension>] [--crop <crop>] [--preview] [--language <language>] [--value-type <value-type>] [--add-block <add-block>] [--block-label <block-label>] [--block-settings <block-settings>] [--remove-block <remove-block>] [--start-at <start-at>] [--kind <kind>] [--dry-run] [--no-apply] [--to <to>] [--env <env>] [--force] [--all] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -981,7 +1081,12 @@ crombolo types update <alias> [--name <name>] [--description <description>] [--i
 | `--start-at` | string | Data types: a picker's start node, by the page's path; none for none. |
 | `--kind` | string | The kind, when two share the alias. One of `content`, `element`, `media`, `member`, `data`. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
+| `--to` | string | Change this hosted site too, by its profile, after the files. |
+| `--env` | string | The --to site's environment. |
+| `--force` | boolean | With --to: change it there though the site's copy differs from these files. |
+| `--all` | boolean | With --to: make the site's definitions match these files, not only this change. |
+| `--yes` | boolean | With --to --all: overwrite them there without asking. |
 
 **Output** (single, with `-o json`):
 
@@ -990,8 +1095,9 @@ crombolo types update <alias> [--name <name>] [--description <description>] [--i
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo languages add`
 
@@ -1057,8 +1163,9 @@ crombolo languages remove <iso> [--dry-run] [--no-apply]
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo languages update`
 
@@ -1085,8 +1192,9 @@ crombolo languages update <iso> [--name <name>] [--fallback <fallback>] [--manda
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo forms field add`
 
@@ -1715,7 +1823,7 @@ crombolo workflows remove <alias> [--dry-run] [--no-apply]
 | --- | --- | --- |
 | `alias` | string | The workflow's alias. Required. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
 
 **Output** (single, with `-o json`):
 
@@ -1724,8 +1832,9 @@ crombolo workflows remove <alias> [--dry-run] [--no-apply]
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo workflows show`
 
@@ -1762,7 +1871,7 @@ crombolo workflows stage add <workflow> <stage> [--name <name>] --approver <appr
 | `--next` | string[] | A stage that follows it. |
 | `--send-back` | string | Where it sends back to: editor, or a stage before it. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
 
 **Output** (single, with `-o json`):
 
@@ -1771,8 +1880,9 @@ crombolo workflows stage add <workflow> <stage> [--name <name>] --approver <appr
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo workflows stage remove`
 
@@ -1787,7 +1897,7 @@ crombolo workflows stage remove <workflow> <stage> [--dry-run] [--no-apply]
 | `workflow` | string | The workflow's alias. Required. |
 | `stage` | string | The stage's alias. Required. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
 
 **Output** (single, with `-o json`):
 
@@ -1796,8 +1906,9 @@ crombolo workflows stage remove <workflow> <stage> [--dry-run] [--no-apply]
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo workflows stage update`
 
@@ -1819,7 +1930,7 @@ crombolo workflows stage update <workflow> <stage> [--name <name>] [--approver <
 | `--next` | string[] | Every stage that follows it; none for a last stage. |
 | `--send-back` | string | Where it sends back to: editor, or a stage before it. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
 
 **Output** (single, with `-o json`):
 
@@ -1828,8 +1939,9 @@ crombolo workflows stage update <workflow> <stage> [--name <name>] [--approver <
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo workflows update`
 
@@ -1855,7 +1967,7 @@ crombolo workflows update <alias> [--name <name>] [--content-type <content-type>
 | `--on-change` | string | What waiting requests do when it changes. One of `keep`, `restart`, `withdraw`. |
 | `--scheduling` | boolean | A request may say when to publish or take down. |
 | `--dry-run` | boolean | Say what would change, and change nothing. |
-| `--no-apply` | boolean | Change it, and leave applying it to `crombolo types sync`. |
+| `--no-apply` | boolean | Change it, and leave applying it here to `crombolo types sync`. |
 
 **Output** (single, with `-o json`):
 
@@ -1864,8 +1976,9 @@ crombolo workflows update <alias> [--name <name>] [--content-type <content-type>
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo webhooks events`
 
@@ -3983,8 +4096,9 @@ crombolo site urls [--hide-top-level] [--show-top-level] [--dry-run] [--no-apply
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo profile add`
 
@@ -4884,8 +4998,9 @@ crombolo users groups export <alias> [--dry-run] [--no-apply]
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo users groups list`
 
@@ -4937,6 +5052,7 @@ crombolo users groups new <alias> --name <name> [--description <description>] [-
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 - `placed` (object)
   - `key` (string)
   - `alias` (string)
@@ -5001,8 +5117,9 @@ crombolo users groups remove <alias> [--move-users-to <move-users-to>] [--dry-ru
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 
-**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+**Fails with:** `usage`, `internal`, `not_found`, `refused`, `conflict`, `confirmation_required`, `unavailable`.
 
 ### `crombolo users groups sections`
 
@@ -5074,6 +5191,7 @@ crombolo users groups update <alias> [--name <name>] [--description <description
 - `applied` (boolean)
 - `findings` (array of string)
 - `schema` (string)
+- `hosted` (object)
 - `placed` (object)
   - `key` (string)
   - `alias` (string)

@@ -183,6 +183,12 @@ calls the functions directly.
 - `content-transfer.integration.ts` — export, check, import, runs, revert,
   `publish`/`unpublish`, and `--with-blobs` carrying the media bytes into a
   second environment's store.
+- `workspaces.integration.ts` — stories `375`–`377` and `380` on a site run with
+  `crombolo start`, signed in over HTTP as the back office is: a type, a page and a
+  template changed in a workspace and rendered with its own views while the live site
+  serves what it did, then merged into the live site and its files at once; a conflict
+  with Shared named, settled and merged; Shared's later change brought in; a discarded
+  workspace leaving nothing behind.
 - `first-boot.integration.ts` — story `080`'s first boot. It covers a production
   start with no password, set up from the browser with `CROMBOLO_SETUP_CODE`
   (which never appears in the output), then restarted. It covers the holding page

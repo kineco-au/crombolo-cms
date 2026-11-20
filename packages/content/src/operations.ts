@@ -12,6 +12,7 @@
 import type { DocumentValidationError, DocumentValue } from '@crombolo/core'
 import { normaliseUuid, SystemNodes } from '@crombolo/core'
 import {
+  AuditLog,
   appendCacheInstruction,
   ContentTypeRepository,
   type Db,
@@ -26,11 +27,12 @@ import {
   type SetDomainsResult,
   StaleRevisionError,
   sql,
+  WorkspaceRefusedError,
   WriteRejectedError,
 } from '@crombolo/data'
 import type { Actor, ContentPrincipal } from './actor.ts'
 import { duplicateBlockAlias } from './block-aliases.ts'
-import type { DocumentEvent, EventSink } from './events.ts'
+import { auditEntryFor, type DocumentEvent, type EventSink } from './events.ts'
 import {
   deniedPropertyWrite,
   mayAt,
@@ -194,6 +196,7 @@ function refusalFrom(error: unknown, extra?: (error: unknown) => string | undefi
       ...(error.errors.length > 0 ? { errors: error.errors } : {}),
     }
   if (error instanceof StaleRevisionError) return refuse('stale', 412, STALE)
+  if (error instanceof WorkspaceRefusedError) return refuse('conflict', 409, error.message)
   const reason = extra?.(error)
   if (reason) return refuse('invalid', 400, reason)
   throw error
@@ -204,6 +207,8 @@ export type DocumentOperations = ReturnType<typeof createDocumentOperations>
 export function createDocumentOperations(options: DocumentOperationsOptions) {
   const { db, events } = options
   const repo = new DocumentRepository(db, options.repository)
+  /** Set for a workspace's operations (story 375): nothing they write reaches Shared. */
+  const workspace = options.repository?.workspace
   const nodes = new NodeRepository(db)
   const types = new ContentTypeRepository(db, {
     kind: repo.kind === 'media' ? 'media' : 'document',
@@ -249,7 +254,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     key: string,
   ): Promise<{ node: NodeRow; chain: string[]; trashed: boolean } | undefined> => {
     const node = await nodes.byKey(key)
-    if (!node || node.objectType !== repo.objectType) return undefined
+    if (!node || !repo.sees(node)) return undefined
     const ids = node.path
       .split(',')
       .map(Number)
@@ -257,7 +262,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     const byId = new Map((await nodes.byIds(ids)).map((row) => [row.id, row]))
     const chain = ids.flatMap((id) => {
       const row = byId.get(id)
-      return row && row.objectType === repo.objectType ? [row.key] : []
+      return row && repo.sees(row) ? [row.key] : []
     })
     return { node, chain, trashed: node.trashed }
   }
@@ -380,7 +385,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     const out: NodeRow[] = []
     for (const key of keys) {
       const node = await nodes.byKey(key)
-      if (!node || node.objectType !== repo.objectType) return refuse('notFound', 404, NOT_FOUND)
+      if (!node || !repo.sees(node)) return refuse('notFound', 404, NOT_FOUND)
       if (!out.some((seen) => seen.id === node.id)) out.push(node)
     }
     return out
@@ -422,7 +427,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     const found = await pagesFor(keys)
     if (!Array.isArray(found)) return found
     const target = targetKey ? await nodes.byKey(targetKey) : undefined
-    if (targetKey && (!target || target.objectType !== repo.objectType))
+    if (targetKey && (!target || !repo.sees(target)))
       return refuse('notFound', 404, 'The document or target could not be found.')
     const denied = await deniedOf(actor, 'move', found)
     if (denied) return denied
@@ -985,6 +990,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     },
 
     async emptyBin(actor: Actor): Promise<Result<{ deleted: number }>> {
+      if (workspace !== undefined)
+        return refuse('conflict', 409, 'The recycle bin is Shared’s: empty it there.')
       if (!(await permits(actor, 'emptyBin', 'bin'))) return forbidden()
       // One change: each page deleted is announced as a delete from the bin is,
       // and the emptying itself is recorded once.
@@ -1179,6 +1186,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     > {
       const node = await nodes.byKey(key)
       if (!node || node.objectType !== repo.objectType) return { status: 'notFound' }
+      // A page's hostnames are the site's, as its users are: never a workspace's.
+      if (workspace !== undefined) return { status: 'forbidden' }
       if (!(await permits(actor, 'domains', key))) return { status: 'forbidden' }
       const result = await commit(
         actor,
@@ -1203,6 +1212,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       change: 'added' | 'set',
     ): Promise<PublicAccessStatus> {
       if (!(await isDocument(key))) return 'content-not-found'
+      if (workspace !== undefined) return 'forbidden'
       if (!(await permits(actor, 'publicAccess', key))) return 'forbidden'
       if (!(await isDocument(input.loginDocumentKey))) return 'login-node-not-found'
       if (!(await isDocument(input.errorDocumentKey))) return 'error-node-not-found'
@@ -1228,6 +1238,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
 
     async removePublicAccess(actor: Actor, key: string): Promise<PublicAccessStatus> {
       if (!(await isDocument(key))) return 'content-not-found'
+      if (workspace !== undefined) return 'forbidden'
       if (!(await permits(actor, 'publicAccess', key))) return 'forbidden'
       const removed = await commit(
         actor,
@@ -1266,10 +1277,53 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
 
   /** The content cache instruction other nodes rebuild on. */
   async function repoInstruction(key: string, on: Db = db): Promise<void> {
+    if (workspace !== undefined) return
     await appendCacheInstruction(on, {
       kind: 'content',
       payload: { key },
       by: options.repository?.nodeId,
     })
+  }
+}
+
+/**
+ * A workspace's operations (story 375): the same rules over the workspace's
+ * pages, audited naming the workspace, and announced nowhere else. No
+ * webhook, notification, live event, redirect or approval: a workspace's work
+ * reaches anyone else only by its merge (story 380).
+ */
+export function createWorkspaceOperations(
+  options: Pick<DocumentOperationsOptions, 'db' | 'repository' | 'refusalReason'>,
+  workspace: { id: number; name: string },
+): DocumentOperations {
+  return createDocumentOperations({
+    db: options.db,
+    repository: { ...options.repository, workspace: workspace.id },
+    events: workspaceAuditSink(workspace.name),
+    refusalReason: options.refusalReason,
+  })
+}
+
+/** Each write's audit entry, saying which workspace it was made in. */
+export function workspaceAuditSink(name: string): EventSink {
+  return {
+    async record(tx, event, actor) {
+      const entry = auditEntryFor(event, actor)
+      const audit = new AuditLog(tx)
+      const subject =
+        event.type === 'deleted'
+          ? { entityType: entry.entityType, entityKey: event.key, entityName: event.name }
+          : entry.entityKey
+            ? await audit.describe(entry.entityType, entry.entityKey)
+            : undefined
+      const where = `In the workspace "${name}"`
+      await audit.record({
+        ...entry,
+        entityType: subject?.entityType ?? entry.entityType,
+        entityKey: subject?.entityKey ?? entry.entityKey,
+        entityName: subject?.entityName ?? null,
+        detail: entry.detail ? `${where}. ${entry.detail}` : where,
+      })
+    },
   }
 }

@@ -9,7 +9,13 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { PortFailure } from '@crombolo/api-management/domain'
 import type { ContentTypeAggregate, DataTypeModel, FormTypes } from '@crombolo/core'
-import { currentSchemaState, type Db, updateSchemaStateHash } from '@crombolo/data'
+import {
+  currentSchemaState,
+  type Db,
+  updateSchemaStateHash,
+  WorkspaceFileRepository,
+  type WorkspaceScope,
+} from '@crombolo/data'
 import {
   type ChangeClass,
   exportSchemaSet,
@@ -226,6 +232,88 @@ export function createSchemaFileWriter(
       writeSchemaFiles(files.schemaDir, set)
       await settle()
     },
+  }
+}
+
+/** Where a workspace keeps its copy of `schema/` among its files (story 376). */
+export const WORKSPACE_SCHEMA_PREFIX = 'schema/'
+
+/** What is wrong with a workspace's definitions, as its own rows would write them. */
+export async function workspaceSchemaProblems(
+  db: Db,
+  files: SchemaFiles,
+  workspace: WorkspaceScope,
+): Promise<string[]> {
+  const set = await exportSchemaSet(db, '1.0.0', { workspace })
+  return validateSchemaSet(set, {
+    componentAliases: files.componentAliases(),
+    types: files.formTypes,
+  }).map((p) => `${p.file}${p.path ? ` (${p.path})` : ''}: ${p.message}`)
+}
+
+/**
+ * The writer for a workspace (story 376): a type or data type saved there is
+ * written into the workspace's own copy of `schema/`, with the class of the
+ * change. The version, languages and URL options are the site's and are left;
+ * a site whose files are read-only refuses the save, as Shared's does.
+ */
+export function createWorkspaceSchemaFileWriter(
+  db: Db,
+  files: SchemaFiles,
+  kind: SchemaTypeKind,
+  workspace: WorkspaceScope,
+): SchemaFileWriter {
+  const shared = createSchemaFileWriter(db, files, kind)
+  const store = new WorkspaceFileRepository(db)
+  const pathFor = (dir: string, alias: string) =>
+    `${WORKSPACE_SCHEMA_PREFIX}${dir}/${fileNameFor(alias)}`
+  const typePath = (alias: string) => pathFor(TYPE_KIND_FILES[kind].dir, alias)
+  let changeClass: ChangeClass = 'none'
+  const exported = () => exportSchemaSet(db, '1.0.0', { workspace })
+  return {
+    refuse: (aggregate) => shared.refuse(aggregate),
+    async bumpVersion(classification) {
+      changeClass = classification
+    },
+    async write(aggregate, previousAlias) {
+      const set = await exported()
+      const list =
+        kind === 'document'
+          ? set.contentTypes
+          : kind === 'media'
+            ? (set.mediaTypes ?? [])
+            : (set.memberTypes ?? [])
+      const type = list.find((t) => t.key === aggregate.key)
+      if (!type) return
+      if (previousAlias && previousAlias !== aggregate.alias)
+        await store.write(workspace.id, typePath(previousAlias), null, changeClass)
+      await store.write(
+        workspace.id,
+        typePath(aggregate.alias),
+        writeContentType(type, kind),
+        changeClass,
+      )
+      changeClass = 'none'
+    },
+    async remove(alias) {
+      await store.write(workspace.id, typePath(alias), null, 'breaking')
+    },
+    async writeDataType(model) {
+      if (!model.alias) return
+      const dataType = (await exported()).dataTypes.find((d) => d.key === model.key)
+      await store.write(
+        workspace.id,
+        pathFor('data-types', model.alias),
+        dataType ? writeDataType(dataType) : null,
+        'additive',
+      )
+    },
+    async removeDataType(alias) {
+      await store.write(workspace.id, pathFor('data-types', alias), null, 'breaking')
+    },
+    async writeLanguages() {},
+    async writeUrlOptions() {},
+    async rewriteAll() {},
   }
 }
 

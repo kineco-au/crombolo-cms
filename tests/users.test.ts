@@ -121,7 +121,7 @@ async function site(config: Record<string, unknown> = {}) {
     const response = await client.post(`${V1}/user-group`, {
       name: 'Group',
       alias: 'group',
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: false,
@@ -690,7 +690,12 @@ describe('user groups', () => {
       name: 'Reviewers',
       alias: 'reviewers',
       icon: 'icon-eye',
-      sections: ['Umb.Section.Content', 'Umb.Section.Media', 'My.Custom.Section'],
+      sections: [
+        'Umb.Section.Content',
+        'Crombolo.Section.Pages',
+        'Umb.Section.Media',
+        'My.Custom.Section',
+      ],
       languages: ['en-US'],
       hasAccessToAllLanguages: false,
       documentStartNode: { id: home },
@@ -724,6 +729,7 @@ describe('user groups', () => {
       aliasCanBeChanged: true,
       sections: expect.arrayContaining([
         'Umb.Section.Content',
+        'Crombolo.Section.Pages',
         'Umb.Section.Media',
         'My.Custom.Section',
       ]),
@@ -857,7 +863,7 @@ describe('group owners (story 302)', () => {
 
   test('an owner chooses who is in the group; a member who is not an owner cannot', async () => {
     const { h, user, group } = await site()
-    const users = ['Umb.Section.Users', 'Umb.Section.Content']
+    const users = ['Umb.Section.Users', 'Umb.Section.Content', 'Crombolo.Section.Pages']
     const leads = keyOf(await group({ name: 'Leads', alias: 'leads', sections: users }))
     const team = keyOf(
       await group({ name: 'Team', alias: 'team', sections: users, owners: [{ id: leads }] }),
@@ -979,7 +985,7 @@ describe('who may do what', () => {
     const managers = await group({
       name: 'Managers',
       alias: 'managers',
-      sections: ['Umb.Section.Users', 'Umb.Section.Content'],
+      sections: ['Umb.Section.Users', 'Umb.Section.Content', 'Crombolo.Section.Pages'],
       documentRootAccess: true,
     })
     const managersKey = managers.headers.get('umb-generated-resource') as string
@@ -1033,7 +1039,11 @@ describe('who may do what', () => {
     expect(filtered.items.map((g) => g.id)).toEqual([GROUPS.writer])
     // What a group grants is an administrator's: creating, changing or deleting one is refused
     const created = await group(
-      { name: 'Narrow', alias: 'narrow', sections: ['Umb.Section.Content'] },
+      {
+        name: 'Narrow',
+        alias: 'narrow',
+        sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
+      },
       manager.client,
     )
     expect(created.status).toBe(403)
@@ -1057,7 +1067,7 @@ describe('who may do what', () => {
     const restricted = await group({
       name: 'About editors',
       alias: 'aboutEditors',
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       documentStartNode: { id: about },
       fallbackPermissions: [
         'Umb.Document.Read',

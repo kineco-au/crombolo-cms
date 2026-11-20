@@ -19,7 +19,12 @@ import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
 import type { Io } from './site.ts'
 import { siteConfig } from './site.ts'
-import { commitDefinitionEdit, type EditFlags, type EditOutcome } from './type-edit.ts'
+import {
+  commitDefinitionEdit,
+  type EditOutcome,
+  type LocalEditFlags,
+  localOnly,
+} from './type-edit.ts'
 import { loadTypes, needSchemaDir, parseSet, refuseProblems } from './types.ts'
 
 export interface FoundForm {
@@ -54,7 +59,7 @@ export function commitFormEdit(
   found: FoundForm,
   result: FormEditResult | { ok: true; form: null },
   change: string[],
-  flags: EditFlags,
+  flags: LocalEditFlags,
 ): Promise<EditOutcome> {
   if (!result.ok) throw new CliError('refused', `Nothing was changed: ${result.reason}.`)
   return commitDefinitionEdit(
@@ -67,7 +72,7 @@ export function commitFormEdit(
       next: result.form ? writeForm(result.form) : null,
     },
     change,
-    flags,
+    localOnly(flags),
   )
 }
 

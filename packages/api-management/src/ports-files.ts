@@ -29,12 +29,18 @@ export type FileStatus =
   | 'NotEmpty'
   /** Crombolo: the site keeps these files read-only in the back office (story 337). */
   | 'ReadOnly'
+  /** Crombolo: a component saved in a workspace must compile (story 377). */
+  | 'DoesNotCompile'
+  /** Crombolo: a workspace keeps files of up to a megabyte (story 377). */
+  | 'TooLarge'
 
 /** Why the back office may not change a template, stylesheet or script here (story 337). */
 export const CONTENT_FILES_READ_ONLY =
   "This site doesn't allow templates, stylesheets and scripts to be changed in the back office."
 
-export type FileResult = { ok: true; path: string } | { ok: false; status: FileStatus }
+export type FileResult =
+  | { ok: true; path: string }
+  | { ok: false; status: FileStatus; detail?: string }
 
 export interface FileSystemPort {
   /** Folders then files, each by name; the root when `parentPath` is null. */

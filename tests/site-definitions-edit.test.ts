@@ -301,7 +301,15 @@ describe('the commands, on a site with a page in French and a user', () => {
     ).toBe(ERROR_KINDS.refused.exitCode)
     expect(run('users', 'groups', 'update', 'nobody', '--name', 'x').code).toBe(
       ERROR_KINDS.not_found.exitCode,
-    )
+    ) // Media is a place under Content (story 385): not without it, in a file or a new group.
+    const without = run('users', 'groups', 'update', 'translators', '--remove-section', 'content')
+    expect(without.code, without.out).toBe(ERROR_KINDS.refused.exitCode)
+    expect(without.out).toContain('Media is a place under Content, so the group needs Content too.')
+    expect(read('user-groups/translators.toml')).toContain('sections = ["content", "media"]')
+    expect(
+      run('users', 'groups', 'new', 'archivists', '--name', 'Archivists', '--section', 'media')
+        .code,
+    ).toBe(ERROR_KINDS.refused.exitCode)
   })
 
   test('a group made in the back office refused until exported, then changed', () => {

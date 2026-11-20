@@ -60,7 +60,7 @@ test('the workspace hints that an element type is not in the Library until that 
   await signIn(page)
   const hint = page.locator('crombolo-element-type-hint')
   const workspace = (key: string) =>
-    page.goto(`/crombolo/section/settings/workspace/document-type/edit/${key}`)
+    page.goto(`/crombolo/section/content/structure/workspace/document-type/edit/${key}`)
 
   // An element type with no library flag — the case that sends someone looking
   // in the Library and finding nothing. The suite's own type (`serve.ts`), so a

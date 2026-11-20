@@ -1,9 +1,10 @@
 /**
  * Settings, laid out as Crombolo's (story 234): a landing page of cards, each
- * tool on its own without a tab bar, and the Structure or Code tree only beside
- * the editors it opens. Built from the pieces Umbraco's `umb-section-default`
- * uses, and drawn in its place through the `Crombolo.SectionLayout.Settings`
- * manifest.
+ * tool on its own without a tab bar. Built from the pieces Umbraco's
+ * `umb-section-default` uses, and drawn in its place through the
+ * `Crombolo.SectionLayout.Settings` manifest. Structure and Code, places under
+ * Content (story 385), are drawn by the same element, each with its tree beside
+ * every page; Settings sends their old addresses there.
  */
 
 import {
@@ -70,6 +71,20 @@ const savePosition = (event) => {
 
 const menuOf = (manifest, menu) => manifest.meta?.menus?.includes(menu) === true
 
+/** Which place a section is (story 385): Structure or Code, with a tree; anything else is Settings. */
+const MODES = {
+  'Crombolo.Section.Structure': 'structure',
+  'Crombolo.Section.Components': 'code',
+}
+
+/** Where each place is now. */
+const PLACE_PATHS = { structure: 'section/content/structure', code: 'section/content/code' }
+
+/** Sends an address to another, as a bookmark of one that moved should. */
+const moveTo = (path) => {
+  history.replaceState(null, '', `${new URL(path, document.baseURI).pathname}${location.search}`)
+}
+
 export class CromboloSettingsSectionElement extends UmbLitElement {
   static properties = {
     _routes: { state: true },
@@ -86,6 +101,21 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
   #landing
   #viewContexts = new Map()
   #providedView
+  #manifest
+
+  get manifest() {
+    return this.#manifest
+  }
+
+  /** Set as the section is opened; the place it is decides the routes. */
+  set manifest(value) {
+    this.#manifest = value
+    this.#createRoutes()
+  }
+
+  #mode() {
+    return MODES[this.#manifest?.alias] ?? 'settings'
+  }
 
   constructor() {
     super()
@@ -149,9 +179,16 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
                   aliasToPath(extension.manifest.alias),
                 component: () => createExtensionElement(extension.manifest),
                 setup: (element, info) => {
-                  api?.setup?.(element, info)
                   const entityType = info?.match?.params?.entityType
                   const tree = treeFor(entityType)
+                  // A Structure or Code editor at its Settings address opens in its place.
+                  if (tree && this.#mode() === 'settings') {
+                    moveTo(
+                      location.pathname.replace(/\/section\/settings\//, `/${PLACE_PATHS[tree]}/`),
+                    )
+                    return
+                  }
+                  api?.setup?.(element, info)
                   this.#showing(tree, {
                     title: tree ? undefined : advancedToolTitle(this.#advanced(), entityType),
                   })
@@ -197,7 +234,10 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
 
   /** Which tree shows, the trail that heads the page, and a tool's title section. */
   #showing(tree, { title, tool } = {}) {
-    this._tree = tree
+    const mode = this.#mode()
+    // Structure and Code keep their tree beside every page; Settings has none.
+    this._tree = mode === 'settings' ? undefined : mode
+    tree = this._tree
     this._crumbs = crumbsFor({ tree, title })
     this._tool = tool
   }
@@ -272,12 +312,39 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
       },
       setup: () => this.#showing('structure'),
     })
+    const mode = this.#mode()
+    if (mode !== 'settings') {
+      this._routes = [
+        ...(mode === 'structure'
+          ? [
+              forms('forms/entries', 'crombolo-forms-entries', () => import('./forms-entries.js')),
+              forms('forms', 'crombolo-forms-overview', () => import('./forms-overview.js')),
+              forms(
+                'workflows',
+                'crombolo-workflow-designer',
+                () => import('./workflow-designer.js'),
+              ),
+            ]
+          : []),
+        ...this.#sectionRoutes,
+        { ...tree(mode), path: '', pathMatch: 'full' },
+        { path: '**', component: UmbRouteNotFoundElement },
+      ]
+      return
+    }
+    // Structure and Code were Settings' trees, and Forms and Workflows nodes in
+    // Structure: the addresses people have open them in their places (story 385).
+    const moved = (path, to) => ({
+      path,
+      component: () => document.createElement('div'),
+      setup: () => moveTo(to),
+    })
     this._routes = [
-      forms('forms/entries', 'crombolo-forms-entries', () => import('./forms-entries.js')),
-      forms('forms', 'crombolo-forms-overview', () => import('./forms-overview.js')),
-      forms('workflows', 'crombolo-workflow-designer', () => import('./workflow-designer.js')),
-      tree('structure'),
-      tree('code'),
+      moved('forms/entries', `${PLACE_PATHS.structure}/forms/entries`),
+      moved('forms', `${PLACE_PATHS.structure}/forms`),
+      moved('workflows', `${PLACE_PATHS.structure}/workflows`),
+      moved('structure', PLACE_PATHS.structure),
+      moved('code', PLACE_PATHS.code),
       // Umbraco's welcome, which this page replaces: an address people have.
       { path: 'dashboard/welcome', ...landing },
       // Bundles became Extensions: its old addresses, tab and all, go to the new ones.
@@ -291,17 +358,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         },
       },
       // Workflows were a Settings card, then beside forms (story 289): an address people have.
-      {
-        path: 'dashboard/workflows',
-        component: () => document.createElement('div'),
-        setup: () => {
-          history.replaceState(
-            null,
-            '',
-            new URL('section/settings/workflows', document.baseURI).pathname,
-          )
-        },
-      },
+      moved('dashboard/workflows', `${PLACE_PATHS.structure}/workflows`),
       ...dashboards,
       ...this.#sectionRoutes,
       { path: '', pathMatch: 'full', ...landing },

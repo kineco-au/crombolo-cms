@@ -12,6 +12,11 @@ import {
   migrate,
   pendingMigrations,
   resolveDialectName,
+  WORKSPACE_COLUMNS,
+  WORKSPACE_MERGE_COLUMNS,
+  WORKSPACE_SCHEMA_COLUMNS,
+  WORKSPACE_SCHEMA_TABLES,
+  WORKSPACE_TABLES,
 } from '@crombolo/data'
 
 // Tests build their throwaway sites with `mkdtemp` under `output/`, which does not
@@ -128,6 +133,33 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 085, a workspace's schema (story 376): two tables, columns, and the alias index
+  // put back over every row.
+  for (const table of WORKSPACE_SCHEMA_TABLES) await db.exec(`DROP TABLE IF EXISTS ${table}`)
+  await db.exec('DROP INDEX IF EXISTS ux_content_type_workspace_alias')
+  await db.exec('DROP INDEX IF EXISTS ix_content_type_workspace')
+  await db.exec('DROP INDEX IF EXISTS ix_data_type_workspace')
+  await db.exec('DROP INDEX IF EXISTS ux_content_type_alias')
+  for (const { table, columns } of WORKSPACE_SCHEMA_COLUMNS)
+    for (const column of columns) await db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+  await db.exec('CREATE UNIQUE INDEX ux_content_type_alias ON content_type (alias)')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceSchema'")
+  // 084, what a merge needs (story 380): columns on 082's tables.
+  for (const { table, columns } of WORKSPACE_MERGE_COLUMNS)
+    for (const column of columns) await db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceMerge'")
+  // 083, the places under Content (story 385): grants added to groups that stay.
+  await db.exec(
+    "DELETE FROM user_group_section WHERE app_alias IN ('pages', 'structure', 'components')",
+  )
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddContentPlaces'")
+  // 082, workspaces (story 375): tables of its own, and a column on four that stay.
+  for (const { table, index } of WORKSPACE_COLUMNS) {
+    await db.exec(`DROP INDEX IF EXISTS ${index}`)
+    await db.exec(`ALTER TABLE ${table} DROP COLUMN workspace_id`)
+  }
+  for (const table of WORKSPACE_TABLES) await db.exec(`DROP TABLE IF EXISTS ${table}`)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaces'")
   // 081, single-use tokens (story 368): 079's table, renamed; it goes with 079's undo.
   await db.exec('DROP INDEX IF EXISTS ux_single_use_token')
   await db.exec('DROP TABLE IF EXISTS single_use_token')

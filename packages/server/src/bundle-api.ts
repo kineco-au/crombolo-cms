@@ -116,25 +116,29 @@ export function permissionsFor(method: string, path: string): string[] {
     .map(([permission]) => permission)
 }
 
-/** The sections a set of permissions needs, for the API's own section checks. */
-const SECTIONS: Readonly<Record<string, string>> = {
-  content: SECTION_ALIASES.content,
-  media: SECTION_ALIASES.media,
-  members: SECTION_ALIASES.members,
-  users: SECTION_ALIASES.users,
-  forms: SECTION_ALIASES.forms,
-  formEntries: SECTION_ALIASES.forms,
-  dictionary: SECTION_ALIASES.translation,
-  contentTypes: SECTION_ALIASES.settings,
-  webhooks: SECTION_ALIASES.settings,
-  workflows: SECTION_ALIASES.workflow,
-  redirects: SECTION_ALIASES.content,
+/**
+ * The sections a set of permissions needs, for the API's own section checks; the
+ * last is the place a person needs to hold it (story 385: pages are Pages', types
+ * Structure's).
+ */
+const SECTIONS: Readonly<Record<string, readonly string[]>> = {
+  content: [SECTION_ALIASES.content, SECTION_ALIASES.pages],
+  media: [SECTION_ALIASES.media],
+  members: [SECTION_ALIASES.members],
+  users: [SECTION_ALIASES.users],
+  forms: [SECTION_ALIASES.forms],
+  formEntries: [SECTION_ALIASES.forms],
+  dictionary: [SECTION_ALIASES.translation],
+  contentTypes: [SECTION_ALIASES.structure],
+  webhooks: [SECTION_ALIASES.settings],
+  workflows: [SECTION_ALIASES.workflow],
+  redirects: [SECTION_ALIASES.content, SECTION_ALIASES.pages],
 }
 
 /** The section an area's permission needs, for acting as the person using it (story 325). */
 export const sectionOfPermission = (permission: string): string | undefined => {
   const area = permission.split('.')[0] as string
-  return area === 'identityProviders' ? SECTION_ALIASES.settings : SECTIONS[area]
+  return area === 'identityProviders' ? SECTION_ALIASES.settings : SECTIONS[area]?.at(-1)
 }
 
 /** The verbs a set of permissions needs, for the API's own permission checks. */
@@ -169,8 +173,7 @@ export function extensionPrincipal(
   const set = new Set(granted)
   const sections = new Set<string>()
   for (const permission of set) {
-    const section = SECTIONS[permission.split('.')[0] as string]
-    if (section) sections.add(section)
+    for (const section of SECTIONS[permission.split('.')[0] as string] ?? []) sections.add(section)
   }
   const verbs = verbsOf(set)
   return {

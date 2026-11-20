@@ -167,7 +167,7 @@ describe('a page’s Info panel', () => {
     expect(duration(90)).toBe('90 seconds')
     expect(duration(86_400)).toBe('1 day')
     expect(fileEditorHref('/shared/layout.tsx', '/umbraco')).toBe(
-      '/umbraco/section/settings/workspace/partial-view/edit/%2Fshared%2Flayout%25dot%25tsx',
+      '/umbraco/section/content/code/workspace/partial-view/edit/%2Fshared%2Flayout%25dot%25tsx',
     )
   })
 })

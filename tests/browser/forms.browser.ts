@@ -153,7 +153,7 @@ test('a Send email workflow is given an e-mail design, and saved', async ({
   expect(created.status()).toBe(200)
 
   // The section opens on its list of forms.
-  await page.goto('/crombolo/section/forms')
+  await page.goto('/crombolo/section/content/forms')
   await page
     .locator('uui-table-row', { hasText: alias })
     .getByRole('button', { name: 'Edit' })
@@ -201,7 +201,7 @@ test('typing # offers dictionary items, chosen as a chip, and a field keeps its 
   })
   expect(made.status()).toBe(201)
 
-  await page.goto(`/crombolo/section/forms/view/forms?form=${CONTACT}`)
+  await page.goto(`/crombolo/section/content/forms/view/forms?form=${CONTACT}`)
   const caption = page.locator('crombolo-form-word-input[label="Caption"]').first()
   const input = caption.locator('input')
   await input.fill('#form.word')

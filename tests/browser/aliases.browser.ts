@@ -11,7 +11,7 @@ const aliasOf = (host: import('@playwright/test').Locator) => host.locator('uui-
 
 test('a new form and its fields take aliases from their names', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/forms/view/forms?new=')
+  await page.goto('/crombolo/section/content/forms/view/forms?new=')
   const editor = page.locator('crombolo-forms-overview')
   const name = editor.getByRole('textbox', { name: 'Name', exact: true })
   await name.fill('Trade enquiry')
@@ -46,7 +46,7 @@ test('a saved form keeps its alias, and unlocking it says what that changes', as
     unlabelled.push(`${message.text().split(' JSHandle')[0]} ${html}`)
   })
   await signIn(page)
-  await page.goto(`/crombolo/section/forms/view/forms?form=${CONTACT}`)
+  await page.goto(`/crombolo/section/content/forms/view/forms?form=${CONTACT}`)
   const editor = page.locator('crombolo-forms-overview')
   const formAlias = editor.locator('crombolo-alias-input').first()
   await expect(formAlias).toBeVisible({ timeout: 30_000 })
@@ -63,7 +63,7 @@ test('a saved form keeps its alias, and unlocking it says what that changes', as
 
 test('a new workflow and its stages take aliases from their names', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/settings/workflows?new=')
+  await page.goto('/crombolo/section/content/structure/workflows?new=')
   const designer = page.locator('crombolo-workflow-designer')
   await designer.getByRole('textbox', { name: 'Name', exact: true }).first().fill('Legal sign off')
   const workflowAlias = designer.locator('crombolo-alias-input').first()

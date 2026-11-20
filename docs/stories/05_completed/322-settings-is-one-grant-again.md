@@ -75,3 +75,8 @@ explain.
   removed from `content-menu.browser.ts`. The browser suite was not run locally; CI runs it on
   release.
 - **Docs:** `backoffice-hosting.md`, story 296's supersession note, the release notes.
+
+## Superseded in part (2026-11-20)
+
+Story 385 gives Structure and Code grants of their own again, apart from Settings, now as
+places under Content's address rather than parts of Settings a partial holder is let into.

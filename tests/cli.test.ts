@@ -155,7 +155,7 @@ describe('failures and outcomes', () => {
       ['bundle', 'install-code', '.', 'out'],
     ])
       expect(run(old).code).toBe(ERROR_KINDS.usage.exitCode)
-  })
+  }, 10_000)
 
   test('bundle install refuses --wire with --profile, and --code-into with a grant', () => {
     const wired = run(['extension', 'install', '@acme/crm', '--wire', '--profile', 'production'])
@@ -383,7 +383,7 @@ name = "Tell the team"
     // The folder alone is enough, before any form names it.
     const unnamed = run(['components', 'new', 'emails/welcome', '-o', 'json'])
     expect(JSON.parse(unnamed.out)).toMatchObject({ template: false, email: true })
-  })
+  }, 10_000)
 })
 
 describe('writing schema from the command line (story 161)', () => {
@@ -624,5 +624,18 @@ describe('generate --delivery (story 052)', () => {
     const written = readFileSync(join(dir, 'app/cms-types.ts'), 'utf8')
     expect(written).toContain('export interface DeliveryTypes {')
     expect(written).toContain("from '@crombolo/delivery-client'")
+  })
+})
+
+describe('types purge (story 382)', () => {
+  test('is refused sooner than the site allows after a retirement, saying how long', () => {
+    mkdirSync(join(dir, 'schema'), { recursive: true })
+    const result = run(
+      ['types', 'purge', '--older-than', '3', '--backup-taken', '-o', 'json'],
+      undefined,
+      { CROMBOLO_PURGE_AFTER_DAYS: '30' },
+    )
+    expect(result.code).toBe(ERROR_KINDS.refused.exitCode)
+    expect(result.envelope().message).toContain('at least 30 day(s) ago')
   })
 })

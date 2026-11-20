@@ -45,7 +45,7 @@ test("a view's Insert menu makes a personalised part, with its tag and import", 
   await signIn(page)
   const run = crypto.randomUUID().slice(0, 6)
   await page.goto(
-    '/crombolo/section/settings/workspace/partial-view/create/parent/partial-view-root/null',
+    '/crombolo/section/content/code/workspace/partial-view/create/parent/partial-view-root/null',
   )
   const editor = page.locator('umb-code-editor')
   await expect(editor).toContainText('export default function Partial')
@@ -82,7 +82,7 @@ test("a view's relative imports resolve to the site's views, and a wrong one is 
 }) => {
   await signIn(page)
   await page.goto(
-    '/crombolo/section/settings/workspace/partial-view/create/parent/partial-view-root/null',
+    '/crombolo/section/content/code/workspace/partial-view/create/parent/partial-view-root/null',
   )
   await expect(page.locator('umb-code-editor')).toContainText('export default function Partial')
 
@@ -106,7 +106,7 @@ test("a view's relative imports resolve to the site's views, and a wrong one is 
 
 test('the create menu offers a component or a module, in plain words', async ({ page }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/settings/code')
+  await page.goto('/crombolo/section/content/code')
   const root = page
     .locator('umb-tree-item, umb-default-tree-item')
     .filter({ hasText: 'Components' })
@@ -128,7 +128,7 @@ test('the create menu offers a component or a module, in plain words', async ({ 
 test('a module is made from its own page, checked as .ts, and has no Insert', async ({ page }) => {
   await signIn(page)
   await page.goto(
-    '/crombolo/section/settings/workspace/partial-view/create/parent/partial-view-root/null/module',
+    '/crombolo/section/content/code/workspace/partial-view/create/parent/partial-view-root/null/module',
   )
   const editor = page.locator('umb-code-editor')
   await expect(editor).toContainText('export function myModule')

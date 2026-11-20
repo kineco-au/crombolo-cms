@@ -107,7 +107,7 @@ names, is declared beside it (story `228`):
 alias = "subEditors"
 name = "Sub-editors"
 icon = "icon-edit"
-sections = ["content", "media"]
+sections = ["content", "pages", "media"]
 permissions = ["Umb.Document.Read", "Umb.Document.Update", "Umb.Document.Create"]
 languages = "all"           # or a list of ISO codes
 owners = ["subEditors", "editor"]   # optional: groups whose members choose who is in it
@@ -127,8 +127,15 @@ owners = ["subEditors", "editor"]   # optional: groups whose members choose who 
   the file's fields back to the file; elsewhere they are read-only there, and a
   save that changes one is refused, naming the file. A declared group cannot be
   renamed or deleted in Users: change or remove its file.
+- **The places under Content are sections of their own** (story `385`): `pages`,
+  `media`, `workflow` (Approvals), `structure`, `components` (Code) and `forms`,
+  each needing `content` too. `settings` opens none of them. A file written
+  before 385 has only what it names, so a group that relied on Content for its
+  pages, or on Settings for types and templates, names `pages`, or `structure`
+  and `components`, to keep them.
 - **Refused:** an unknown section (an application alias such as `content`, or an
-  extension section's dotted alias), an unknown verb, `admin`, which is
+  extension section's dotted alias), a place under Content without `content`,
+  an unknown verb, `admin`, which is
   built in, and `owners` on a group holding a remote permission, which only an
   administrator fills. A language the site does not have stops the sync, naming the group.
 - **Removing a file leaves the group,** as one made in Users, so taking a file
@@ -713,6 +720,31 @@ applies at once; the pre-upgrade check covers the data side, and the brief windo
 in which an old node validates against the new rule is the same window Umbraco
 has.
 
+### What a change costs, and what is accepted by name (story 382)
+
+Every kind of change to the definitions and files has a class, by one table in
+`@crombolo/core` (`CHANGE_CLASSES`), shared by a sync, a workspace's merge and, with
+`383`, an applied change:
+
+- `none` touches nothing stored: a label, a description, an icon, a file's text;
+- `additive` adds and loses nothing: a type, a property, a looser rule, a property
+  that varies by language, and a property or type removed, which is retired (below);
+- `data-requiring` needs values filled or converted first: a property made mandatory,
+  a rule its values must meet;
+- `breaking` loses what editors entered: a property's editor changed where values
+  cannot convert, a property made invariant, a purge, a page deleted.
+
+A merge lists each item of each file it changes (`describeFileChange`), with its class
+and, for a lossy change to a property, how many of Shared's pages hold a value for it.
+Anything that loses data, removes or renames (`ACCEPTED_BY_NAME`) must be accepted by a
+person before the merge goes ahead: by its id (`property-retired:page.summary`) or by
+its kind (`property-retired`, `page-deleted`), which accepts every item of that kind and
+still lists each. A change that only adds needs nothing accepted.
+
+`CROMBOLO_PURGE_AFTER_DAYS` (0) is the fewest days between retiring a property and
+purging it; `crombolo types purge --older-than` sooner than that is refused. A lossy
+change is always allowed once accepted; there is no setting that refuses one.
+
 ### Removal is retirement; data is never lost
 
 Removing a property from a file does **not** delete anything:
@@ -866,6 +898,51 @@ The screen replaces Umbraco's Models Builder dashboard. The TypeScript types a
 template uses come from `crombolo generate`, as before; the Management API's
 models-builder endpoints still answer.
 
+## A hosted site's schema and the checkout
+
+Story `374`. A hosted site whose schema is in its code can still have a type changed
+in its back office, or by an agent, and then the next deploy of the code would
+undo it, or refuse to remove a type with content. The command line keeps the two
+together, through the remote protocol's `schema-files` and `schema-edit`
+([remote-protocol](remote-protocol.md)), signed in to the site as the person is
+(`packages/cli/src/support/hosted-schema.ts`).
+
+- **`types check --against <profile>`** lists each definition only in the files,
+  only on the site, or different, and a version that differs. It changes neither,
+  and exits 20 when they differ, so CI can fail on it.
+- **`types export --from <profile>`** mirrors the site's definitions into `schema/`:
+  it lists what it adds, changes and removes, and the version, then asks unless
+  `--yes`. Files outside the layout, such as `migrations/`, are left alone. They are
+  not applied here: `types sync` does that.
+- **The type commands take `--to <profile>`** (`types new`, `update`, `rename`,
+  `remove`, and the `property` and `tab` commands), with `--env` for the site's
+  environment. In order:
+  1. the site's copy of each file the change touches is read, and the command is
+     refused, changing nothing, where it differs from the files before the change:
+     someone changed it there. `--force` sends it anyway;
+  2. the site checks the change without applying it, so a refusal there, such as a
+     type that still has items, comes before any file here is written;
+  3. the files are written and applied to this folder's database, as without
+     `--to` (`--no-apply` still leaves this database alone);
+  4. the site applies it at once, as a type saved in its back office would be. Its
+     version is written to `schema.toml` when it is later than the files', so the
+     files are never older than the site and the next deploy is not skipped as an
+     older schema.
+- **When the site refuses at the last step,** the files stay changed and the
+  command says so, with `types export --from` as the way back. Files and a site
+  can't change together atomically; the order keeps the files, which are the
+  source, at least as new as the site.
+- **`--all`** sends every definition that differs, removals too, so the site
+  matches the files. Nothing says which side changed a definition, so it lists
+  what on the site it replaces or removes and asks unless `--yes`.
+- **A change to anything besides definitions is refused with `--to`:** a rename
+  with `--everywhere` that rewrites views or content files names them, since those
+  reach the site only with a deploy. A rename that only definitions name goes
+  through. A new type's view reaches the site with the next deploy.
+- **Signing in:** the site's own sign-in for the profile (`crombolo login
+  --profile <name>`). `CROMBOLO_TOKEN` names one site, and this folder's site is
+  checked against it too, so it does not suit a command that acts on both.
+
 ## Consequences for the rest of the system
 
 - **The content-type repository becomes a cache writer.** `ContentTypeRepository.save`
@@ -912,6 +989,9 @@ bunx crombolo types check --static   # parse and validate, no database
 bunx crombolo types check            # …and report what a sync would do
 bunx crombolo types sync             # apply (a deploy step, or leave it to boot)
 bunx crombolo types export           # database → canonical files (adopting an existing site)
+bunx crombolo types check --against production    # where a hosted site's definitions differ
+bunx crombolo types export --from production      # a hosted site's definitions → the files
+bunx crombolo types update article --name News --to production   # the files, then the site
 bunx crombolo generate                # schema/content-types.d.ts for typed views
 bunx crombolo generate --delivery --out ../app/src/cms-types.ts   # the Delivery API's JSON, for an app
 ```

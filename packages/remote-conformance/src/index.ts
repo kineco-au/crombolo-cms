@@ -633,6 +633,49 @@ export async function runConformance(options: ConformanceOptions): Promise<Confo
     },
   )
 
+  await check('schema-files: the schema reads as its files by path, with a version', async () => {
+    const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+    if (!capabilities.includes('schema-files') || !state.may?.pull) return 'skip'
+    const response = await api(`environments/${state.environment}/schema`)
+    assert(response.status === 200, `answered ${response.status}`)
+    const body = (await response.json()) as { version?: unknown; files?: Record<string, unknown> }
+    assert(typeof body.version === 'string', 'version is missing')
+    assert(body.files !== null && typeof body.files === 'object', 'files is missing')
+    assert(
+      Object.values(body.files ?? {}).every((text) => typeof text === 'string'),
+      'a file is not text',
+    )
+  })
+
+  await check(
+    'schema-edit: an edit of nothing changes nothing, and one on a stale base is refused',
+    async () => {
+      const capabilities = (state.discovery?.capabilities as string[] | undefined) ?? []
+      if (!capabilities.includes('schema-edit') || !state.may?.schemaEdit) return 'skip'
+      const env = `environments/${state.environment}`
+      const post = (body: unknown) =>
+        api(`${env}/schema/edits`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      const wrong = await post({ edits: 'nothing' })
+      assert(wrong.status === 400, `a malformed edit answered ${wrong.status}`)
+      assert(isProblem(wrong), 'not application/problem+json')
+      const empty = await post({ edits: {} })
+      // A site whose schema changes only with a deploy says so, and that is all it can say.
+      if (empty.status === 409 && ((await empty.json()) as Json).code === 'not-writable') return
+      assert(empty.status === 200, `an empty edit answered ${empty.status}`)
+      assert(((await empty.json()) as Json).changed === false, 'an empty edit changed something')
+      const files = (await (await api(`${env}/schema`)).json()) as { files: Record<string, string> }
+      const [path, text] = Object.entries(files.files)[0] ?? []
+      if (path === undefined) return
+      const stale = await post({ edits: { [path]: text }, base: { [path]: '0'.repeat(64) } })
+      assert(stale.status === 409, `a stale base answered ${stale.status}`)
+      assert(((await stale.json()) as Json).code === 'changed-here', 'not changed-here')
+    },
+  )
+
   await check(
     "public-access: a page's access reads back, and an unknown page's is not found",
     async () => {

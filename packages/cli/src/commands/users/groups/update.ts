@@ -5,7 +5,7 @@ import { hostedOrHere } from '../../../profiles/choose.ts'
 import { permissionVerbs, sectionNames } from '../../../support/names.ts'
 import { profileFlags } from '../../../support/remote.ts'
 import { groupFile, ownGroup, siteDefinitions } from '../../../support/site-definitions.ts'
-import { commitDefinitionEdit, type EditOutcome } from '../../../support/type-edit.ts'
+import { commitDefinitionEditUnnamed, type EditOutcome } from '../../../support/type-edit.ts'
 import {
   type GroupPlaceChange,
   type GroupPlaced,
@@ -150,7 +150,7 @@ export default class UsersGroupsUpdate extends UserCommand {
         : []),
       ...lines,
     ]
-    const outcome = await commitDefinitionEdit(
+    const outcome = await commitDefinitionEditUnnamed(
       this,
       {
         config,
@@ -192,6 +192,7 @@ export default class UsersGroupsUpdate extends UserCommand {
         applied: !dryRun && placed.changed.length > 0,
         findings: [],
         schema: null,
+        hosted: null,
         placed: placed.group,
       }
     })

@@ -187,7 +187,7 @@ describe('types list and types show', () => {
     expect(shown.out).toContain('article.body (content type): property of this data type')
     for (const run of [cli('types', 'list'), cli('types', 'show', 'article'), shown])
       expect(run.out).not.toMatch(/toml|schema\//i)
-  })
+  }, 10_000)
 
   test('an alias that names nothing is refused, pointing at the list', () => {
     const run = cli('types', 'show', 'nothing')

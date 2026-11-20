@@ -11,6 +11,7 @@ import {
   FormPermissions,
   MediaPermissions,
   RemotePermissions,
+  WorkspacePermissions,
 } from './permissions.ts'
 import type { SECTION_ALIASES } from './sections.ts'
 
@@ -97,6 +98,9 @@ export const PERMISSION_NAMES: readonly PermissionName[] = [
   ...area('tokens', CliTokenPermissions, {
     Create: 'Create tokens that let scripts run commands as you',
   }),
+  ...area('workspaces', WorkspacePermissions, {
+    Merge: 'Merge a workspace into what everyone sees',
+  }),
 ]
 
 export type PermissionLookup =
@@ -127,8 +131,11 @@ export const permissionName = (verb: string): string =>
   PERMISSION_NAMES.find((p) => p.verb === verb)?.name ?? verb
 
 export const SECTION_NAMES: ReadonlyArray<{ name: keyof typeof SECTION_ALIASES; says: string }> = [
-  { name: 'content', says: 'The pages of the site' },
+  { name: 'content', says: 'The places under Content: each of the next six is one' },
+  { name: 'pages', says: 'The pages of the site' },
   { name: 'media', says: 'Images, documents and other files' },
+  { name: 'structure', says: 'Content, media and member types, data types and languages' },
+  { name: 'components', says: 'Templates, components, stylesheets and scripts' },
   { name: 'library', says: 'Items kept once and used on many pages' },
   { name: 'forms', says: 'Forms and their entries' },
   { name: 'members', says: 'The people who sign in to the site' },
@@ -137,7 +144,7 @@ export const SECTION_NAMES: ReadonlyArray<{ name: keyof typeof SECTION_ALIASES; 
   { name: 'workflow', says: 'Approvals: pages waiting for someone to approve them' },
   {
     name: 'settings',
-    says: 'Types, templates, languages, workflows, extensions and the rest of the setup',
+    says: 'Redirects, logs, health, extensions, webhooks and the rest of the setup',
   },
 ]
 

@@ -4,7 +4,7 @@ import { Args, Flags } from '@oclif/core'
 import { CliError } from '../../../errors.ts'
 import { permissionVerbs, sectionNames } from '../../../support/names.ts'
 import { databaseGroups, groupFile, siteDefinitions } from '../../../support/site-definitions.ts'
-import { commitDefinitionEdit } from '../../../support/type-edit.ts'
+import { commitDefinitionEditUnnamed } from '../../../support/type-edit.ts'
 import {
   groupEditSpec,
   placeChangeOf,
@@ -87,7 +87,7 @@ export default class UsersGroupsNew extends UserCommand {
       permissions: permissionVerbs(flags.permission) ?? [],
       languages: languages.includes('all') ? 'all' : languages,
     })
-    const outcome = await commitDefinitionEdit(
+    const outcome = await commitDefinitionEditUnnamed(
       this,
       {
         config,

@@ -22,6 +22,7 @@ import {
   LEVELS,
   levelOf,
   libraryFollowsPages,
+  needsContent,
   SENSITIVE_ANSWERS,
   SYSTEM_GROUPS,
   shownLevel,
@@ -223,7 +224,8 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
 
   #renderAreaSettings(section) {
     const g = this._group
-    if (section === 'Umb.Section.Content')
+    // Where a group's pages start, and in which languages: Pages', a place under Content (story 385).
+    if (section === 'Crombolo.Section.Pages')
       return html`
         ${this.#renderWhere('Pages', g.documentRootAccess, g.documentStartNode, 'documentRootAccess', 'documentStartNode', (selection) => html`<umb-input-document max="1" ?readonly=${this.#permissionsLocked} .selection=${selection} @change=${this.#pick('documentStartNode')}></umb-input-document>`)}
         <div class="row">
@@ -274,7 +276,8 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
       ${AREAS.map((area) => {
         const on = this.#hasArea(area.section)
         const settings = on ? this.#renderAreaSettings(area.section) : nothing
-        return html`<uui-box class="area ${on ? '' : 'off'}">
+        const without = needsContent(area, this._group.sections ?? [])
+        return html`<uui-box class="area ${on ? '' : 'off'} ${area.under ? 'place' : ''}">
           <div class="area-head">
             ${this.#renderSwitch(on, area.label, (value) => this.#toggleArea(area.section, value))}
             <div class="area-text">
@@ -283,6 +286,19 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
             </div>
             <span class="state">${on ? 'On' : 'Off'}</span>
           </div>
+          ${
+            without
+              ? html`<p class="needs-content" role="alert">
+                  ${without}
+                  <uui-button
+                    look="secondary"
+                    compact
+                    label="Turn on Content"
+                    ?disabled=${this.#permissionsLocked}
+                    @click=${() => this.#toggleArea(area.under, true)}></uui-button>
+                </p>`
+              : nothing
+          }
           ${settings === nothing ? nothing : html`<div class="area-body">${settings}</div>`}
         </uui-box>`
       })}
@@ -702,6 +718,12 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
       .area-text p { margin: 2px 0 0; color: var(--uui-color-text-alt); font-size: 13px; }
       .area.off h2 { color: var(--uui-color-text-alt); }
       .state { font-size: 13px; color: var(--uui-color-text-alt); }
+      .area.place { margin-left: var(--uui-size-layout-2); }
+      .needs-content {
+        margin: var(--uui-size-space-3) 0 0 64px;
+        color: var(--uui-color-danger-standalone);
+        font-size: 13px;
+      }
       .area-body { border-top: 1px solid var(--uui-color-divider); margin-top: var(--uui-size-space-4); padding: var(--uui-size-space-2) 0 0 64px; }
       .row { display: flex; gap: var(--uui-size-space-4); padding: var(--uui-size-space-3) 0; align-items: flex-start; flex-wrap: wrap; }
       .row + .row { border-top: 1px solid var(--uui-color-divider); }

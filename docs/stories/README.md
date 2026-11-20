@@ -119,7 +119,7 @@ not cover.
 | `274` | Who else is editing a page | could | L | ready | 172 |
 | `275` | Crombolo's own back-office screens are accessible | should | M | ready | 235 |
 | `276` | The pages list view sorts by its property columns | could | M | done | 269 |
-| `277` | The back office on Umbraco 19 | should | L | backlog | 235 |
+| `277` | The back office on Umbraco 19 | should | L | ready | 235 |
 | `345` | The Single Block | should | L | done | — |
 | `288` | The overview is the home of the back office | should | M | done | — |
 | `289` | A second-level menu under Content | should | L | done | 288 |
@@ -132,6 +132,7 @@ not cover.
 | `297` | Dictionary words as chips, in forms and on pages | should | L | done | 293, 294 |
 | `322` | Settings is one grant again | should | M | done | 296 |
 | `338` | A user group is set up in levels, not checkboxes | should | XL | done | 302 |
+| `385` | Every place under Content has its own permission and address | should | XL | done | 289, 322 |
 | `339` | Where a user may work comes only from their groups | could | M | done | 338 |
 | `342` | The schema is exported and imported from Settings | should | L | done | — |
 | `343` | The content mode is development or production | should | S | done | 337 |
@@ -154,6 +155,8 @@ not cover.
 | `282` | A member resets their password | should | M | ready | — |
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
 | `314` | An administrator sees the back office as a group does | should | M | done | — |
+| `389` | Users managed from outside the site | should | S | ready | 031, 034 |
+| `391` | The code setting says what it locks | should | S | ready | 343, 385 |
 
 ### Epic E — Cross-cutting
 
@@ -177,6 +180,7 @@ not cover.
 | `363` | Crombolo development tried on a Windows machine | could | S | on hold (needs a Windows 11 machine) | 334 |
 | `335` | A key vouches for an extension only when the site trusts it | must | M | done | 316, 324 |
 | `340` | E-mail is set up in Settings, and takes effect at once | should | M | done | 045 |
+| `373` | TypeScript 7.1 | could | S | backlog (waits for TypeScript 7.1's stable release) | — |
 
 ### Epic F — Headless
 
@@ -462,6 +466,7 @@ files kept as the committed record nobody has to open.
 | `368` | A preview link for a rendered page | should | S | done | 364 |
 | `369` | A person lets a tool skip a workflow, through their provider | could | S | on hold | 367 |
 | `370` | `init` writes a guide for agents | should | S | done | 352 |
+| `374` | A hosted site's schema changes land in its code | should | M | done | — |
 
 ### Epic R — Architecture and reliability
 
@@ -494,3 +499,47 @@ implementation; creating them does not settle those architectural choices.
 | `221` | Kysely as the query layer | should | XL | done | — |
 | `230` | No render waits seconds through a burst of publishes | could | M | done | 175 |
 | `231` | The local Postgres suite fits the database's connections | could | S | done | — |
+
+### Epic S — Workspaces and changes
+
+Planned on 2026-11-19. Today every change lands straight in what a site shares, and a
+bundle is a whole site, so nobody can say what a push carries. These stories make one
+piece of work a **workspace**: opened in a moment, holding its own pages, types and
+files over what the site shares (**Shared**), looked at on an address of its own, and
+**merged** whole. A merged workspace is a **change**, with an author and a history, and a
+change is what moves between sites.
+
+- `375`–`378` and `390` are what a workspace holds (pages, schema, code files, media)
+  and how it runs;
+- `379` and `380` are looking at one and merging it;
+- `381` and `382` are the record: every change kept, every item with its versions, and
+  no content lost by accident;
+- `383` moves a change from one site to another, which is what a host's deployment
+  steps are built from;
+- `387` gives a property a value per environment, and `388` lets a site that only
+  serves refuse edits, so that a site can be made in one place and served from another;
+- `384` and `386` are the back office and the command line. `385`, in Epic C, puts
+  media under Content so the switch covers everything a workspace holds.
+
+A workspace is its owner's and shared with whom they choose, and a site can require one
+for every edit, so that what it shares changes only by a merge. Open, change, merge
+becomes the way to work on a local site too. The stories record
+decisions to settle before each starts; `374` overlaps `386` and should be read against
+it.
+
+| # | Story | Priority | Size | State | Depends on |
+|---|---|---|---|---|---|
+| `375` | A workspace: pages changed apart from Shared | should | XL | done | — |
+| `376` | A workspace holds schema changes | should | XL | done | 375 |
+| `377` | A workspace holds components, stylesheets and scripts | should | L | done | 375, 376 |
+| `378` | A workspace with code renders in a process of its own | should | L | ready | 377 |
+| `379` | A workspace is looked at before it is merged | should | M | ready | 375 |
+| `380` | Merging a workspace into Shared | should | L | done | 375 |
+| `381` | Every change is recorded, and every item has its history | should | L | ready | 376, 380 |
+| `382` | A change that loses data says so, and takes two steps | should | M | done | 376, 380 |
+| `383` | A change moves from one site to another | should | L | backlog | 380, 381 |
+| `384` | Workspaces in the back office | should | L | backlog | 375, 376, 377, 379, 380, 381, 382 |
+| `386` | Workspaces and changes from the command line | should | L | backlog | 378, 379, 380, 381, 383 |
+| `387` | A property with a value per environment | should | M | backlog | 383 |
+| `388` | Content and schema that arrive only by a change | should | M | backlog | 383 |
+| `390` | A workspace holds media and its files | should | L | ready | 375, 385 |

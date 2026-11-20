@@ -138,6 +138,10 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SCHEMA_CACHE_DIR` | string | `<temp>/crombolo-schema` | Where a schema kept in cloud storage is copied to when the server starts. |
 | `CROMBOLO_SCHEMA_WRITABLE` | `true` / `false` | true unless production or with a schema store | Whether the back office may change the schema files. |
 | `CROMBOLO_CONTENT_MODE` | `development`, `production` | `development` | In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository. |
+| `CROMBOLO_WORKSPACES` | `true` / `false` | `false` | Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. Off, every workspace route is refused, and nothing else changes. |
+| `CROMBOLO_PURGE_AFTER_DAYS` | number | `0` | The fewest days between removing a property from a type and deleting its values for good. A purge sooner than that is refused. |
+| `CROMBOLO_WORKSPACE_VIEWS_LIMIT` | number | `50` | How many workspaces with changed templates one server keeps ready to show at once. Past it, the one least recently looked at is set aside, and made ready again when next asked for. |
+| `CROMBOLO_WORKSPACES_REQUIRED` | `true` / `false` | `false` | Whether every change to a page is made in a workspace. What everyone sees then changes only when a workspace is merged; someone who edits without choosing one works in their own. Needs `CROMBOLO_WORKSPACES=true`. |
 | `CROMBOLO_SYNC_SCHEMA_AT_BOOT` | `true` / `false` | `true` | Syncs the schema files when the server starts. Turn it off when a deploy runs `crombolo types sync` itself. |
 
 ### Components

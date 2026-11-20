@@ -770,7 +770,8 @@ describe(`protected media (${dialectUnderTest})`, () => {
     const created = await s.h.post(`${V1}/user-group`, {
       name: 'librarians',
       alias: 'librarians',
-      sections: ['Umb.Section.Media'],
+      // Media is a place under Content, so the group holds Content, without Pages (story 385).
+      sections: ['Umb.Section.Content', 'Umb.Section.Media'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: false,
@@ -1116,6 +1117,10 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddRemoteExchange',
       'AddExchangeActor',
       'RenameSingleUseToken',
+      'AddWorkspaces',
+      'AddContentPlaces',
+      'AddWorkspaceMerge',
+      'AddWorkspaceSchema',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

@@ -82,7 +82,8 @@ async function startingAt(h: Harness, alias: string, folder: string) {
   const created = await h.post(`${V1}/user-group`, {
     name: alias,
     alias,
-    sections: ['Umb.Section.Media'],
+    // A place under Content needs Content too (story 385).
+    sections: ['Umb.Section.Content', 'Umb.Section.Media'],
     languages: [],
     hasAccessToAllLanguages: true,
     documentRootAccess: true,

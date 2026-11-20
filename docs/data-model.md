@@ -119,6 +119,12 @@ Storage grows with *changes*, not snapshots — usually less than Umbraco's
 per-publish full copy, but a busy editor makes rows, and the cleanup policy is
 what keeps it bounded.
 
+**Workspaces** (story `375`) put their events and values in these same tables,
+carrying `workspace_id`, null for Shared. A workspace's rows are never current,
+and every read of history above is filtered to Shared's, so a query that forgets
+the filter would show a workspace's work to everyone. [workspaces](workspaces.md)
+has the rest.
+
 ## Only a node at the current schema state may write
 
 Every write transaction reads the latest `current` row of `schema_state` —

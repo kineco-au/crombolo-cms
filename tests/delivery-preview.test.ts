@@ -257,7 +257,7 @@ describe('Preview in app', () => {
     const created = await h.post(`${V1}/user-group`, {
       name: 'News desk',
       alias: 'newsDesk',
-      sections: ['Umb.Section.Content'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Pages'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: false,

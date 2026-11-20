@@ -36,7 +36,7 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   page,
 }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/workflow')
+  await page.goto('/crombolo/section/content/approvals')
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
   const waiting = page.locator('crombolo-approvals-list')
   await expect(waiting).toContainText('You have no changes waiting for approval', {
@@ -63,13 +63,13 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   await expect(page.locator('crombolo-workflow-designer')).toHaveCount(0)
 
   // Deleted from the designer: Approvals says so again.
-  await page.goto('/crombolo/section/settings/workflows')
+  await page.goto('/crombolo/section/content/structure/workflows')
   const designer = page.locator('crombolo-workflow-designer')
   await expect(designer.getByText('Browser check')).toBeVisible({ timeout: 30_000 })
   page.once('dialog', (dialog) => dialog.accept())
   await designer.getByRole('button', { name: 'Delete' }).click()
   await expect(designer.getByText('Browser check')).toHaveCount(0)
-  await page.goto('/crombolo/section/workflow')
+  await page.goto('/crombolo/section/content/approvals')
   await expect(waiting).toContainText('You have no changes waiting for approval', {
     timeout: 30_000,
   })
@@ -78,7 +78,7 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
 test('the addresses Workflows had open them in Structure', async ({ page }) => {
   await signIn(page)
   await page.goto('/crombolo/section/settings/dashboard/workflows')
-  await expect(page).toHaveURL(/\/section\/settings\/workflows$/, { timeout: 30_000 })
+  await expect(page).toHaveURL(/\/section\/content\/structure\/workflows$/, { timeout: 30_000 })
   await expect(page.locator('crombolo-workflow-designer')).toBeVisible()
 })
 
@@ -121,7 +121,7 @@ test('the list pages through pending and decided, and the tree holds what is pen
     route.fulfill({ json: { items: [request('waiting', 'Mine to decide', 1)] } }),
   )
   await signIn(page)
-  await page.goto('/crombolo/section/workflow')
+  await page.goto('/crombolo/section/content/approvals')
   const list = page.locator('crombolo-approvals-list')
 
   // Pending by default, with no pages to turn.

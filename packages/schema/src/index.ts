@@ -4,6 +4,7 @@ export * from './check.ts'
 export * from './compositions.ts'
 export * from './config-references.ts'
 export * from './describe.ts'
+export * from './describe-changes.ts'
 export {
   addTab,
   type DataTypeChanges,

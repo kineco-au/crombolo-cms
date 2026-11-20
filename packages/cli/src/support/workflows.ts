@@ -20,9 +20,10 @@ import { type Io, siteConfig } from './site.ts'
 import {
   commitDefinitionEdit,
   type DefinitionChange,
-  type EditFlags,
   type EditOutcome,
   editFlags,
+  type LocalEditFlags,
+  localOnly,
 } from './type-edit.ts'
 import { loadTypes, needSchemaDir, refuseProblems } from './types.ts'
 
@@ -151,10 +152,10 @@ export async function commitWorkflowEdit(
   io: Io,
   definition: DefinitionChange,
   change: string[],
-  flags: EditFlags,
+  flags: LocalEditFlags,
 ): Promise<EditOutcome> {
   try {
-    return await commitDefinitionEdit(io, definition, change, flags)
+    return await commitDefinitionEdit(io, definition, change, localOnly(flags))
   } catch (error) {
     if (!(error instanceof CliError) || !Array.isArray(error.details)) throw error
     throw new CliError(error.kind, error.message, {

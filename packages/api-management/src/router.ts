@@ -132,8 +132,25 @@ const PICKER_OPERATIONS = new Set([
   'GetTreeElementSiblings',
 ])
 
+/**
+ * Where a request's work happens, when not in Shared (story 375): its handler
+ * runs inside `run`, and what it changes is announced by the operations alone.
+ */
+export interface RequestScope {
+  run<T>(fn: () => Promise<T>): Promise<T>
+}
+
 export interface RouterOptions {
   operations?: readonly OperationInfo[]
+  /**
+   * The scope a request asks for, decided once it is authorised: a refusal to
+   * answer with, a scope to run it in, or undefined for Shared.
+   */
+  scope?(
+    request: Request,
+    principal: Principal | undefined,
+    operation: OperationInfo,
+  ): Promise<RequestScope | Response | undefined>
   /** Resolves the caller's identity. Omitted means every request is anonymous. */
   authenticate?: Authenticator
   /** Told about every request that reached an operation with no handler. */
@@ -191,6 +208,7 @@ export class ManagementApiRouter {
   readonly #clientAddress: (request: Request) => ClientAddress
   readonly #onError: RouterOptions['onError']
   readonly #onContentChange: RouterOptions['onContentChange']
+  readonly #scope: RouterOptions['scope']
 
   constructor(options: RouterOptions = {}) {
     const operations = options.operations ?? listOperations(loadSpec())
@@ -205,6 +223,7 @@ export class ManagementApiRouter {
     this.#onError = options.onError
     this.#ignoresStartNodes = options.ignoresStartNodes
     this.#onContentChange = options.onContentChange
+    this.#scope = options.scope
     for (const operation of operations) {
       const segments = operation.path.split('/').filter((s) => s.length > 0)
       const paramNames = segments.map((s) =>
@@ -318,6 +337,8 @@ export class ManagementApiRouter {
     if (principal && !(await authorize(operation, params, request, principal, this.#nodes)))
       return new Response(null, { status: 403, headers: { 'cache-control': 'no-store' } })
 
+    const scope = await this.#scope?.(request, principal, operation)
+    if (scope instanceof Response) return scope
     const handler = this.#handlers.get(operation.operationId)
     if (!handler) this.#onNotImplemented?.(operation, request)
     // A document write announces itself from its operation (story 170).
@@ -335,25 +356,29 @@ export class ManagementApiRouter {
             .json()
             .catch(() => undefined)
         : undefined
-    const response = handler
-      ? await this.#run(handler, {
-          request,
-          url,
-          params,
-          operation,
-          notifications,
-          principal,
-          nodes: this.#nodes,
-          client: this.#clientAddress(request),
-        })
-      : problemResponse(notImplemented(operation.operationId))
+    const context: RequestContext = {
+      request,
+      url,
+      params,
+      operation,
+      notifications,
+      principal,
+      nodes: this.#nodes,
+      client: this.#clientAddress(request),
+    }
+    const response = !handler
+      ? problemResponse(notImplemented(operation.operationId))
+      : scope
+        ? await scope.run(() => this.#run(handler, context))
+        : await this.#run(handler, context)
     if (plan && audit && response.status >= 200 && response.status < 300)
       await this.#recordAudit(plan, audit, params, request, response, principal)
-    if (handler && announces && this.#onServerEvent) {
+    // A workspace's change is nobody else's to hear of until its merge.
+    if (handler && announces && !scope && this.#onServerEvent) {
       const event = serverEventFor(operation, params, response)
       if (event) this.#onServerEvent(event)
     }
-    if (handler && announces && this.#onContentChange) {
+    if (handler && announces && !scope && this.#onContentChange) {
       const change = contentChangeFor(operation.operationId, params, response, changeBody)
       if (change) this.#onContentChange(change, principal)
     }

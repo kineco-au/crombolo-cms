@@ -340,7 +340,7 @@ describe('the forms endpoints', () => {
     const group = await h.post(`${V1}/user-group`, {
       name: 'Entry readers',
       alias: 'entryReaders',
-      sections: ['Crombolo.Section.Forms'],
+      sections: ['Umb.Section.Content', 'Crombolo.Section.Forms'],
       languages: [],
       hasAccessToAllLanguages: true,
       documentRootAccess: true,

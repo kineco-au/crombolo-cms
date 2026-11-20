@@ -578,7 +578,7 @@ export async function importSchema(
   db: Db,
   config: CromboloConfig,
   boot: { nodeId: string; nodeState: NodeSchemaState },
-  options: { dryRun?: boolean; materialise?: boolean } = {},
+  options: { dryRun?: boolean; materialise?: boolean; forceRetireTypes?: boolean } = {},
 ): Promise<SchemaImportResult> {
   // A caller that has just written into the directory says not to, or the store's
   // older copy would be laid over its write.
@@ -598,7 +598,12 @@ export async function importSchema(
     }
   }
 
-  const report = await syncSchemaDirectory(db, config, node)
+  const report = await syncSchemaDirectory(
+    db,
+    config,
+    node,
+    options.forceRetireTypes ? { forceRetireTypes: true } : {},
+  )
   if (report.action === 'applied') {
     boot.nodeState.version = loadSchemaDirectory(config.schemaDir, {
       formTypes: formTypesFor(config),

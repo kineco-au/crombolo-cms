@@ -6,7 +6,7 @@ import { UmbEntityCreateOptionActionBase } from '@umbraco-cms/backoffice/entity-
 
 export class CromboloFormCreateOptionAction extends UmbEntityCreateOptionActionBase {
   async getHref() {
-    return 'section/settings/forms?new='
+    return 'section/content/structure/forms?new='
   }
 }
 

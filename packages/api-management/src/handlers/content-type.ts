@@ -394,6 +394,18 @@ export function registerFolderHandlers(
   })
 }
 
+/** A delete an open workspace's changes stand in the way of (story 376), named for no one. */
+const inWorkspace = (what: string) =>
+  problemResponse(
+    problemDetails({
+      title: `This ${what} is being changed in a workspace`,
+      status: 409,
+      detail:
+        'It cannot be deleted while that work is open. An administrator can delete it anyway, and the workspace must then settle it when it is merged.',
+      operationStatus: 'InWorkspace',
+    }),
+  )
+
 export function registerContentTypeHandlers(
   router: ManagementApiRouter,
   port: ContentTypePort,
@@ -532,7 +544,9 @@ export function registerContentTypeHandlers(
           operationStatus: 'NotAllowed',
         }),
       )
-    const removed = await port.remove(ctx.params.id as string)
+    const force = ctx.url.searchParams.get('force') === 'true' && ctx.principal?.isAdmin === true
+    const removed = await port.remove(ctx.params.id as string, { force })
+    if (removed === 'in-workspace') return inWorkspace(noun)
     if (!removed) return problemResponse(notFound(`The ${noun} could not be found`))
     ctx.notifications.push({
       message: `${title} deleted`,

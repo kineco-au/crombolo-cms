@@ -14,6 +14,11 @@
  */
 export const SECTION_ALIASES = {
   content: 'Umb.Section.Content',
+  // The places under Content, each a grant of its own (story 385): Pages, Structure and
+  // Code here; Media, Forms and Approvals (`workflow`) below.
+  pages: 'Crombolo.Section.Pages',
+  structure: 'Crombolo.Section.Structure',
+  components: 'Crombolo.Section.Components',
   media: 'Umb.Section.Media',
   settings: 'Umb.Section.Settings',
   users: 'Umb.Section.Users',
@@ -31,15 +36,47 @@ export const SECTION_ALIASES = {
 
 /**
  * Stored aliases that no longer name a section, read and dropped so a group made
- * or written before still loads: `packages` (story 238), and the parts of Settings
- * a group could hold alone between stories 296 and 322.
+ * or written before still loads: `packages` (story 238), and workflow set-up,
+ * which a group could hold alone between stories 296 and 322 and is Structure's now.
  */
-export const RETIRED_SECTIONS: ReadonlySet<string> = new Set([
-  'packages',
+export const RETIRED_SECTIONS: ReadonlySet<string> = new Set(['packages', 'workflowSetup'])
+
+/** The places under Content (story 385): each a grant, and each needing Content too. */
+export const CONTENT_PLACES = [
+  'pages',
+  'media',
+  'workflow',
   'structure',
   'components',
-  'workflowSetup',
-])
+  'forms',
+] as const
+
+/** The places a group holds without holding Content, which no group may (story 385). Pure. */
+export function placesWithoutContent(sections: readonly string[]): ContentPlace[] {
+  const held = new Set(sections.map((section) => sectionAppAlias(section)))
+  if (held.has('content')) return []
+  return CONTENT_PLACES.filter((place) => held.has(place))
+}
+
+export type ContentPlace = (typeof CONTENT_PLACES)[number]
+
+/** Why a group's places are refused, in an administrator's words; undefined when they are not. */
+export function placesRefusal(sections: readonly string[]): string | undefined {
+  const without = placesWithoutContent(sections)
+  if (without.length === 0) return undefined
+  const named = without.map((place) => PLACE_NAMES[place]).join(', ')
+  return `${named} ${without.length === 1 ? 'is a place' : 'are places'} under Content, so the group needs Content too.`
+}
+
+/** Each place as an administrator knows it. */
+export const PLACE_NAMES: Record<(typeof CONTENT_PLACES)[number], string> = {
+  pages: 'Pages',
+  media: 'Media',
+  workflow: 'Approvals',
+  structure: 'Structure',
+  components: 'Code',
+  forms: 'Forms',
+}
 
 export type AppAlias = keyof typeof SECTION_ALIASES
 export type SectionAlias = (typeof SECTION_ALIASES)[AppAlias]

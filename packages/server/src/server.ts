@@ -339,6 +339,9 @@ import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
 import { createViewAs } from './view-as.ts'
 import { webhookStoreView } from './webhooks.ts'
+import { createWorkspaceSchema } from './workspace-schema.ts'
+import { createWorkspaceViews } from './workspace-views.ts'
+import { createWorkspaceScope, createWorkspacesApi } from './workspaces.ts'
 
 export interface ServerHandle {
   config: CromboloConfig
@@ -1055,6 +1058,9 @@ export async function createServer(
     jobsWaitingSince: () => core.workerWatch.status().waitingSince,
     activity: { flush: () => core.activity.flush(), days: config.extensionActivityDays },
     onMediaAccessChange: (key) => mediaCache.drop([key]),
+    // Made further down, and asked only once a request comes.
+    schema: () => schemaTransfer,
+    workspaces: () => workspacesApi,
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
@@ -1629,6 +1635,13 @@ export async function createServer(
       void notifier.raise(change, principal ? { key: principal.id, name: principal.name } : null)
     },
     onServerEvent: announce,
+    // Story 375: a request in a workspace, with the workspace held while it runs.
+    scope: createWorkspaceScope(db, {
+      enabled: () => config.workspaces,
+      required: () => config.workspacesRequired,
+      merge: () => core.operations.merge,
+      schema: () => workspaceSchema,
+    }),
   })
 
   // Fixed by the contract and the client's SDK, wherever the editor is mounted.
@@ -1717,12 +1730,33 @@ export async function createServer(
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
+  const workspacesPath = `${paths.pluginPath}/api/workspaces`
+  // Story 376: a workspace's copy of the schema files.
+  const workspaceSchema = createWorkspaceSchema(db, config, core.schema)
+  // Story 377: pages rendered with a workspace's views.
+  const workspaceViews = createWorkspaceViews({
+    db,
+    config,
+    cache: core.cache,
+    shared: core.renderer,
+    limit: config.workspaceViewsLimit,
+  })
+  const workspacesApi = createWorkspacesApi(db, {
+    enabled: () => config.workspaces,
+    merge: () => core.operations.merge,
+    nodeState: core.schema.nodeState,
+    required: () => config.workspacesRequired,
+    schema: () => workspaceSchema,
+    render: (workspace, path) => workspaceViews.render(workspace, path),
+    onClosed: (key) => workspaceViews.forget(key),
+  })
   const previewLinkPath = `${paths.pluginPath}/api/preview-link`
   const selfAudited = [
     `${paths.pluginPath}/api/email/`,
     `${paths.pluginPath}/api/schema-transfer/`,
     viewAsPath,
     cliTokensPath,
+    workspacesPath,
   ]
   const bundleInstallPaths = new Set(
     ['install', 'uninstall', 'disable', 'enable', 'grant', 'settings'].flatMap((action) => [
@@ -2408,9 +2442,9 @@ export async function createServer(
     if (pathname === `${paths.pluginPath}/api/schema-import`) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
-      // Settings: this applies type changes to the database, which is what every
-      // `document-type` write requires.
-      if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
+      // Structure: this applies type changes to the database, which is what every
+      // `document-type` write requires (story 385).
+      if (!hasSection(principal, 'structure')) return new Response('Forbidden', { status: 403 })
       if (request.method !== 'GET' && request.method !== 'POST') {
         return new Response('Method Not Allowed', { status: 405 })
       }
@@ -2866,6 +2900,18 @@ export async function createServer(
         request,
         principal,
         pathname.slice(cliTokensPath.length),
+        clientAddress(request),
+      )
+    }
+
+    // Story 375: workspaces, opened, listed, shared and discarded.
+    if (pathname === workspacesPath || pathname.startsWith(`${workspacesPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return workspacesApi.handle(
+        request,
+        principal,
+        pathname.slice(workspacesPath.length),
         clientAddress(request),
       )
     }

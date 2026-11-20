@@ -57,6 +57,7 @@ export interface ManagementApiOptions {
   clientAddress?: RouterOptions['clientAddress']
   onError?: RouterOptions['onError']
   onContentChange?: RouterOptions['onContentChange']
+  scope?: RouterOptions['scope']
 }
 
 export function createManagementApiRouter(options: ManagementApiOptions = {}): ManagementApiRouter {
@@ -70,6 +71,7 @@ export function createManagementApiRouter(options: ManagementApiOptions = {}): M
     clientAddress: options.clientAddress,
     onError: options.onError,
     onContentChange: options.onContentChange,
+    scope: options.scope,
     ignoresStartNodes: async (dataTypeId) => {
       const dataType = await options.deps?.dataTypes?.byKey(dataTypeId).catch(() => undefined)
       const setting = dataType?.values.find((v) => v.alias === 'ignoreUserStartNodes')?.value

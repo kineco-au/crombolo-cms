@@ -1,33 +1,39 @@
 /**
  * What the menu under Content offers (story 289), and which item a page belongs
- * to. Pure, so each is tested on its own. Structure and Code stay in
- * Settings: the client links to them there, and the menu is what puts them
- * together. Forms and Workflows are nodes in Structure; Approvals is its own section,
- * with no tab in the header.
+ * to. Pure, so each is tested on its own. Each place is a grant of its own and
+ * lives at an address under Content (story 385): Pages, Media, Approvals,
+ * Structure and Code. Forms and Workflows are nodes in Structure; someone with
+ * Forms and not Structure has Structure open on Forms alone.
  */
-import { treeFor } from './settings-cards.js'
 
-const SETTINGS = 'Umb.Section.Settings'
+const PAGES = 'Crombolo.Section.Pages'
+const MEDIA = 'Umb.Section.Media'
 const APPROVALS = 'Crombolo.Section.Workflow'
+const STRUCTURE = 'Crombolo.Section.Structure'
+const CODE = 'Crombolo.Section.Components'
 /** Reading forms, which is what a group's Forms comes to. */
 const FORM_READ = 'Crombolo.Form.Read'
 const FORMS = 'Crombolo.Section.Forms'
-const CONTENT = 'Umb.Section.Content'
 
-/** Forms is a node in Structure; someone with Forms and not Settings gets it in the Forms section. */
-const STRUCTURE_ELSE = [{ path: 'section/forms', section: FORMS, verb: FORM_READ }]
+/** Forms is a node in Structure; someone with Forms and not Structure gets it on its own. */
+const STRUCTURE_ELSE = [{ path: 'section/content/forms', section: FORMS, verb: FORM_READ }]
 
 const ITEMS = [
-  { label: 'Pages', path: 'section/content', section: CONTENT },
-  { label: 'Approvals', path: 'section/workflow', section: APPROVALS },
-  {
-    label: 'Structure',
-    path: 'section/settings/structure',
-    section: SETTINGS,
-    or: STRUCTURE_ELSE,
-  },
-  { label: 'Code', path: 'section/settings/code', section: SETTINGS },
+  { label: 'Pages', path: 'section/content', section: PAGES },
+  { label: 'Media', path: 'section/content/media', section: MEDIA },
+  { label: 'Approvals', path: 'section/content/approvals', section: APPROVALS },
+  { label: 'Structure', path: 'section/content/structure', section: STRUCTURE, or: STRUCTURE_ELSE },
+  { label: 'Code', path: 'section/content/code', section: CODE },
 ]
+
+/** Each place's address under Content, by the item it is. */
+const PLACES = {
+  media: 'Media',
+  approvals: 'Approvals',
+  structure: 'Structure',
+  forms: 'Structure',
+  code: 'Code',
+}
 
 /**
  * The items this user may open. One alone is no menu, so it offers none.
@@ -54,18 +60,10 @@ export function stripItems(user, site = {}) {
 /**
  * The item a path below the back office belongs to, or undefined.
  *
- * @param {string} path e.g. `section/settings/workspace/document-type/edit/1`
+ * @param {string} path e.g. `section/content/structure/workspace/document-type/edit/1`
  */
 export function activeItem(path) {
-  const section = /^section\/([^/]+)(?:\/(.*))?$/.exec(path)
+  const section = /^section\/content(?:\/([^/]+))?/.exec(path)
   if (!section) return undefined
-  const [, name, rest = ''] = section
-  if (name === 'content') return 'Pages'
-  if (name === 'forms') return 'Structure'
-  if (name === 'workflow') return 'Approvals'
-  if (name !== 'settings') return undefined
-  if (['structure', 'forms', 'workflows'].some((tree) => rest.startsWith(tree))) return 'Structure'
-  if (rest.startsWith('code')) return 'Code'
-  const tree = treeFor(/^workspace\/([^/]+)/.exec(rest)?.[1])
-  return tree === 'structure' ? 'Structure' : tree === 'code' ? 'Code' : undefined
+  return PLACES[section[1] ?? ''] ?? 'Pages'
 }

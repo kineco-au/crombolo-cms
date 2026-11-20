@@ -263,7 +263,8 @@ async function describeNodes(db: Db, ids: readonly number[]): Promise<Map<number
           eb
             .selectFrom('content_version as cv')
             .select((sub) => sub.fn.max('cv.version_date').as('latest'))
-            .whereRef('cv.node_id', '=', 'n.id'),
+            .whereRef('cv.node_id', '=', 'n.id')
+            .where('cv.workspace_id', 'is', null),
           'n.create_date',
         )
         .as('d'),
