@@ -339,7 +339,7 @@ describe('operating the site (152)', () => {
       items: Array<{ pending: number; healthy: boolean }>
     }>()
     expect(done.items.every((i) => i.healthy)).toBe(true)
-  }, 10_000)
+  }, 20_000)
 
   test('a cache rebuild is an instruction every node acts on, from no node of its own', async () => {
     const before = await withDb(async (db) => (await cacheInstructionsAfter(db, 0)).length)

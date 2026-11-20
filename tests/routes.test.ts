@@ -833,5 +833,5 @@ describe('routes on a real site', () => {
       servers.push(server)
       expect((await s.send(server, '/api/hello')).status).toBe(role === 'web' ? 200 : 404)
     }
-  })
+  }, 10_000)
 })

@@ -594,6 +594,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       wake('search')
     },
     nudge: () => wake('events'),
+    changes: true,
   })
   const operations = createNodeOperations({
     db,

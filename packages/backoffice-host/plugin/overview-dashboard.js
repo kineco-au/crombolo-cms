@@ -15,7 +15,7 @@ import {
   activityLine,
   ago,
   avatarHue,
-  contentModeOf,
+  codeSettingOf,
   firstName,
   initials,
   STATES,
@@ -154,8 +154,8 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
       <dl class="system">
         <dt>Version</dt>
         <dd>${this._server?.version ?? '…'}</dd>
-        <dt>Content mode</dt>
-        <dd>${contentModeOf(this._server?.runtimeMode)}</dd>
+        <dt>Code</dt>
+        <dd>${codeSettingOf(this._server?.runtimeMode)}</dd>
       </dl>
       <div class="system-links">
         <a href="https://github.com/kineco-au/crombolo-cms" target="_blank" rel="noopener">

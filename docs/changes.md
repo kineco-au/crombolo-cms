@@ -23,7 +23,8 @@ A type, a data type, a component, a stylesheet or a script saved straight in Sha
 recorded as a change by its author, with the file's text before and after (a type as
 the schema writes its file). A person's edits gather in one change until ten minutes
 pass with none (`EDIT_WINDOW_MS`); then it closes and the next opens. Their page edits
-in that time are counted on it from the pages' own history, not listed.
+in that time are listed on it too (story 388): each page as it stood before their first
+save there and as they left it.
 
 With `CROMBOLO_WORKSPACES_REQUIRED`, Shared takes no direct edit of a page, a type, a
 data type or a file: everyone works in a workspace, and what they may change there is
@@ -94,4 +95,26 @@ age and when it was last written in, at `GET <backoffice>/crombolo/api/workspace
 and discards those idle longer than a number of days in one step with
 `POST /pending/discard { olderThanDays }`. The back office (`384`) and the command line
 (`386`) use these.
+
+## A site made in one place and served from another
+
+With `CROMBOLO_CONTENT=locked` (story `388`), a site takes its pages, media, Library
+items, types, data types and code only by a change applied to it: the back office and
+the Management API refuse every write of them (409, "This site takes its content by
+change"), and opening a workspace is refused. Applying a change (`PUT changes`, Apply
+changes) and merging a change staged there still write. Members and their groups, form
+entries, what visitors upload, the redirects it records, its jobs and its logs are
+written as before. Locked content locks the code too, as `CROMBOLO_CODE=locked` does.
+Languages, the dictionary, blueprints, form definitions and workflow set-up stay
+writable until changes carry them (story `392`).
+
+In the back office each page, media item and Library item opens read-only, its Info tab
+saying where it is edited, with a link to the same item there when
+`CROMBOLO_CONTENT_EDITED_AT` names that site's back office address.
+
+On the site where content is made, a person's publish closes their change, so it holds
+what they changed and is finished, and raises `Crombolo.ChangePublished` naming it
+([`webhooks.md`](webhooks.md)): a host subscribed to it can take the change
+(`changes/{id}/bundle`) and apply it to the serving copy at once. Their next edit starts
+another change.
 

@@ -34,9 +34,21 @@ The maintainer asked for a name that says plainly what it locks (2026-11-20).
 
 ## Acceptance criteria
 
-- [ ] **`CROMBOLO_CODE=locked`** keeps templates, components, stylesheets and scripts
+- [x] **`CROMBOLO_CODE=locked`** keeps templates, components, stylesheets and scripts
       read-only in the back office, as `production` did; `editable` or unset leaves them
       editable.
-- [ ] **`CROMBOLO_CONTENT_MODE` set at all** stops the server, naming what to set instead.
-- [ ] **Home's System information** says "Code: Editable" or "Code: Locked".
-- [ ] **Tests;** the configuration reference and release notes say what changed.
+- [x] **`CROMBOLO_CONTENT_MODE` set at all** stops the server, naming what to set instead.
+- [x] **Home's System information** says "Code: Editable" or "Code: Locked".
+- [x] **Tests;** the configuration reference and release notes say what changed.
+
+## Built (2026-11-20)
+
+- `CromboloConfig.code` (`'editable' | 'locked'`), read from `CROMBOLO_CODE`; `contentFilesLocked`
+  reads it. `CROMBOLO_CONTENT_MODE`, `contentMode` in `crombolo.config.ts` and
+  `CROMBOLO_CONTENT_FILES_READONLY` each stop the server naming the value to set.
+- Home's System information says "Code: Editable" or "Code: Locked" (`codeSettingOf`); the
+  Code place's read-only note says the code is locked on this site (the English override).
+- Tests: `tests/content-files-readonly.test.ts`, `tests/overview.test.ts`,
+  `tests/settings-list.test.ts`; `docs/operations.md`, the configuration reference and the
+  release notes' upgrade step.
+

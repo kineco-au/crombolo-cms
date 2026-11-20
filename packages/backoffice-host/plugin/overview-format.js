@@ -71,14 +71,14 @@ export function avatarHue(name) {
 }
 
 /**
- * The site's content mode in words (story 343), from the runtime mode the back
- * office is told: Umbraco's `Production` when templates, stylesheets and scripts
- * are locked, development otherwise.
+ * Whether the site's code is locked, in words (story 391), from the runtime mode the
+ * back office is told: Umbraco's `Production` when templates, stylesheets and
+ * scripts are locked.
  *
  * @param {string | undefined} runtimeMode
  * @returns {string}
  */
-export function contentModeOf(runtimeMode) {
+export function codeSettingOf(runtimeMode) {
   if (!runtimeMode) return '…'
-  return runtimeMode === 'Production' ? 'Production' : 'Development'
+  return runtimeMode === 'Production' ? 'Locked' : 'Editable'
 }

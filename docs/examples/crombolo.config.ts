@@ -24,7 +24,9 @@ export default defineConfig({
   // ── The site ────────────────────────────────────────────────────────────────
   siteName: 'Riverside Bakery', // CROMBOLO_SITE_NAME
   applicationUrl: 'https://www.riverside-bakery.example', // CROMBOLO_APPLICATION_URL
-  contentMode: 'production', // CROMBOLO_CONTENT_MODE: templates, styles and scripts read-only
+  code: 'locked', // CROMBOLO_CODE: templates, styles and scripts read-only
+  contentEditing: 'editable', // CROMBOLO_CONTENT: locked takes pages, media, types and code only by a change
+  contentEditedAt: 'https://edit.example.com/crombolo', // CROMBOLO_CONTENT_EDITED_AT: where a locked site's content is edited
   cliAccess: 'sign-in', // CROMBOLO_CLI_ACCESS: commands act as the person signed in
   cliTokens: true, // CROMBOLO_CLI_TOKENS: tokens let scripts run commands as a person
   cliTokenMaxDays: 90, // CROMBOLO_CLI_TOKEN_MAX_DAYS

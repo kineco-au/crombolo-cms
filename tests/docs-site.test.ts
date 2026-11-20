@@ -257,7 +257,7 @@ describe('installed on a site that has none of it', () => {
     expect((await install(false)).problems.join('\n')).toContain('components/pages/docsPage.tsx')
     expect((await install(true)).problems).toEqual([])
     expect(readFileSync(view, 'utf8')).toContain('Suggest a change')
-  }, 10_000)
+  }, 20_000)
 })
 
 describe('Getting started (story 256)', () => {

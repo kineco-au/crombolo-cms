@@ -65,7 +65,12 @@ import {
   type SectionFile,
   swappedSections,
 } from './bundle-sections.ts'
-import { type CromboloConfig, REMOTE_ACCESS_LEVELS, type RemoteAccess } from './config.ts'
+import {
+  type CromboloConfig,
+  REMOTE_ACCESS_LEVELS,
+  type RemoteAccess,
+  workspacesOn,
+} from './config.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { MediaFileStore, mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
@@ -331,7 +336,7 @@ export function createRemote(options: RemoteOptions): Remote {
   const workspaceRoutes = options.workspaces
     ? createWorkspaceRoutes({
         workspaces: options.workspaces,
-        enabled: () => config.workspaces,
+        enabled: () => workspacesOn(config),
         problem,
         atLeast,
         notAtLevel,

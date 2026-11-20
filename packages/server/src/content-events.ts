@@ -5,7 +5,10 @@
  * live backoffice, and a nudge so the dispatcher sends it now rather than at
  * its next tick. The command line wires the same sink without the live part.
  */
+
+import { CHANGE_PUBLISHED } from '@crombolo/api-management'
 import {
+  type Actor,
   actorMemberKey,
   actorName,
   actorNote,
@@ -23,7 +26,7 @@ import {
   notificationFor,
   webhookFor,
 } from '@crombolo/content'
-import { AuditLog, ContentEventRepository, type Db } from '@crombolo/data'
+import { AuditLog, ChangeRepository, ContentEventRepository, type Db } from '@crombolo/data'
 import type { ContentNotifier } from './content-notifications.ts'
 import type { WebhookService } from './webhooks.ts'
 
@@ -34,7 +37,20 @@ export interface ContentEventSinkOptions {
   live?(event: ReturnType<typeof liveEventsFor>[number]): void
   /** Called after a commit that left work in the outbox. */
   nudge?(): void
+  /**
+   * Story 388: a person's own saves join their change, and a publish closes it and
+   * raises `Crombolo.ChangePublished` naming it, for a host to pass on.
+   */
+  changes?: boolean
 }
+
+const SAVES = new Set(['created', 'saved', 'createdAndPublished', 'savedAndPublished'])
+const PUBLISHES = new Set([
+  'published',
+  'createdAndPublished',
+  'savedAndPublished',
+  'branchPublished',
+])
 
 /** The page an event is about, for the outbox row. */
 const subjectOf = (event: DocumentEvent): string | null =>
@@ -60,8 +76,37 @@ export const outboxActor = (actor: MediaActor) => {
 }
 
 export function createContentEventSink(options: ContentEventSinkOptions): EventSink {
+  /** A person's own write in the back office or the API, not a merge's nor the site's code. */
+  const ownEdit = (actor: Actor) => actor.kind === 'user' && !actor.origin.via
+
+  /** Story 388: the page in its writer's change, and on a publish the change closed and announced. */
+  async function recordInChange(tx: Db, event: DocumentEvent, actor: Actor) {
+    const key = subjectOf(event)
+    const userKey = actorUserKey(actor)
+    if (!key || !userKey || !ownEdit(actor)) return
+    const changes = new ChangeRepository(tx)
+    if (SAVES.has(event.type)) await changes.pageSavedBy(userKey, { key, kind: 'document' })
+    if (!PUBLISHES.has(event.type)) return
+    const change = await changes.publishedBy(userKey, { key, kind: 'document' })
+    if (!change) return
+    const hook = { alias: CHANGE_PUBLISHED, key }
+    await new ContentEventRepository(tx).record({
+      kind: 'change-published',
+      entityType: 'Document',
+      entityKey: key,
+      facts: {
+        v: 1,
+        ...(options.webhooks
+          ? { webhook: { ...(await options.webhooks.factsFor(tx, hook)), change } }
+          : {}),
+      },
+      actor: outboxActor(actor),
+    })
+  }
+
   return {
     async record(tx: Db, event, actor) {
+      if (options.changes) await recordInChange(tx, event, actor as Actor)
       const entry = auditEntryFor(event, actor)
       const audit = new AuditLog(tx)
       // A deleted page cannot be named after it went: the operation read its name first.

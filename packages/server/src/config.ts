@@ -112,18 +112,26 @@ export function agentsGuideProblem(guide: string): string | undefined {
     : `The remote's agentsGuide, ${guide}, is not https: a guide is fetched only over https.`
 }
 
-export type ContentMode = 'development' | 'production'
+/** Whether the back office may change the site's code: its templates, stylesheets and scripts. */
+export type CodeSetting = 'editable' | 'locked'
 
-/** `CROMBOLO_CONTENT_MODE`, refusing the switch it replaced so locked files never quietly unlock. */
-function contentModeSetting(): ContentMode {
-  // Read directly: it is no longer a setting, only a name to refuse.
+/** `CROMBOLO_CODE`, refusing the names it replaced so locked code never quietly unlocks. */
+function codeSetting(): CodeSetting {
+  // Read directly: they are no longer settings, only names to refuse.
   if (Bun.env.CROMBOLO_CONTENT_FILES_READONLY !== undefined)
     throw new Error(
-      'CROMBOLO_CONTENT_FILES_READONLY has gone: set CROMBOLO_CONTENT_MODE to production to keep templates, stylesheets and scripts read-only, or to development (story 343).',
+      'CROMBOLO_CONTENT_FILES_READONLY has gone: set CROMBOLO_CODE=locked to keep templates, stylesheets and scripts read-only, or CROMBOLO_CODE=editable (story 391).',
     )
-  const value = (setting('CROMBOLO_CONTENT_MODE') ?? 'development').trim().toLowerCase()
-  if (value !== 'development' && value !== 'production')
-    throw new Error(`CROMBOLO_CONTENT_MODE is "${value}": it is development or production.`)
+  const old = Bun.env.CROMBOLO_CONTENT_MODE
+  if (old !== undefined) {
+    const now = old.trim().toLowerCase() === 'production' ? 'locked' : 'editable'
+    throw new Error(
+      `CROMBOLO_CONTENT_MODE has gone: set CROMBOLO_CODE=${now} instead of CROMBOLO_CONTENT_MODE=${old} (story 391).`,
+    )
+  }
+  const value = (setting('CROMBOLO_CODE') ?? 'editable').trim().toLowerCase()
+  if (value !== 'editable' && value !== 'locked')
+    throw new Error(`CROMBOLO_CODE is "${value}": it is editable or locked.`)
   return value
 }
 
@@ -154,9 +162,28 @@ function cliAccessSetting(): CliAccess | undefined {
   return value
 }
 
-/** Whether the back office must leave templates, stylesheets and scripts alone. */
-export const contentFilesLocked = (config: Pick<CromboloConfig, 'contentMode'>) =>
-  config.contentMode === 'production'
+/** Whether pages, media, types and code arrive only by a change (story 388). */
+export type ContentSetting = 'editable' | 'locked'
+
+/** `CROMBOLO_CONTENT`: `editable` unless set. */
+function contentSetting(): ContentSetting {
+  const value = (setting('CROMBOLO_CONTENT') ?? 'editable').trim().toLowerCase()
+  if (value !== 'editable' && value !== 'locked')
+    throw new Error(`CROMBOLO_CONTENT is "${value}": it is editable or locked.`)
+  return value
+}
+
+/** Whether the back office must leave templates, stylesheets and scripts alone: locked content locks them too. */
+export const contentFilesLocked = (config: Pick<CromboloConfig, 'code' | 'contentEditing'>) =>
+  config.code === 'locked' || config.contentEditing === 'locked'
+
+/** Whether workspaces are on: turned on, or a locked site's, for the changes staged on it (story 388). */
+export const workspacesOn = (config: Pick<CromboloConfig, 'workspaces' | 'contentEditing'>) =>
+  config.workspaces || config.contentEditing === 'locked'
+
+/** Whether the site takes its pages, media, types and code only by a change (story 388). */
+export const contentLocked = (config: Pick<CromboloConfig, 'contentEditing'>) =>
+  config.contentEditing === 'locked'
 
 /** `CROMBOLO_REMOTE_ACCESS`, refusing the switch it replaced so a site does not quietly stop being a remote. */
 function remoteAccessSetting(): RemoteAccess {
@@ -415,11 +442,22 @@ export interface CromboloConfig {
    */
   schemaWritable: boolean
   /**
-   * `production` keeps templates, stylesheets and scripts read-only in the back
-   * office, for a site whose files come from its repository (stories 337, 343).
-   * `development` unless set, in production too. `CROMBOLO_CONTENT_MODE`.
+   * `locked` keeps templates, stylesheets and scripts read-only in the back office,
+   * for a site whose files come from its repository (stories 337, 343, 391).
+   * `editable` unless set, in production too. `CROMBOLO_CODE`.
    */
-  contentMode: ContentMode
+  code: CodeSetting
+  /**
+   * `locked` makes pages, media, the Library, types, data types and code read-only in
+   * the back office and the API: they arrive only by a change applied here (story
+   * 388). `editable` unless set. `CROMBOLO_CONTENT`.
+   */
+  contentEditing: ContentSetting
+  /**
+   * Where a locked site's content is edited: the other site's back office, for the
+   * line and link an item opened here shows. `CROMBOLO_CONTENT_EDITED_AT`.
+   */
+  contentEditedAt?: string
   /**
    * Whether a command that reads or changes the site needs a signed-in person
    * (story 350): `sign-in` unless `development`, where it is `open`.
@@ -1031,7 +1069,9 @@ export function loadConfig(
         ? setting('CROMBOLO_SCHEMA_WRITABLE') === 'true'
         : setting('NODE_ENV') !== 'production',
     syncSchemaAtBoot: setting('CROMBOLO_SYNC_SCHEMA_AT_BOOT') !== 'false',
-    contentMode: contentModeSetting(),
+    code: codeSetting(),
+    contentEditing: contentSetting(),
+    contentEditedAt: setting('CROMBOLO_CONTENT_EDITED_AT') || undefined,
     // Resolved again below, once it is known whether this is development.
     cliAccess: cliAccessSetting() as CliAccess,
     cliTokens: setting('CROMBOLO_CLI_TOKENS') === 'true',
@@ -1209,10 +1249,18 @@ export function loadConfig(
     host: undefined,
   }
   const merged: CromboloConfig = { ...fromEnv, ...stripUndefined(overrides) }
-  // The file is checked as the environment is: an unknown mode must not fall back to editable.
-  if (merged.contentMode !== 'development' && merged.contentMode !== 'production')
+  // The file is checked as the environment is: an unknown value must not fall back to editable.
+  if ('contentMode' in overrides)
     throw new Error(
-      `contentMode is "${String(merged.contentMode)}" in crombolo.config.ts: it is development or production.`,
+      `contentMode has gone from crombolo.config.ts: set code: '${(overrides as { contentMode?: string }).contentMode === 'production' ? 'locked' : 'editable'}' instead (story 391).`,
+    )
+  if (merged.contentEditing !== 'editable' && merged.contentEditing !== 'locked')
+    throw new Error(
+      `contentEditing is "${String(merged.contentEditing)}" in crombolo.config.ts: it is editable or locked.`,
+    )
+  if (merged.code !== 'editable' && merged.code !== 'locked')
+    throw new Error(
+      `code is "${String(merged.code)}" in crombolo.config.ts: it is editable or locked.`,
     )
   merged.cliAccess ??= merged.development ? 'open' : 'sign-in'
   if (merged.cliAccess !== 'open' && merged.cliAccess !== 'sign-in')

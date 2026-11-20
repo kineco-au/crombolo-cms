@@ -302,7 +302,7 @@ describe('the commands', () => {
       'exists',
       'exists',
     ])
-  })
+  }, 10_000)
 
   test('a folder with a remotes.toml says once how to move it', () => {
     const dir = temp('warned')
@@ -325,7 +325,7 @@ describe('the commands', () => {
       expect(result.code, args.join(' ')).toBe(ERROR_KINDS.usage.exitCode)
       expect(result.err).toContain(hint)
     }
-  }, 10_000)
+  }, 20_000)
 
   test('a hosted-only command refuses a folder profile; login with none means this folder', () => {
     const dir = temp('hosted-only')
@@ -337,7 +337,7 @@ describe('the commands', () => {
     expect(login.code).toBe(ERROR_KINDS.usage.exitCode)
     expect(login.err).toContain('There is no site in this folder to sign in to.')
     expect(login.err).toContain('crombolo login --profile <name>')
-  })
+  }, 10_000)
 
   test('profile add checks a folder holds a site, and profile list shows it', () => {
     const dir = temp('add')

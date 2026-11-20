@@ -137,7 +137,9 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SCHEMA_REVISION` | string | `0` | Set by a deploy, to order deploys of the same schema version. |
 | `CROMBOLO_SCHEMA_CACHE_DIR` | string | `<temp>/crombolo-schema` | Where a schema kept in cloud storage is copied to when the server starts. |
 | `CROMBOLO_SCHEMA_WRITABLE` | `true` / `false` | true unless production or with a schema store | Whether the back office may change the schema files. |
-| `CROMBOLO_CONTENT_MODE` | `development`, `production` | `development` | In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository. |
+| `CROMBOLO_CODE` | `editable`, `locked` | `editable` | Locked, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository. |
+| `CROMBOLO_CONTENT` | `editable`, `locked` | `editable` | Locked, pages, media, the Library, types, data types and code cannot be changed here: they arrive only by a change applied from the site where they are made. Members, form entries and what visitors send are written as before. |
+| `CROMBOLO_CONTENT_EDITED_AT` | string | `` | Where a locked site's content is edited: the address of the other site's back office, which an item opened here links to. |
 | `CROMBOLO_WORKSPACES` | `true` / `false` | `false` | Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. Off, every workspace route is refused, and nothing else changes. |
 | `CROMBOLO_PURGE_AFTER_DAYS` | number | `0` | The fewest days between removing a property from a type and deleting its values for good. A purge sooner than that is refused. |
 | `CROMBOLO_WORKSPACES_HOST` | string | — | Where a workspace is looked at before it is merged: a host with `{workspace}` in it, such as `{workspace}.preview.example.com`, and `{host}` for one of the site’s own hosts. Unset, a workspace is opened in a browser on the site’s own address. |

@@ -191,6 +191,136 @@ export class ChangeRepository {
    * opens. An item already there keeps its first "before" and takes the new "after".
    */
   async recordEdit(madeBy: string, input: ChangeItemInput, now = new Date()): Promise<string> {
+    const id = await this.#openEdit(madeBy, now)
+    const found = await this.#db.q
+      .selectFrom('change_item')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('path', '=', input.path)
+      .execute()
+    if (found[0])
+      await this.#db.q
+        .updateTable('change_item')
+        .set({ after_hash: await this.#put(input.after), kind: input.kind, class: input.class })
+        .where('id', '=', Number(found[0].id))
+        .execute()
+    else await this.item(id, input)
+    await this.#touch(id, now)
+    return id
+  }
+
+  /**
+   * A page a person saved straight in Shared (story 388): in their open change, as it
+   * stood before their first save there and as it is now.
+   */
+  async pageSavedBy(madeBy: string, page: { key: string; kind: string }, now = new Date()) {
+    const id = await this.#openEdit(madeBy, now)
+    await this.#recordPage(id, page)
+    await this.#touch(id, now)
+  }
+
+  /**
+   * A page a person published straight in Shared (story 388): in their open change as
+   * it is now, and the change closed, so it is finished and can be passed on. Their
+   * next edit starts another.
+   */
+  async publishedBy(
+    madeBy: string,
+    page: { key: string; kind: string },
+    now = new Date(),
+  ): Promise<{ key: string; name: string | null } | undefined> {
+    const id = await this.#openEdit(madeBy, now)
+    if (!(await this.#recordPage(id, page))) return undefined
+    await this.#touch(id, now)
+    await this.#db.q
+      .updateTable('content_transfer_run')
+      .set({ closed_at: DbDate.toDb(now) })
+      .where('id', '=', id)
+      .execute()
+    const run = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .select(['change_key', 'name'])
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow()
+    return { key: String(run.change_key ?? id), name: (run.name as string | null) ?? null }
+  }
+
+  /**
+   * A page in a change: its event now, and, the first time, the event it stood at
+   * before: the one before its latest write, or where the last change left it.
+   */
+  async #recordPage(id: string, page: { key: string; kind: string }): Promise<boolean> {
+    const nodeKey = normaliseUuid(page.key)
+    const node = await this.#db.q
+      .selectFrom('node')
+      .select('id')
+      .where('unique_id', '=', nodeKey)
+      .where('workspace_id', 'is', null)
+      .executeTakeFirst()
+    if (!node) return false
+    const versions = await this.#db.q
+      .selectFrom('content_version')
+      .select('id')
+      .where('node_id', '=', Number(node.id))
+      .where('workspace_id', 'is', null)
+      .orderBy('id', 'desc')
+      .limit(2)
+      .execute()
+    const head = versions[0] ? Number(versions[0].id) : null
+    const recorded = await this.#db.q
+      .selectFrom('content_transfer_change')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('node_key', '=', nodeKey)
+      .execute()
+    if (recorded[0]) {
+      await this.#db.q
+        .updateTable('content_transfer_change')
+        .set({ event_id: head })
+        .where('id', '=', Number(recorded[0].id))
+        .execute()
+      return true
+    }
+    const left = await this.#db.q
+      .selectFrom('content_transfer_change')
+      .select('event_id')
+      .where('node_key', '=', nodeKey)
+      .where('run_id', '!=', id)
+      .where('event_id', 'is not', null)
+      .orderBy('event_id', 'desc')
+      .limit(1)
+      .execute()
+    const before =
+      left[0]?.event_id !== undefined && left[0]?.event_id !== null
+        ? Number(left[0].event_id)
+        : versions[1]
+          ? Number(versions[1].id)
+          : null
+    await this.#db.q
+      .insertInto('content_transfer_change')
+      .values({
+        run_id: id,
+        node_key: nodeKey,
+        kind: page.kind,
+        action: before === null ? 'create' : 'update',
+        before_event_id: before,
+        before_published_event_id: null,
+        event_id: head,
+      })
+      .execute()
+    return true
+  }
+
+  async #touch(id: string, now: Date) {
+    await this.#db.q
+      .updateTable('content_transfer_run')
+      .set({ finished_at: DbDate.toDb(now) })
+      .where('id', '=', id)
+      .execute()
+  }
+
+  /** A person's open direct-edit change, closing it and opening another past the window. */
+  async #openEdit(madeBy: string, now: Date): Promise<string> {
     const open = await this.#db.q
       .selectFrom('content_transfer_run')
       .select(['id', 'finished_at'])
@@ -209,26 +339,7 @@ export class ChangeRepository {
         .execute()
       id = undefined
     }
-    id ??= await this.begin({ kind: 'edit', name: null, madeBy })
-    const found = await this.#db.q
-      .selectFrom('change_item')
-      .select('id')
-      .where('run_id', '=', id)
-      .where('path', '=', input.path)
-      .execute()
-    if (found[0])
-      await this.#db.q
-        .updateTable('change_item')
-        .set({ after_hash: await this.#put(input.after), kind: input.kind, class: input.class })
-        .where('id', '=', Number(found[0].id))
-        .execute()
-    else await this.item(id, input)
-    await this.#db.q
-      .updateTable('content_transfer_run')
-      .set({ finished_at: DbDate.toDb(now) })
-      .where('id', '=', id)
-      .execute()
-    return id
+    return id ?? (await this.begin({ kind: 'edit', name: null, madeBy }))
   }
 
   #view(row: Record<string, unknown>, items: number, pages: number): Change {

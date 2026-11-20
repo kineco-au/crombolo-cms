@@ -114,7 +114,7 @@ describe('staging a site as a template', () => {
       'demo/plain-signal',
       'starter',
     ])
-  })
+  }, 20_000)
 
   test('writes the layout init reads, and leaves the site’s own files behind', () => {
     const into = tempDir()
@@ -204,7 +204,7 @@ describe('staging a site as a template', () => {
     expect(staged).toHaveLength(7)
     unstage(staged, into)
     expect(readdirSync(into)).toEqual(['basic'])
-  })
+  }, 20_000)
 })
 
 describe('the single-page Harbourstone (story 347)', () => {

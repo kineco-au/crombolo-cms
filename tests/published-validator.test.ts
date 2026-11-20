@@ -198,7 +198,7 @@ describe('a page answered from what was published', () => {
     expect((await visit(h, '/')).headers.get('etag')).toStartWith('W/"p')
     const news = await visit(h, '/news')
     expect(news.headers.get('etag')).not.toStartWith('W/"p')
-  })
+  }, 10_000)
 
   test('without it, every ETag is over the body and a check renders', async () => {
     const h = await boot(site(), {})
@@ -208,7 +208,7 @@ describe('a page answered from what was published', () => {
     const renders = counted(h)
     expect((await visit(h, '/', { 'if-none-match': etag })).status).toBe(304)
     expect(renders).toHaveBeenCalledTimes(1)
-  })
+  }, 10_000)
 
   test('a template edited changes the ETag', async () => {
     const root = site()

@@ -1,5 +1,5 @@
 /**
- * Stories 337 and 343: CROMBOLO_CONTENT_MODE=production stops the back office
+ * Stories 337, 343 and 391: CROMBOLO_CODE=locked stops the back office
  * changing templates, stylesheets and scripts, on the server as well as in the
  * screens, whose production mode follows it.
  */
@@ -43,7 +43,7 @@ async function site(locked: boolean) {
       componentsDir: join(root, 'components'),
       stylesheetsDir: join(root, 'css'),
       scriptsDir: join(root, 'scripts'),
-      contentMode: locked ? 'production' : 'development',
+      code: locked ? 'locked' : 'editable',
     },
   })
   open.push(h)
@@ -119,17 +119,22 @@ describe('read-only content files (story 337)', () => {
     expect(readFileSync(join(root, 'css', 'print.css'), 'utf8')).toBe('a { color: black }')
   })
 
-  test('the content mode is development unless it says production, whatever NODE_ENV says', () => {
+  test('the code is editable unless it says locked, whatever NODE_ENV says', () => {
     const env = Bun.env as Record<string, string | undefined>
     const read = (values: Record<string, string | undefined>) => {
-      const names = ['CROMBOLO_CONTENT_MODE', 'CROMBOLO_CONTENT_FILES_READONLY', 'NODE_ENV']
+      const names = [
+        'CROMBOLO_CODE',
+        'CROMBOLO_CONTENT_MODE',
+        'CROMBOLO_CONTENT_FILES_READONLY',
+        'NODE_ENV',
+      ]
       const before = names.map((name) => env[name])
       try {
         for (const name of names) {
           if (values[name] === undefined) delete env[name]
           else env[name] = values[name]
         }
-        return loadConfig({}).contentMode
+        return loadConfig({}).code
       } finally {
         names.forEach((name, i) => {
           if (before[i] === undefined) delete env[name]
@@ -137,19 +142,20 @@ describe('read-only content files (story 337)', () => {
         })
       }
     }
-    expect(read({})).toBe('development')
-    expect(read({ NODE_ENV: 'production' })).toBe('development')
-    expect(read({ CROMBOLO_CONTENT_MODE: 'development' })).toBe('development')
-    expect(read({ CROMBOLO_CONTENT_MODE: 'Production' })).toBe('production')
-    expect(() => read({ CROMBOLO_CONTENT_MODE: 'live' })).toThrow('development or production')
-    // The old switch stops the server rather than being ignored, so locked files never unlock.
-    expect(() => read({ CROMBOLO_CONTENT_FILES_READONLY: 'true' })).toThrow('CROMBOLO_CONTENT_MODE')
+    expect(read({})).toBe('editable')
+    expect(read({ NODE_ENV: 'production' })).toBe('editable')
+    expect(read({ CROMBOLO_CODE: 'editable' })).toBe('editable')
+    expect(read({ CROMBOLO_CODE: 'Locked' })).toBe('locked')
+    expect(() => read({ CROMBOLO_CODE: 'live' })).toThrow('editable or locked')
+    // The old names stop the server, naming what to set, so locked files never unlock.
+    expect(() => read({ CROMBOLO_CONTENT_FILES_READONLY: 'true' })).toThrow('CROMBOLO_CODE=locked')
+    expect(() => read({ CROMBOLO_CONTENT_MODE: 'production' })).toThrow('CROMBOLO_CODE=locked')
+    expect(() => read({ CROMBOLO_CONTENT_MODE: 'development' })).toThrow('CROMBOLO_CODE=editable')
   })
 
-  test("the site's config file sets the mode too, over the environment, and is checked the same way", () => {
-    expect(loadConfig({ contentMode: 'production' }).contentMode).toBe('production')
-    expect(() => loadConfig({ contentMode: 'live' as 'production' })).toThrow(
-      'development or production',
-    )
+  test("the site's config file sets it too, over the environment, and is checked the same way", () => {
+    expect(loadConfig({ code: 'locked' }).code).toBe('locked')
+    expect(() => loadConfig({ code: 'live' as 'locked' })).toThrow('editable or locked')
+    expect(() => loadConfig({ contentMode: 'production' } as never)).toThrow("code: 'locked'")
   })
 })

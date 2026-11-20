@@ -99,6 +99,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.ViewAs',
       'backofficeEntryPoint:Crombolo.EntryPoint.MediaAccess',
       'backofficeEntryPoint:Crombolo.EntryPoint.OwnWorkspace',
+      'backofficeEntryPoint:Crombolo.EntryPoint.ContentLocked',
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',
       'userProfileApp:Crombolo.UserProfileApp.CliTokens',

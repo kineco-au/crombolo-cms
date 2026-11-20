@@ -169,6 +169,12 @@
     },
     {
       "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.ContentLocked",
+      "name": "Crombolo Content Locked",
+      "js": "/crombolo-plugin/content-locked.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.EditConflicts",
       "name": "Crombolo Edit Conflicts",
       "js": "/crombolo-plugin/edit-conflicts.js"

@@ -120,6 +120,12 @@ export default {
     enableUrlTrackerInstruction:
       "Redirect URL tracking is set in the site's environment. To turn it on, set this variable to true, or remove it:",
   },
+  // Story 391: what Umbraco calls its Production runtime mode is CROMBOLO_CODE=locked here.
+  template: {
+    productionMode: 'Code locked',
+    runtimeModeProduction:
+      'The code is locked on this site: its templates, stylesheets and scripts are changed where its files are kept.',
+  },
   defaultdialogs: {
     linkYourConfirm:
       'You are about to link your Crombolo and {0} accounts and you will be redirected to {0} to complete the process.',

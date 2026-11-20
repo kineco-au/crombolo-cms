@@ -309,6 +309,8 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     expect(await h.json<unknown>(`${WORKSPACES}/mine`)).toEqual({
       required: false,
       workspace: null,
+      contentLocked: false,
+      editedAt: null,
     })
     expect(
       (

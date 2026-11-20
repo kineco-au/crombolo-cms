@@ -298,7 +298,12 @@ describe(`a site that requires a workspace (${dialectUnderTest})`, () => {
     const home = await page('Home', 'Welcome')
     const about = await page('About', 'About us')
     h.server.config.workspacesRequired = true
-    expect(await h.json<unknown>(`${WORKSPACES}/mine`)).toEqual({ required: true, workspace: null })
+    expect(await h.json<unknown>(`${WORKSPACES}/mine`)).toEqual({
+      required: true,
+      workspace: null,
+      contentLocked: false,
+      editedAt: null,
+    })
 
     expect((await save(h, home, 'Directly')).status).toBe(409)
     expect((await save(h, home, 'Sale on', 'mine')).status).toBe(200)

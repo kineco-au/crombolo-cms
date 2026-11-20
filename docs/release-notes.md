@@ -120,6 +120,17 @@ point at `docs/stories/`.
   pages is recorded as replacing everything. Administrators list every pending workspace
   and clear those idle too long (`docs/changes.md`).
 
+- **A site that takes its content by change (388).** `CROMBOLO_CONTENT=locked`
+  (`contentEditing` in `crombolo.config.ts`) refuses every write of pages, media, the
+  Library, types, data types and code in the back office and the API, saying so; a change
+  applied to the site still writes, and members, form entries and visitors' uploads are
+  written as before. Each item opens read-only with a link to where it is edited
+  (`CROMBOLO_CONTENT_EDITED_AT`). On the site where content is made, a publish closes the
+  person's change and raises the `Crombolo.ChangePublished` webhook naming it.
+- **The code setting says what it locks (391).** `CROMBOLO_CONTENT_MODE` is now
+  `CROMBOLO_CODE=editable|locked` (`code` in `crombolo.config.ts`), and Home says
+  "Code: Editable" or "Code: Locked".
+
 ### Migrations
 
 - **082 `AddWorkspaces`** (expand): the `workspace`, `workspace_member`,
@@ -150,6 +161,10 @@ point at `docs/stories/`.
   workspace holds.
 
 ### Upgrade notes
+
+- **`CROMBOLO_CONTENT_MODE` stops the server (391):** set `CROMBOLO_CODE=locked` where it
+  said `production`, `CROMBOLO_CODE=editable` (or nothing) where it said `development`;
+  `contentMode` in `crombolo.config.ts` becomes `code: 'locked'` or `'editable'`.
 
 - Migrations 082 and 084–087 run on upgrade; they only add. Workspaces stay off until
   `CROMBOLO_WORKSPACES=true`, and are required only with `CROMBOLO_WORKSPACES_REQUIRED=true`,

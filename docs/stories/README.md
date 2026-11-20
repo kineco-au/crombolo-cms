@@ -156,7 +156,7 @@ not cover.
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
 | `314` | An administrator sees the back office as a group does | should | M | done | — |
 | `389` | Users managed from outside the site | should | S | ready | 031, 034 |
-| `391` | The code setting says what it locks | should | S | ready | 343, 385 |
+| `391` | The code setting says what it locks | should | S | done | 343, 385 |
 
 ### Epic E — Cross-cutting
 
@@ -541,6 +541,6 @@ it.
 | `384` | Workspaces in the back office | should | L | ready | 375, 376, 377, 379, 380, 381, 382 |
 | `386` | Workspaces and changes from the command line | should | L | ready | 378, 379, 380, 381, 383 |
 | `387` | A property with a value per environment | should | M | ready | 383 |
-| `388` | Content and schema that arrive only by a change | should | M | backlog | 383, 391 |
-| `392` | Changes carry languages, the dictionary, blueprints, forms and workflow set-up | could | L | backlog | 376, 377, 381, 383, 388, 390 |
+| `388` | Content and schema that arrive only by a change | should | M | done | 383, 391 |
+| `392` | Changes carry languages, the dictionary, blueprints, forms and workflow set-up | could | L | ready | 376, 377, 381, 383, 388, 390 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

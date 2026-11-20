@@ -59,16 +59,36 @@ this is the same idea for everything a change carries.
 
 ## Acceptance criteria
 
-- [ ] **With `CROMBOLO_CONTENT=locked`,** saving a page, a media item, a Library item, a
+- [x] **With `CROMBOLO_CONTENT=locked`,** saving a page, a media item, a Library item, a
       type, a data type or a component is refused, in the back office and the API,
       saying the site takes content by change.
-- [ ] **Languages and the dictionary** are still written on a locked site.
-- [ ] **A caller without Apply changes** is refused an apply.
-- [ ] **Applying a change** still writes.
-- [ ] **Members and form entries** are written as before.
-- [ ] **An item opened** shows read-only and links to where it is edited.
-- [ ] **A publish on the making site** closes the publisher's change and raises an
+- [x] **Languages and the dictionary** are still written on a locked site.
+- [x] **A caller without Apply changes** is refused an apply.
+- [x] **Applying a change** still writes.
+- [x] **Members and form entries** are written as before.
+- [x] **An item opened** shows read-only and links to where it is edited.
+- [x] **A publish on the making site** closes the publisher's change and raises an
       event naming it; their next edit is a new change.
-- [ ] **With the setting off,** nothing changes.
-- [ ] **Tests** on both dialects; `docs/` describes a site made in one place and served
+- [x] **With the setting off,** nothing changes.
+- [x] **Tests** on both dialects; `docs/` describes a site made in one place and served
       from another.
+
+## Built (2026-11-20)
+
+- **The setting:** `CROMBOLO_CONTENT=editable|locked`, `contentEditing` in the config
+  (`content` was taken by `content.actAs`), and `CROMBOLO_CONTENT_EDITED_AT`
+  (`contentEditedAt`). `contentLocked`, `workspacesOn` (a locked site's workspaces are on
+  for staged changes) and `contentFilesLocked` (locked content locks code) in `config.ts`.
+- **The refusal** is the workspace scope's (`workspaces.ts`, `CONTENT_LOCKED`): every write
+  of `WORKSPACE_OPERATIONS` is 409 on a locked site; opening a workspace is refused; the
+  change routes and staged merges still write.
+- **The back office:** `/workspaces/mine` says `contentLocked` and `editedAt`; the plugin's
+  `content-locked.js` marks the page, media and Library editors read-only
+  (`content-locked-guard.js`) and adds the Info line and link (`content-locked-info.js`).
+- **The event:** a person's own saves join their change (`ChangeRepository.pageSavedBy`),
+  and a publish closes it (`publishedBy`), recording `change-published` with the
+  `Crombolo.ChangePublished` webhook's facts and `change: { key, name }`
+  (`content-events.ts`); a merge's and the site code's writes are left to their own changes.
+- **Tests:** `tests/content-locked.test.ts`.
+- **Apply changes** came with `383`, as its apply route's permission.
+

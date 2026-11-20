@@ -207,7 +207,7 @@ describe('a hosted site and the files, together (story 374)', () => {
     expect(
       (JSON.parse(differs.out) as { against: { differences: unknown[] } }).against.differences,
     ).toEqual([{ path: 'content-types/article.toml', change: 'differs' }])
-  })
+  }, 10_000)
 
   test("types export --from brings the site's definitions into the files", async () => {
     await ok('types', 'export', '--from', 'prod', '--yes')

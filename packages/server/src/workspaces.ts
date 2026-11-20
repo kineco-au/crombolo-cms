@@ -67,6 +67,8 @@ export interface WorkspaceScopeOptions {
   enabled: () => boolean
   /** Shared takes no direct edit of a page; a person edits in a workspace (story 380). */
   required?: () => boolean
+  /** Story 388: the site takes its content only by a change. */
+  locked?: () => boolean
   /** The merge a publish in a person's own workspace makes, of that page alone. */
   merge?: () => WorkspaceMerging
   /** The workspace's copy of the schema files, taken as it opens (story 376). */
@@ -91,6 +93,8 @@ export function createWorkspaceScope(db: Db, settings: WorkspaceScopeOptions | (
   ) => {
     const key = request.headers.get(WORKSPACE_HEADER)?.trim()
     const pages = WORKSPACE_OPERATIONS.has(operation.operationId)
+    if (options.locked?.() && pages && request.method !== 'GET')
+      return problem(409, CONTENT_LOCKED.title, CONTENT_LOCKED.detail)
     if (!key) {
       if (options.enabled() && options.required?.() && pages && request.method !== 'GET')
         return problem(
@@ -238,6 +242,13 @@ type Client = { ipAddress: string | null; forwardedFor: string | null }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const refused = (message: string, status: number) => json({ message }, status)
+
+/** What a locked site says of a write it refuses (story 388), in the API and the back office. */
+export const CONTENT_LOCKED = {
+  title: 'This site takes its content by change',
+  detail:
+    'Its pages, media, types and code are changed where they are made, and arrive here when that change is applied.',
+}
 
 /** One open workspace as an administrator sees it among them all (story 383). */
 export interface PendingWorkspace {
@@ -423,6 +434,9 @@ export function createWorkspacesApi(
     merge?: () => WorkspaceMerging
     nodeState?: NodeSchemaState
     required?: () => boolean
+    /** Story 388: the site takes its content only by a change; where it is edited. */
+    locked?: () => boolean
+    editedAt?: () => string | null
     schema?: () => WorkspaceSchema | undefined
     /** Renders one page with the workspace's views (story 377). */
     render?: (workspace: { id: number; key: string }, path: string) => Promise<unknown>
@@ -557,9 +571,13 @@ export function createWorkspacesApi(
       if (rest.replace(/^\/+|\/+$/g, '') === OWN_WORKSPACE && request.method === 'GET') {
         const on = options.enabled() && hasSection(principal, 'content')
         const own = on ? await workspaces.ownOf(principal.id) : undefined
+        const locked = options.locked?.() === true
         return json({
-          required: on && options.required?.() === true,
+          required: on && !locked && options.required?.() === true,
           workspace: own ? viewOf(own, principal) : null,
+          // Story 388: what the back office shows each item as, and where it links.
+          contentLocked: locked,
+          editedAt: locked ? (options.editedAt?.() ?? null) : null,
         })
       }
       if (!options.enabled()) return refused('Workspaces are not turned on for this site.', 404)
@@ -578,6 +596,11 @@ export function createWorkspacesApi(
           return json({ items: found.map((w) => viewOf(w, principal)) })
         }
         if (request.method === 'POST') {
+          if (options.locked?.())
+            return refused(
+              `${CONTENT_LOCKED.title}: a workspace is opened where its content is made.`,
+              409,
+            )
           const name = nameOf(await body())
           if (!name) return refused('A workspace needs a name of up to 255 characters.', 400)
           const opened = await workspaces.open({ name, ownerKey: principal.id })

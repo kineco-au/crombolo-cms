@@ -132,7 +132,7 @@ function createServerPort(config: CromboloConfig, canSendUserLinks: () => boolea
       version: VERSION,
       assemblyVersion: VERSION,
       baseUtcOffset: '00:00:00',
-      // Stories 337, 343: the back office keeps templates read-only in its Production mode, so it follows the content mode.
+      // Stories 337, 343, 391: the back office keeps templates read-only in its Production mode, so it follows the code setting.
       runtimeMode: contentFilesLocked(config) ? 'Production' : 'BackofficeDevelopment',
     }),
   }

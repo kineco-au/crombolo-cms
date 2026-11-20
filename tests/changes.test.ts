@@ -189,8 +189,9 @@ describe(`changes (${dialectUnderTest})`, () => {
       ).status,
     ).toBe(200)
 
-    // One change for one person's edits within ten minutes, each file once.
-    const edits = (await list(h)).filter((c) => c.kind === 'edit')
+    // One change for one person's file edits within ten minutes, each file once; the
+    // page they published earlier closed a change of its own (story 388).
+    const edits = (await list(h)).filter((c) => c.kind === 'edit' && c.items > 0)
     expect(edits).toHaveLength(1)
     const change = await detail(h, edits[0]?.id as string)
     expect(change.madeBy).toBe(me)

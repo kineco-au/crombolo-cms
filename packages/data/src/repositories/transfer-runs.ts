@@ -56,6 +56,9 @@ export interface TransferChange {
   eventId: number | null
 }
 
+/** A run as the content commands list it: a bundle, a whole site, or a bundle's revert. */
+const BUNDLE_KINDS = ['bundle', 'replace']
+
 export class TransferRunRepository {
   #db: Db
   constructor(db: Db) {
@@ -166,10 +169,12 @@ export class TransferRunRepository {
   }
 
   /** Runs, newest first. */
+  /** The bundles applied here and their reverts: not merges, edits or reverted changes (stories 381, 388). */
   async recent(limit = 20, offset = 0): Promise<TransferRun[]> {
     const rows = await this.#db.q
       .selectFrom('content_transfer_run')
       .selectAll()
+      .where('change_kind', 'in', BUNDLE_KINDS)
       .orderBy('started_at', 'desc')
       .orderBy('id', 'desc')
       .limit(limit)
@@ -182,6 +187,7 @@ export class TransferRunRepository {
     const row = await this.#db.q
       .selectFrom('content_transfer_run')
       .select(sql<number>`count(*)`.as('n'))
+      .where('change_kind', 'in', BUNDLE_KINDS)
       .executeTakeFirst()
     return Number(row?.n ?? 0)
   }

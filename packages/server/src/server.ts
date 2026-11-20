@@ -195,10 +195,12 @@ import { handleComponentTemplates } from './component-templates-api.ts'
 import { checkTypes, listEmailTemplates, siteLayouts } from './components.ts'
 import {
   type CromboloConfig,
+  contentLocked,
   listeningBodyLimit,
   loadConfig,
   type ServerRole,
   VERSION,
+  workspacesOn,
 } from './config.ts'
 import { answerContentQuery, contentQueryScope } from './content-query.ts'
 import { createCore } from './core.ts'
@@ -1110,7 +1112,7 @@ export async function createServer(
     // Made further down, and asked only once a request comes.
     schema: () => schemaTransfer,
     workspaces: () => workspacesApi,
-    changes: () => (config.workspaces ? changeTransfer : undefined),
+    changes: () => (workspacesOn(config) ? changeTransfer : undefined),
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
@@ -1687,8 +1689,9 @@ export async function createServer(
     onServerEvent: announce,
     // Story 375: a request in a workspace, with the workspace held while it runs.
     scope: createWorkspaceScope(db, {
-      enabled: () => config.workspaces,
+      enabled: () => workspacesOn(config),
       required: () => config.workspacesRequired,
+      locked: () => contentLocked(config),
       merge: () => core.operations.merge,
       schema: () => workspaceSchema,
     }),
@@ -1801,7 +1804,9 @@ export async function createServer(
       })
     : undefined
   const workspacesApi = createWorkspacesApi(db, {
-    enabled: () => config.workspaces,
+    enabled: () => workspacesOn(config),
+    locked: () => contentLocked(config),
+    editedAt: () => config.contentEditedAt ?? null,
     merge: () => core.operations.merge,
     nodeState: core.schema.nodeState,
     required: () => config.workspacesRequired,
@@ -2245,7 +2250,7 @@ export async function createServer(
     request: Request,
     next: () => Promise<Response>,
   ): Promise<Response> {
-    if (!config.workspaces) return next()
+    if (!workspacesOn(config)) return next()
     const url = new URL(request.url)
     const path = url.pathname
     const delivery = path.startsWith(DELIVERY_API_PREFIX)

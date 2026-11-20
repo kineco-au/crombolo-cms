@@ -23,6 +23,7 @@ through the Management API's webhook operations.
 | `Umbraco.ContentRolledBack` | rolling a page back to an earlier version |
 | `Umbraco.MediaSave` | creating or saving a media item |
 | `Umbraco.MediaDelete` | deleting a media item |
+| `Crombolo.ChangePublished` | a person's publish finishing their change (story 388): the page's facts, and `change: { key, name }` for a host to take and apply elsewhere |
 
 The aliases are Umbraco's, so the backoffice's event picker and an imported
 site mean the same thing. An event is raised only when the change really

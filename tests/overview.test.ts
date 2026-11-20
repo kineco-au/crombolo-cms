@@ -10,7 +10,7 @@ import { ContentTypeRepository } from '@crombolo/data'
 import {
   activityLine,
   ago,
-  contentModeOf,
+  codeSettingOf,
   firstName,
   initials,
 } from '../packages/backoffice-host/plugin/overview-format.js'
@@ -207,9 +207,9 @@ describe("the Overview's avatars", () => {
 })
 
 describe("Home's System information (story 343)", () => {
-  test('says the content mode in words, not the runtime mode it comes from', () => {
-    expect(contentModeOf('Production')).toBe('Production')
-    expect(contentModeOf('BackofficeDevelopment')).toBe('Development')
-    expect(contentModeOf(undefined)).toBe('…')
+  test('says whether the code is locked in words, not the runtime mode it comes from', () => {
+    expect(codeSettingOf('Production')).toBe('Locked')
+    expect(codeSettingOf('BackofficeDevelopment')).toBe('Editable')
+    expect(codeSettingOf(undefined)).toBe('…')
   })
 })

@@ -450,13 +450,30 @@ const DECLARED = [
     description: 'Whether the back office may change the schema files.',
   },
   {
-    env: 'CROMBOLO_CONTENT_MODE',
+    env: 'CROMBOLO_CODE',
     kind: 'enum',
-    values: ['development', 'production'],
-    default: 'development',
+    values: ['editable', 'locked'],
+    default: 'editable',
     section: 'Schema',
     description:
-      'In production, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository.',
+      'Locked, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository.',
+  },
+  {
+    env: 'CROMBOLO_CONTENT',
+    kind: 'enum',
+    values: ['editable', 'locked'],
+    default: 'editable',
+    section: 'Schema',
+    description:
+      'Locked, pages, media, the Library, types, data types and code cannot be changed here: they arrive only by a change applied from the site where they are made. Members, form entries and what visitors send are written as before.',
+  },
+  {
+    env: 'CROMBOLO_CONTENT_EDITED_AT',
+    kind: 'string',
+    default: '',
+    section: 'Schema',
+    description:
+      "Where a locked site's content is edited: the address of the other site's back office, which an item opened here links to.",
   },
   {
     env: 'CROMBOLO_WORKSPACES',
