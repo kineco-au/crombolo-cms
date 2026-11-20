@@ -361,9 +361,9 @@ import {
   type WorkspaceAccess,
   workspaceHosts,
 } from './workspace-access.ts'
+import { createWorkspaceProcesses, type WorkspaceProcesses } from './workspace-processes.ts'
 import { createWorkspaceSchema } from './workspace-schema.ts'
 import { createWorkspaceSites } from './workspace-sites.ts'
-import { createWorkspaceViews } from './workspace-views.ts'
 import { createWorkspaceScope, createWorkspacesApi } from './workspaces.ts'
 
 export interface ServerHandle {
@@ -426,6 +426,8 @@ export interface ServerHandle {
   reloadBundles(): Promise<BundleReload>
   /** Stops the watcher and the poll, then closes the database. */
   close(): Promise<void>
+  /** Where workspaces that changed their views render (story 378); none on a database in memory. */
+  workspaceProcesses: WorkspaceProcesses | undefined
 }
 
 export interface ServerOptions {
@@ -1780,14 +1782,22 @@ export async function createServer(
   const changesPath = `${paths.pluginPath}/api/changes`
   // Story 376: a workspace's copy of the schema files.
   const workspaceSchema = createWorkspaceSchema(db, config, core.schema)
-  // Story 377: pages rendered with a workspace's views.
-  const workspaceViews = createWorkspaceViews({
-    db,
-    config,
-    cache: core.cache,
-    shared: core.renderer,
-    limit: config.workspaceViewsLimit,
-  })
+  // Story 378: a workspace that changed its views renders in a process of its own.
+  // A database in memory cannot be opened from another process: it renders here then.
+  const sharedDatabase = config.dialect === 'postgres' || config.sqliteFile !== ':memory:'
+  const workspaceProcesses = sharedDatabase
+    ? createWorkspaceProcesses({
+        dialect: config.dialect,
+        sqliteFile: config.sqliteFile,
+        nodeState: core.schema.nodeState,
+        nodeId: core.schema.nodeId,
+        componentsCacheDir: config.componentsCacheDir,
+        limit: config.workspaceProcesses,
+        idleMs: config.workspaceProcessIdleMinutes * 60_000,
+        memoryMb: config.workspaceProcessMemoryMb,
+        renderMs: config.workspaceRenderSeconds * 1000,
+      })
+    : undefined
   const workspacesApi = createWorkspacesApi(db, {
     enabled: () => config.workspaces,
     merge: () => core.operations.merge,
@@ -1798,15 +1808,13 @@ export async function createServer(
     render: async (workspace, path) => {
       const site = await workspaceSites.siteFor(workspace)
       const result = await site.renderer.render(path)
-      const views = (await workspaceViews.rendererFor(workspace, site.cache))
-        ? 'workspace'
-        : 'shared'
+      const views = site.views
       if (result.status === 'ok') return { status: 'ok', html: result.html, views }
       if (result.status === 'error') return { status: 'error', error: result.error.message, views }
       return { status: result.status, views }
     },
     onClosed: (key) => {
-      workspaceViews.forget(key)
+      workspaceProcesses?.stop(key)
       workspaceSites.forget(key)
     },
     // Story 390: a discarded workspace's files go, those nothing else names, after it.
@@ -1824,7 +1832,8 @@ export async function createServer(
     db,
     nodeState: core.schema.nodeState,
     cacheOptions,
-    views: workspaceViews,
+    processes: workspaceProcesses,
+    componentsCacheDir: config.componentsCacheDir,
     componentsDir: config.componentsDir,
     snapshots,
     renderTimeoutMs: config.renderTimeoutMs,
@@ -5048,6 +5057,7 @@ export async function createServer(
     // The shared ones: a workspace's site is only ever reached through a request.
     cache: sharedCache,
     renderer: sharedRenderer,
+    workspaceProcesses,
     snapshots,
     seededAdminPassword,
     bundleGrants,
@@ -5111,6 +5121,7 @@ export async function createServer(
       previewHub.stop()
       watcher?.close()
       viewWatcher?.close()
+      workspaceProcesses?.close()
       siteAssets.close()
       publicFiles.close()
       typeWatch?.stop()

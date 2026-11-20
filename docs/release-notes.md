@@ -65,8 +65,8 @@ point at `docs/stories/`.
   its views (`GET /{key}/render?path=/`) shows its changes while Shared's pages do not.
   A merge writes them where they live, refusing one whose components would break
   against Shared's; a file the site reads only as it starts (`PUT /{key}/site-files`, an
-  administrator) takes effect at the merge. `CROMBOLO_WORKSPACE_VIEWS_LIMIT` (50) caps
-  the workspaces' views one server keeps ready.
+  administrator) takes effect at the merge. A workspace that changed
+  its views renders in a process of its own (378).
 
 - **A change that loses data says so, and takes two steps (382).** Each kind of change to
   the definitions and files has one of four classes (`none`, `additive`,
@@ -98,6 +98,13 @@ point at `docs/stories/`.
   missing while the workspace's site serves it, and the merge makes it Shared's without
   moving a byte. A file replaced on both sides is a conflict; a discarded workspace's
   files go, unless something else names them (`docs/workspaces.md`).
+
+- **A workspace's templates run apart from the site (378).** A workspace that changed a
+  view renders in a process of its own, so a template that never finishes, crashes or
+  grows takes only that process with it; the page names the workspace, and the site's
+  pages are served throughout. `CROMBOLO_WORKSPACE_PROCESSES` (10),
+  `CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES` (30), `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB`
+  (1024) and `CROMBOLO_WORKSPACE_RENDER_SECONDS` (30) set its limits.
 
 ### Migrations
 

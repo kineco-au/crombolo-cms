@@ -504,12 +504,36 @@ const DECLARED = [
     description: 'How long a workspace is kept ready after the last time it was looked at.',
   },
   {
-    env: 'CROMBOLO_WORKSPACE_VIEWS_LIMIT',
+    env: 'CROMBOLO_WORKSPACE_PROCESSES',
     kind: 'number',
-    default: '50',
+    default: '10',
     section: 'Schema',
     description:
-      'How many workspaces with changed templates one server keeps ready to show at once. Past it, the one least recently looked at is set aside, and made ready again when next asked for.',
+      'How many workspaces with changed templates one server shows at once, each kept apart from the site. Past it, the one least recently looked at is stopped, and started again when next asked for.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES',
+    kind: 'number',
+    default: '30',
+    section: 'Schema',
+    description:
+      'How long a workspace with changed templates is kept running after the last time it was looked at.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB',
+    kind: 'number',
+    default: '1024',
+    section: 'Schema',
+    description:
+      'How much memory a workspace with changed templates may use before it is stopped, to start again when next asked for.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_RENDER_SECONDS',
+    kind: 'number',
+    default: '30',
+    section: 'Schema',
+    description:
+      'How long a page of a workspace with changed templates may take to show before it is stopped and the page answers with an error.',
   },
   {
     env: 'CROMBOLO_WORKSPACES_REQUIRED',

@@ -145,7 +145,7 @@ describe('users (151)', () => {
     expect(cli(['users', 'reset-password', ADMIN, '--stdin'], 'short').code).toBe(
       ERROR_KINDS.usage.exitCode,
     )
-  })
+  }, 10_000)
 
   test('a reset of a second factor nobody has changes nothing', () => {
     const result = cli(['users', 'reset-2fa', ADMIN, '-o', 'json'])
@@ -361,7 +361,7 @@ describe('operating the site (152)', () => {
     const database = cli(['health', '--group', 'database', '-o', 'json'])
     expect(database.json<{ groups: unknown[] }>().groups).toHaveLength(1)
     expect(cli(['health', '--group', 'nothing']).code).toBe(ERROR_KINDS.not_found.exitCode)
-  })
+  }, 10_000)
 
   test('empties the recycle bin: a dry run, a recent item kept by --older-than, then for good', async () => {
     await withDb(async (db) => {

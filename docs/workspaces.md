@@ -141,9 +141,29 @@ wrote it.
   under `<componentsCacheDir>-workspaces/<key>/`, with a snapshot over it, so an
   unchanged template importing a changed component renders the changed one, and each
   save is read fresh at a new path with nothing restarted. One that changed none renders
-  with Shared's, and opening one builds nothing. A process keeps at most
-  `CROMBOLO_WORKSPACE_VIEWS_LIMIT` trees (50), dropping the least recently used, until
-  story `378` gives each workspace a process of its own.
+  with Shared's, and opening one builds nothing. The tree lives in the workspace's own
+  process (below).
+- **A process of its own (story 378).** A workspace that changed a view renders in a Bun
+  child process (`workspace-processes.ts`, `workspace-render-child.ts`), started at its
+  first render. It opens its own connection to the site's database and builds the
+  workspace's published cache and views; the node resolves each page and settles who may
+  see it, then hands the process the page's key and the request's plain values over
+  Bun's IPC. It writes nothing. A template that never finishes, crashes or grows only
+  ends that process: the page answers with an error naming the workspace, and the next
+  request starts it again, while Shared's pages are served throughout. Its limits, each a
+  setting:
+
+  | Setting | Default | |
+  |---|---|---|
+  | `CROMBOLO_WORKSPACE_PROCESSES` | 10 | processes on a node; past it the least recently used is stopped |
+  | `CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES` | 30 | stopped after this long unused |
+  | `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB` | 1024 | stopped past this much memory, reported every two seconds |
+  | `CROMBOLO_WORKSPACE_RENDER_SECONDS` | 30 | one page's time; past it the process is stopped |
+
+  A merge or discard stops it too. A database in memory (`CROMBOLO_SQLITE_FILE=:memory:`,
+  as the unit tests run) cannot be opened from another process, so there the workspace
+  renders on the node as before. Site search works in the process; a page's actions and
+  signed deferred parts are Shared's renderer's.
 - **`GET /{key}/render?path=/`** renders one page with the workspace's views on Shared's
   published content, for its members, until the workspace has an address of its own
   (`379`), which also serves its stylesheets and scripts.

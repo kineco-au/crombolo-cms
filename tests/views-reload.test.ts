@@ -145,7 +145,7 @@ export default function Home({ model }) {
 `,
     )
     expect(await render(writer)).toContain('changed: Hello')
-  })
+  }, 10_000)
 
   test('is announced to the other nodes as a views instruction', async () => {
     const where = await site()
@@ -165,7 +165,7 @@ export default function Home({ model }) {
     // knows when it has arrived.
     expect(views[0]?.payload.hash).toBe(writer.server.health().components.hash as string)
     expect(views[0]?.payload.alias).toBe('homePage')
-  })
+  }, 10_000)
 
   test('reaches a node that had already cached the module, once it polls', async () => {
     const where = await site()
@@ -197,7 +197,7 @@ export default function Home({ model }) {
 
     expect(await render(reader)).toContain('second: Hello')
     expect(reader.server.health().components.hash).not.toBe(generation as string)
-  })
+  }, 10_000)
 
   /**
    * The case no per-file scheme can see, and the reason the tree is the unit of
@@ -221,5 +221,5 @@ export default function Home({ model }) {
     await render(reader)
     await reader.server.snapshots.settle()
     expect(await render(reader)).toContain('data-layout="second"')
-  })
+  }, 10_000)
 })

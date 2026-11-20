@@ -1,6 +1,7 @@
 /**
  * A workspace's site (story 379): its pages as it has them published, rendered
- * with its own views where it changed any, from a published cache of its own.
+ * with its own views where it changed any, in a process of its own (story 378),
+ * from a published cache of its own.
  * Built when first asked for, kept fresh by the workspace's revision (its newest
  * event, its newest waiting change, its changed files), read with every request;
  * nothing goes on the cache instruction stream. At most so many are kept on a
@@ -15,7 +16,9 @@ import {
   type ViewSnapshots,
 } from '@crombolo/render'
 import { createPublishedContentSource } from './adapters/documents.ts'
-import type { WorkspaceViews } from './workspace-views.ts'
+import type { CromboloConfig } from './config.ts'
+import type { WorkspaceProcesses } from './workspace-processes.ts'
+import { changedViews, createWorkspaceViews } from './workspace-views.ts'
 
 interface Site {
   workspace: WorkspaceScope
@@ -23,6 +26,8 @@ interface Site {
   shared: Renderer
   revision: string
   usedAt: number
+  /** Its renderer in its process, made when it first changed a view. */
+  own?: Renderer
 }
 
 /** What the workspace holds now, as one string: it moves with every write there. */
@@ -52,7 +57,12 @@ export function createWorkspaceSites(options: {
   db: Db
   nodeState?: NodeSchemaState
   cacheOptions: Omit<PublishedCacheOptions, 'onInvalidate' | 'onRead'>
-  views: WorkspaceViews
+  /**
+   * Where a workspace that changed its views renders. Without them (a database in
+   * memory, which no other process can open) it renders here, as story 377 did.
+   */
+  processes?: WorkspaceProcesses
+  componentsCacheDir: string
   componentsDir: string
   snapshots?: ViewSnapshots
   renderTimeoutMs?: number
@@ -62,6 +72,16 @@ export function createWorkspaceSites(options: {
   idleMs: number
 }) {
   const sites = new Map<string, Site>()
+  const here = options.processes
+    ? undefined
+    : createWorkspaceViews({
+        db: options.db,
+        config: {
+          componentsCacheDir: options.componentsCacheDir,
+          renderTimeoutMs: options.renderTimeoutMs,
+        } as CromboloConfig,
+        cache: undefined as never,
+      })
 
   const sweep = (now: number, keep: string) => {
     for (const [key, site] of sites)
@@ -77,9 +97,12 @@ export function createWorkspaceSites(options: {
 
   return {
     /** The workspace's cache and renderer, brought up to what it holds. */
-    async siteFor(
-      workspace: WorkspaceScope,
-    ): Promise<{ cache: PublishedCache; renderer: Renderer; workspace: WorkspaceScope }> {
+    async siteFor(workspace: WorkspaceScope & { name?: string }): Promise<{
+      cache: PublishedCache
+      renderer: Renderer
+      workspace: WorkspaceScope
+      views: 'workspace' | 'shared'
+    }> {
       const revision = await workspaceRevision(options.db, workspace.id)
       let site = sites.get(workspace.key)
       if (!site) {
@@ -109,13 +132,39 @@ export function createWorkspaceSites(options: {
       }
       site.usedAt = Date.now()
       sweep(site.usedAt, workspace.key)
-      const own = await options.views.rendererFor(workspace, site.cache)
-      return { cache: site.cache, renderer: own ?? site.shared, workspace }
+      if (!(await changedViews(options.db, workspace.id)))
+        return { cache: site.cache, renderer: site.shared, workspace, views: 'shared' }
+      if (!options.processes) {
+        const own = (await here?.rendererFor(workspace, site.cache)) as Renderer
+        return { cache: site.cache, renderer: own, workspace, views: 'workspace' }
+      }
+      const current = site
+      if (!current.own) {
+        const name =
+          workspace.name ??
+          (
+            await options.db.q
+              .selectFrom('workspace')
+              .select('name')
+              .where('id', '=', workspace.id)
+              .executeTakeFirst()
+          )?.name ??
+          workspace.key
+        current.own = options.processes.rendererFor(
+          { id: workspace.id, key: workspace.key, name },
+          current.cache,
+          current.shared,
+          () => current.revision,
+        )
+      }
+      return { cache: site.cache, renderer: current.own as Renderer, workspace, views: 'workspace' }
     },
 
     /** Forgets a workspace's site: it was merged or discarded. */
     forget(key: string): void {
       sites.delete(key)
+      here?.forget(key)
+      options.processes?.stop(key)
     },
 
     get size(): number {

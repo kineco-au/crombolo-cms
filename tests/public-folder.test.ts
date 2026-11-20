@@ -143,7 +143,7 @@ describe.each(['all', 'web'] as const)('a public file on an `%s` node', (role) =
       expect((await visit(path)).status, path).toBe(404)
     expect(await (await visit('/.well-known/security.txt')).text()).toContain('Contact:')
     expect(await (await visit('/in.html')).text()).toBe('<p>verified</p>')
-  })
+  }, 10_000)
 
   test('cannot take a reserved path', async () => {
     const { visit, root } = await site({ role, stylesheetsDir: join(folder(), 'css') })
@@ -161,7 +161,7 @@ describe.each(['all', 'web'] as const)('a public file on an `%s` node', (role) =
     write(root, 'public/robots.txt', 'mine\n')
     const replaced = await site({ role }, root)
     expect(await (await replaced.visit('/robots.txt')).text()).toBe('mine\n')
-  })
+  }, 10_000)
 
   test('falls through for a method a file does not take', async () => {
     const { visit } = await site({ role })

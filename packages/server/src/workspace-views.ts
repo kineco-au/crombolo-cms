@@ -1,11 +1,9 @@
 /**
- * Rendering with a workspace's views (story 377). A workspace that changed a
- * component has a tree of its own: its full copy of the components, written from
- * its file list into a folder of its own, with a snapshot over it, so each save
- * is read fresh at a new path, as Shared's views are. One that changed none
- * renders with Shared's. Only so many trees are kept in this process
- * (`CROMBOLO_WORKSPACE_VIEWS_LIMIT`): past it the least recently used goes, until
- * story 378 moves them into processes of their own.
+ * Rendering with a workspace's views (story 377), inside the workspace's own
+ * process (story 378). A workspace that changed a component has a tree of its
+ * own: its full copy of the components, written from its file list into a folder
+ * of its own, with a snapshot over it, so each save is read fresh at a new path,
+ * as Shared's views are. One that changed none renders with Shared's, on the node.
  */
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -23,19 +21,15 @@ interface Tree {
   usedAt: number
 }
 
-/** A page as a workspace's views render it, for the routes to answer. */
-export type WorkspaceRender =
-  | { status: 'ok'; html: string; views: 'workspace' | 'shared' }
-  | { status: 'notFound' | 'noTemplate' | 'redirect' | 'outcome'; views: 'workspace' | 'shared' }
-  | { status: 'error'; error: string; views: 'workspace' | 'shared' }
+/** Whether a workspace changed any view: only then does it render in a process of its own. */
+export async function changedViews(db: Db, workspace: number): Promise<boolean> {
+  return (await new WorkspaceFileRepository(db).changes(workspace, PREFIX)).length > 0
+}
 
 export function createWorkspaceViews(options: {
   db: Db
   config: CromboloConfig
   cache: PublishedCache
-  /** Shared's renderer, for a workspace that changed no view. */
-  shared: Renderer
-  limit: number
 }) {
   const trees = new Map<string, Tree>()
   const base = resolve(`${options.config.componentsCacheDir}-workspaces`)
@@ -100,27 +94,11 @@ export function createWorkspaceViews(options: {
     if (created) await tree.snapshots.prepare()
     else if (changed) await tree.snapshots.refresh()
     tree.usedAt = Date.now()
-    // Past the limit, the least recently used tree goes.
-    while (trees.size > Math.max(1, options.limit)) {
-      const oldest = [...trees.entries()].sort((a, b) => a[1].usedAt - b[1].usedAt)[0]
-      if (!oldest || oldest[0] === workspace.key) break
-      drop(oldest[0])
-    }
     return tree.renderer
   }
 
   return {
     rendererFor,
-
-    /** One page, as the workspace's views render it, on Shared's published content. */
-    async render(workspace: WorkspaceScope, path: string): Promise<WorkspaceRender> {
-      const own = await rendererFor(workspace)
-      const views = own ? ('workspace' as const) : ('shared' as const)
-      const result = await (own ?? options.shared).render(path)
-      if (result.status === 'ok') return { status: 'ok', html: result.html, views }
-      if (result.status === 'error') return { status: 'error', error: result.error.message, views }
-      return { status: result.status, views }
-    },
 
     /** Forgets a workspace's tree: it was merged or discarded. */
     forget(key: string): void {

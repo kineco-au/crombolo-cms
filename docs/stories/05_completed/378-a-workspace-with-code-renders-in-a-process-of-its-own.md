@@ -53,12 +53,36 @@ workspaces may be on for a live site.
 
 ## Acceptance criteria
 
-- [ ] **A workspace with a changed component** is rendered by a process of its own.
-- [ ] **An endless loop in a workspace's template** times out, and pages of Shared are
+- [x] **A workspace with a changed component** is rendered by a process of its own.
+- [x] **An endless loop in a workspace's template** times out, and pages of Shared are
       served throughout.
-- [ ] **A crash** in it is reported against the workspace, and the next request starts
+- [x] **A crash** in it is reported against the workspace, and the next request starts
       it again.
-- [ ] **Idle, over its memory limit, merged or discarded,** the process ends.
-- [ ] **Over the limit on processes,** the least recently used ends.
-- [ ] **A workspace without changed files** starts no process.
-- [ ] **Tests;** `docs/` says what the limits are and how to set them.
+- [x] **Idle, over its memory limit, merged or discarded,** the process ends.
+- [x] **Over the limit on processes,** the least recently used ends.
+- [x] **A workspace without changed files** starts no process.
+- [x] **Tests;** `docs/` says what the limits are and how to set them.
+
+## Built (2026-11-20)
+
+- **`workspace-processes.ts`:** one Bun child per workspace that changed a view, started
+  at its first render; `rendererFor` gives the workspace's site a renderer that resolves
+  the page and settles access on the node, then has the process render it by key
+  (published, or its draft for a preview); everything else is Shared's renderer's. Over
+  its time or on a crash the render answers an error naming the workspace and the
+  process is stopped; a sweep stops it idle, over its memory (reported every two
+  seconds) or past the node's limit; a merge, discard or the server's close stop it.
+- **`workspace-render-child.ts`:** opens its own connection, builds the workspace's
+  published cache and its views tree (`createWorkspaceViews`, now only the child's), and
+  renders with site search; it writes nothing.
+- **Settings:** `CROMBOLO_WORKSPACE_PROCESSES`, `CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES`,
+  `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB`, `CROMBOLO_WORKSPACE_RENDER_SECONDS`;
+  `CROMBOLO_WORKSPACE_VIEWS_LIMIT` is gone.
+- **Departures from the plan:** messages go over Bun's own IPC rather than the
+  extensions' framed channel, which carries no more than plain values here either; and
+  the connection is an ordinary one, which the child never writes through. A database
+  in memory cannot be opened from another process, so there (the SQLite unit tests) a
+  workspace renders on the node as before; the story's own tests use a file.
+- **Not carried to the process:** a page's actions and signed deferred parts, which need
+  the node's secrets and services.
+- **Tests:** `tests/workspace-processes.test.ts`, on both dialects.

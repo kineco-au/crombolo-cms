@@ -445,10 +445,17 @@ export interface CromboloConfig {
    */
   workspacesRequired: boolean
   /**
-   * How many workspaces' views one process keeps loaded (story 377); past it the
-   * least recently used is dropped. `CROMBOLO_WORKSPACE_VIEWS_LIMIT`, 50.
+   * How many workspaces with changed views render at once on a node, each in a
+   * process of its own (story 378); past it the least recently used is stopped.
+   * `CROMBOLO_WORKSPACE_PROCESSES`, 10.
    */
-  workspaceViewsLimit: number
+  workspaceProcesses: number
+  /** A workspace's process is stopped after this long unused. `CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES`, 30. */
+  workspaceProcessIdleMinutes: number
+  /** A workspace's process is stopped past this much memory. `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB`, 1024. */
+  workspaceProcessMemoryMb: number
+  /** How long a page may take in a workspace's process. `CROMBOLO_WORKSPACE_RENDER_SECONDS`, 30. */
+  workspaceRenderSeconds: number
   /**
    * The fewest days between retiring a property and purging it, with its values
    * (story 382). `CROMBOLO_PURGE_AFTER_DAYS`, 0.
@@ -1038,7 +1045,13 @@ export function loadConfig(
     ),
     workspaceSites: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_SITES'), 3)),
     workspaceSiteIdleMinutes: positiveNumber(setting('CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES'), 15),
-    workspaceViewsLimit: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_VIEWS_LIMIT'), 50)),
+    workspaceProcesses: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_PROCESSES'), 10)),
+    workspaceProcessIdleMinutes: positiveNumber(
+      setting('CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES'),
+      30,
+    ),
+    workspaceProcessMemoryMb: positiveNumber(setting('CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB'), 1024),
+    workspaceRenderSeconds: positiveNumber(setting('CROMBOLO_WORKSPACE_RENDER_SECONDS'), 30),
     dialect: setting('CROMBOLO_DB') === 'postgres' ? 'postgres' : 'sqlite',
     pgDump: setting('CROMBOLO_PG_DUMP'),
     upgradePolicy:

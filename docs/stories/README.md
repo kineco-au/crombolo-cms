@@ -532,7 +532,7 @@ it.
 | `375` | A workspace: pages changed apart from Shared | should | XL | done | — |
 | `376` | A workspace holds schema changes | should | XL | done | 375 |
 | `377` | A workspace holds components, stylesheets and scripts | should | L | done | 375, 376 |
-| `378` | A workspace with code renders in a process of its own | should | L | ready | 377 |
+| `378` | A workspace with code renders in a process of its own | should | L | done | 377 |
 | `379` | A workspace is looked at before it is merged | should | M | done | 375 |
 | `380` | Merging a workspace into Shared | should | L | done | 375 |
 | `381` | Every change is recorded, and every item has its history | should | L | done | 376, 380 |
@@ -541,5 +541,6 @@ it.
 | `384` | Workspaces in the back office | should | L | ready | 375, 376, 377, 379, 380, 381, 382 |
 | `386` | Workspaces and changes from the command line | should | L | backlog | 378, 379, 380, 381, 383 |
 | `387` | A property with a value per environment | should | M | backlog | 383 |
-| `388` | Content and schema that arrive only by a change | should | M | backlog | 383 |
+| `388` | Content and schema that arrive only by a change | should | M | backlog | 383, 391 |
+| `392` | Changes carry languages, the dictionary, blueprints, forms and workflow set-up | could | M | backlog | 381, 383, 388 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

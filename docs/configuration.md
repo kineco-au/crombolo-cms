@@ -144,7 +144,10 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_WORKSPACE_LINK_MAX_DAYS` | number | `30` | The longest a link to a workspace, made for someone to look at it, may last, in days. 0 turns such links off. |
 | `CROMBOLO_WORKSPACE_SITES` | number | `3` | How many workspaces one server keeps ready to be looked at at once. |
 | `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES` | number | `15` | How long a workspace is kept ready after the last time it was looked at. |
-| `CROMBOLO_WORKSPACE_VIEWS_LIMIT` | number | `50` | How many workspaces with changed templates one server keeps ready to show at once. Past it, the one least recently looked at is set aside, and made ready again when next asked for. |
+| `CROMBOLO_WORKSPACE_PROCESSES` | number | `10` | How many workspaces with changed templates one server shows at once, each kept apart from the site. Past it, the one least recently looked at is stopped, and started again when next asked for. |
+| `CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES` | number | `30` | How long a workspace with changed templates is kept running after the last time it was looked at. |
+| `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB` | number | `1024` | How much memory a workspace with changed templates may use before it is stopped, to start again when next asked for. |
+| `CROMBOLO_WORKSPACE_RENDER_SECONDS` | number | `30` | How long a page of a workspace with changed templates may take to show before it is stopped and the page answers with an error. |
 | `CROMBOLO_WORKSPACES_REQUIRED` | `true` / `false` | `false` | Whether every change to a page is made in a workspace. What everyone sees then changes only when a workspace is merged; someone who edits without choosing one works in their own. Needs `CROMBOLO_WORKSPACES=true`. |
 | `CROMBOLO_SYNC_SCHEMA_AT_BOOT` | `true` / `false` | `true` | Syncs the schema files when the server starts. Turn it off when a deploy runs `crombolo types sync` itself. |
 

@@ -35,7 +35,10 @@ export default defineConfig({
   workspaceLinkMaxDays: 30, // CROMBOLO_WORKSPACE_LINK_MAX_DAYS: longest a link to a workspace lasts
   workspaceSites: 3, // CROMBOLO_WORKSPACE_SITES: workspaces one server keeps ready
   workspaceSiteIdleMinutes: 15, // CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES: kept that long after a visit
-  workspaceViewsLimit: 50, // CROMBOLO_WORKSPACE_VIEWS_LIMIT: workspaces' views one server keeps ready
+  workspaceProcesses: 10, // CROMBOLO_WORKSPACE_PROCESSES: workspaces with changed templates shown at once
+  workspaceProcessIdleMinutes: 30, // CROMBOLO_WORKSPACE_PROCESS_IDLE_MINUTES: kept running that long unused
+  workspaceProcessMemoryMb: 1024, // CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB: stopped past this much memory
+  workspaceRenderSeconds: 30, // CROMBOLO_WORKSPACE_RENDER_SECONDS: how long one of its pages may take
 
   // ── Where its files are (relative to this file) ─────────────────────────────
   siteDir: '.',
