@@ -57,7 +57,8 @@ export class UmbSectionMainViewElement extends UmbLitElement {
 
 	#getOrCreateViewContext(alias: string): UmbViewController {
 		let context = this.#viewContexts.get(alias);
-		if (!context) {
+		// A controller destroyed with an earlier set of views is made again (Crombolo).
+		if (!context || typeof context.provideAt !== 'function') {
 			context = new UmbViewController(this, alias);
 			context.inherit();
 			this.#viewContexts.set(alias, context);
@@ -120,6 +121,8 @@ export class UmbSectionMainViewElement extends UmbLitElement {
 				path: this.#constructDashboardPath(manifest),
 				component: () => createExtensionElement(manifest),
 				setup: (component?: any) => {
+					// Looked up as the route runs: the one it was made with may have gone since.
+					const context = this.#getOrCreateViewContext(manifest.alias);
 					if (this.#currentProvidedView !== context) {
 						this.#currentProvidedView?.unprovide();
 					}
@@ -140,6 +143,8 @@ export class UmbSectionMainViewElement extends UmbLitElement {
 				path: this.#constructViewPath(manifest),
 				component: () => createExtensionElement(manifest),
 				setup: async (component?: any) => {
+					// Looked up as the route runs: the one it was made with may have gone since.
+					const context = this.#getOrCreateViewContext(manifest.alias);
 					if (this.#currentProvidedView !== context) {
 						this.#currentProvidedView?.unprovide();
 					}

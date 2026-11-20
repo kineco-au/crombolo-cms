@@ -33,6 +33,8 @@ export class UmbMediaDashboardElement extends UmbLitElement {
 		const config = await this.#mediaCollectionRepository.getDefaultConfiguration();
 
 		await this.#dataTypeDetailRepository.requestByUnique(config.defaultDataTypeId);
+		// Left before its data type arrived: its repository has gone with it (Crombolo).
+		if (!this.isConnected) return;
 
 		this.observe(
 			await this.#dataTypeDetailRepository.byUnique(config.defaultDataTypeId),
