@@ -74,9 +74,9 @@ export class UmbTreeItemTargetExpansionManager<
 	async #observeExpansionForTreeItem(treeItem: TreeItemType | TreeRootType) {
 		await this.#init;
 
-		if (!this.#treeContext) {
-			throw new Error('Tree context is not set');
-		}
+		// Crombolo: a tree taken away while it opens never gets its context, as when a place under
+		// Content is left before its tree loads (story 385); its items have nothing to observe.
+		if (!this.#treeContext) return;
 
 		this.#observerController = this.observe(
 			this.#treeContext?.expansion.entry(treeItem),
