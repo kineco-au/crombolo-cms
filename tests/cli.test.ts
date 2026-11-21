@@ -79,18 +79,9 @@ describe('arguments', () => {
   })
 
   test("a flag's value is never an argument", () => {
-    // `prod` belongs to --env; the URL is still the second argument, and the
+    // `json` belongs to -o; the URL is still the second argument, and the
     // failure is about reaching it.
-    const result = run([
-      'profile',
-      'add',
-      '--env',
-      'prod',
-      'origin',
-      'http://127.0.0.1:9',
-      '-o',
-      'json',
-    ])
+    const result = run(['profile', 'add', '-o', 'json', 'origin', 'http://127.0.0.1:9'])
     expect(result.code).toBe(ERROR_KINDS.unavailable.exitCode)
     expect(result.envelope()).toMatchObject({ kind: 'unavailable' })
     expect(String(result.envelope().message)).toContain('127.0.0.1:9')

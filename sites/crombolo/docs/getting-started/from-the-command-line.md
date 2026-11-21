@@ -230,6 +230,16 @@ bun start
 
 ## Advanced
 
+### A change of your own, in a workspace
+
+Once there is more than you to look after the site, turn workspaces on
+(`CROMBOLO_WORKSPACES=true`) and work in one: a change you make goes into your own workspace
+until it is merged, and others' work does not get in its way. `bunx crombolo workspace open
+"Visit us"` opens one; change pages as before; `bunx crombolo workspace check "Visit us"`
+renders what it changed; and `bunx crombolo workspace merge "Visit us" --yes` brings it in.
+`workspace diff`, `workspace conflicts` and `workspace resolve` show and settle what differs
+from everyone else's, and `workspace push` sends it to another copy of the site.
+
 ### Add a contact form
 
 Stop the site, then make a form and pick it on the "Visit us" page.

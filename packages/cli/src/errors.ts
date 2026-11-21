@@ -61,6 +61,15 @@ export const OUTCOMES = {
     description:
       'Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`.',
   },
+  conflicts_found: {
+    code: 22,
+    description: 'A workspace has conflicts to resolve: `workspace conflicts`, `workspace merge`.',
+  },
+  lossy_unaccepted: {
+    code: 23,
+    description:
+      'A change loses data, removes or renames, and was not accepted: `workspace merge --accept-lossy`.',
+  },
 } as const
 
 export type OutcomeName = keyof typeof OUTCOMES

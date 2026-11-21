@@ -83,6 +83,13 @@ export const CLI_PAGES: readonly CliPageSpec[] = [
     ],
   },
   {
+    slug: 'workspaces',
+    title: 'Workspaces and changes',
+    summary:
+      'Open a workspace, change it, check it, and push and merge it as one change; list the changes a site holds, and revert one.',
+    topics: ['workspace', 'workspaces', 'changes', 'revert'],
+  },
+  {
     slug: 'users',
     title: 'Users and access',
     summary:

@@ -35,6 +35,10 @@ export interface ChangeRouteOptions {
   atLeast(level: 'read' | 'content'): boolean
   notAtLevel(level: 'read' | 'content', what: string): Response
   may(principal: Principal, verb: RemoteVerb): boolean
+  /** A change's detail and its revert, as the back office's change routes answer them (story 386). */
+  changeRoutes?: () =>
+    | { handle(request: Request, principal: Principal, rest: string): Promise<Response> }
+    | undefined
   /** The request's body, written to `path`, with its hash; undefined when it carried none. */
   receive(request: Request, path: string): Promise<{ sha256: string; size: number } | undefined>
 }
@@ -174,6 +178,9 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
           const out = await transfer.exportSince(at)
           return packed(out.change, out.media)
         }
+        const detail = /^changes\/([0-9a-f-]{36})$/i.exec(what)?.[1]
+        const routes = options.changeRoutes?.()
+        if (detail && routes) return routes.handle(request, principal, `/${detail}`)
         const one = ONE.exec(what)?.[1]
         if (one) {
           const out = await transfer.exportChange(normaliseUuid(one))
@@ -195,6 +202,23 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
         return problem(404, { code: 'not-found', title: 'There is no such route' })
       }
 
+      const reverting = /^changes\/([0-9a-f-]{36})\/revert$/i.exec(what)?.[1]
+      if (reverting && request.method === 'POST') {
+        if (!options.atLeast('content')) return options.notAtLevel('content', 'changes')
+        const routes = options.changeRoutes?.()
+        if (!routes) return problem(404, { code: 'not-found', title: 'There is no such route' })
+        const answered = await routes.handle(request, principal, `/${reverting}/revert`)
+        if (answered.ok) return answered
+        const body = (await answered.json().catch(() => ({}))) as {
+          message?: string
+          blockers?: string[]
+        }
+        return problem(answered.status, {
+          code: answered.status === 409 ? 'conflict' : 'refused',
+          title: body.message ?? 'It cannot be reverted',
+          ...(body.blockers ? { items: body.blockers } : {}),
+        })
+      }
       if (what === 'changes' && request.method === 'PUT') {
         if (!options.atLeast('content')) return options.notAtLevel('content', 'changes')
         if (!options.may(principal, RemotePermissions.ApplyChanges))
@@ -209,6 +233,22 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
             'You may not apply this change here',
             'It carries templates or the site\'s own code, which needs "Install code on this site" (Crombolo.Remote.InstallCode).',
           )
+        // Story 386: what applying it here would do, staged and set aside again.
+        if (url.searchParams.get('check') === 'true') {
+          const outcome = await transfer.stage([received], principal)
+          const workspaces = new WorkspaceRepository(options.db)
+          if (outcome.workspace) await workspaces.discard(outcome.workspace.id)
+          return Response.json({
+            skipped: outcome.skipped,
+            conflicts: outcome.conflicts,
+            pages: received.change.pages.map((p) => ({
+              key: p.key,
+              name: p.after?.name ?? p.before?.name ?? p.key,
+              action: p.action,
+            })),
+            files: received.change.files.map((f) => ({ path: f.path, class: f.class })),
+          })
+        }
         const stage = url.searchParams.get('stage') === 'true'
         const intoKey = url.searchParams.get('into')
         const accepted = (url.searchParams.get('accept') ?? '').split(',').filter(Boolean)
@@ -218,6 +258,9 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
           if (intoKey && (!into?.stagedReadOnly || into.state !== 'open'))
             return problem(404, { code: 'not-found', title: 'There is no such staged change here' })
           const outcome = await transfer.stage([received], principal, into)
+          // Story 386: a workspace pulled to work on, rather than a change to look at.
+          if (url.searchParams.get('editable') === 'true' && outcome.workspace)
+            await workspaces.setStaged(outcome.workspace.id, outcome.workspace.stagedChanges, false)
           return Response.json(
             {
               workspace: outcome.workspace?.key ?? null,

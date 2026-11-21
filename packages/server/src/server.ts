@@ -365,6 +365,7 @@ import {
   type WorkspaceAccess,
   workspaceHosts,
 } from './workspace-access.ts'
+import { createWorkspaceChecks } from './workspace-checks.ts'
 import { createWorkspaceProcesses, type WorkspaceProcesses } from './workspace-processes.ts'
 import { createWorkspaceSchema } from './workspace-schema.ts'
 import { createWorkspaceSites } from './workspace-sites.ts'
@@ -432,6 +433,12 @@ export interface ServerHandle {
   close(): Promise<void>
   /** Where workspaces that changed their views render (story 378); none on a database in memory. */
   workspaceProcesses: WorkspaceProcesses | undefined
+  /**
+   * A remote-protocol request as `principal`, in this process (story 386): how a
+   * command run in a site's folder reaches its workspaces and changes, as it would a
+   * hosted site's, with no server listening and the remote off.
+   */
+  remoteAs(request: Request, principal: Principal): Promise<Response>
 }
 
 export interface ServerOptions {
@@ -1115,6 +1122,10 @@ export async function createServer(
     schema: () => schemaTransfer,
     workspaces: () => workspacesApi,
     changes: () => (workspacesOn(config) ? changeTransfer : undefined),
+    changeRoutes: () => ({
+      handle: (request: Request, principal: Principal, rest: string) =>
+        changesApi.handle(request, principal, rest, { ipAddress: null, forwardedFor: null }),
+    }),
     onApplied: async () => {
       cache.invalidate()
       mediaCache.clear()
@@ -1812,6 +1823,7 @@ export async function createServer(
     enabled: () => workspacesOn(config),
     locked: () => contentLocked(config),
     editedAt: () => config.contentEditedAt ?? null,
+    checks: () => workspaceChecks,
     merge: () => core.operations.merge,
     nodeState: core.schema.nodeState,
     required: () => config.workspacesRequired,
@@ -1838,6 +1850,23 @@ export async function createServer(
     open: (workspace, principal, path, request) =>
       workspaceOpenUrl(workspace, principal, path, request),
     links: () => workspaceLinks,
+  })
+  // Story 386: a workspace's diff, conflicts and checks, for the command line.
+  const workspaceChecks = createWorkspaceChecks({
+    db,
+    merge: () => core.operations.merge,
+    schema: () => workspaceSchema,
+    async render(workspace, path) {
+      const site = await workspaceSites.siteFor(workspace)
+      const result = await site.renderer.render(path)
+      if (result.status === 'ok') return { status: 'ok', html: result.html }
+      if (result.status === 'error') return { status: 'error', error: result.error.message }
+      return { status: result.status }
+    },
+    async urlOf(workspace, key) {
+      const site = await workspaceSites.siteFor(workspace)
+      return (await site.cache.byKey(key))?.url
+    },
   })
   // Story 383: a change moved from one site to another, staged and applied as a workspace.
   const changeTransfer = createChangeTransfer({
@@ -5103,6 +5132,12 @@ export async function createServer(
     cache: sharedCache,
     renderer: sharedRenderer,
     workspaceProcesses,
+    async remoteAs(request, principal) {
+      return (
+        (await remote.handleAs(request, new URL(request.url), principal)) ??
+        new Response(null, { status: 404 })
+      )
+    },
     snapshots,
     seededAdminPassword,
     bundleGrants,

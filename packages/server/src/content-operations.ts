@@ -12,7 +12,7 @@ import type {
   EventSink,
   MediaOperations,
 } from '@crombolo/content'
-import { currentSchemaState, type Db } from '@crombolo/data'
+import { currentSchemaState, type Db, WorkspaceRepository } from '@crombolo/data'
 import { PublishedCache } from '@crombolo/render'
 import { createPublishedContentSource } from './adapters/documents.ts'
 import { backOfficeUrl } from './back-office-url.ts'
@@ -34,6 +34,13 @@ export interface SiteOperations {
 export async function siteDocumentOperations(
   db: Db,
   config: CromboloConfig,
+  options: {
+    /**
+     * Story 386: where workspaces are on, a command's change goes into this person's
+     * own workspace, opened for them and named when it is pushed or merged.
+     */
+    ownWorkspaceOf?: { key: string; name: string }
+  } = {},
 ): Promise<SiteOperations> {
   const state = await currentSchemaState(db)
   const nodeState = { version: state.version, revision: state.revision }
@@ -51,7 +58,7 @@ export async function siteDocumentOperations(
   const cache = new PublishedCache(createPublishedContentSource(db, { nodeState }))
   // The routes a redirect is tracked from are read from this cache once a change
   // has committed, so the change drops it first.
-  const { documents: operations } = createNodeOperations({
+  const nodeOperations = createNodeOperations({
     db,
     config,
     cache,
@@ -65,7 +72,19 @@ export async function siteDocumentOperations(
     webhooks,
     backOfficeUrl: backOfficeUrl(config),
   })
-  return { operations, events }
+  const owner = options.ownWorkspaceOf
+  if (owner && config.workspaces) {
+    const workspaces = new WorkspaceRepository(db)
+    const own =
+      (await workspaces.ownOf(owner.key)) ??
+      (await workspaces.open({
+        name: `Changes by ${owner.name}`,
+        ownerKey: owner.key,
+        personal: true,
+      }))
+    return { operations: nodeOperations.documentsIn(own), events }
+  }
+  return { operations: nodeOperations.documents, events }
 }
 
 /**

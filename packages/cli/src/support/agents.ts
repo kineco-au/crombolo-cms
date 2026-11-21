@@ -36,6 +36,11 @@ This is a [crombolo](https://github.com/kineco-au/crombolo-cms) site, made with 
 - **Schema is files.** Change a type by editing its file in \`schema/\`, then \`crombolo types check\`
   and \`crombolo types sync\`. \`crombolo schema\` describes every command for a machine.
 - **Types:** \`crombolo generate\` writes the TypeScript types the components use, after a schema change.
+- **Work in a workspace, and move it as one change:** \`crombolo workspace open <name>\`, change
+  it, \`crombolo workspace check <name>\`, then \`crombolo workspace push <name> --to <site> --to-env
+  <env> --yes\` and \`crombolo workspace merge <name> --profile <site> --env <env> --yes\` there.
+  Every command says where it acts first and answers with \`-o json\`; nothing asks a question, and
+  the exit code says why it stopped (22: conflicts, 20: checks failed, 23: a lossy change not accepted).
 - **Before a push:** \`crombolo components check\` and \`crombolo site build\` must pass.
 - **Documentation:** https://github.com/kineco-au/crombolo-cms/tree/v${version}/docs, and
   \`crombolo <command> --help\`.`

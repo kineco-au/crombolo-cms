@@ -258,9 +258,10 @@ describe('the two sides', () => {
     const copy = join(dir, 'copy')
     mkdirSync(copy)
     writeFileSync(join(copy, 'crombolo.config.ts'), 'export default {}\n')
-    addProfile({ name: 'default', url: 'https://live.example', environment: 'production' }, file)
-    addProfile({ name: 'staging', url: 'https://live.example', environment: 'staging' }, file)
-    addProfile({ name: 'again', url: 'https://live.example', environment: 'production' }, file)
+    // Story 386: a profile names a site; each command names the environment.
+    addProfile({ name: 'default', url: 'https://live.example' }, file)
+    addProfile({ name: 'staging', url: 'https://staging.example' }, file)
+    addProfile({ name: 'again', url: 'https://live.example' }, file)
     addProfile({ name: 'copy', path: copy }, file)
     addProfile({ name: 'same-copy', path: copy }, file)
     return { file, copy }
@@ -274,7 +275,7 @@ describe('the two sides', () => {
 
   test('push goes from this site to the default; pull from the default to this site', () => {
     const { file } = profiles()
-    const pushed = sides('push', {}, file)
+    const pushed = sides('push', { env: 'production' }, file)
     expect(pushed.from).toMatchObject({ kind: 'local', here: true, dir: process.cwd() })
     expect(pushed.to).toMatchObject({ name: 'default', environment: 'production' })
     const pulled = sides('pull', {}, file)
@@ -318,11 +319,21 @@ describe('the two sides', () => {
     expect(() => sides('push', { from: 'copy', to: 'same-copy' }, file)).toThrow(
       'the same site folder',
     )
-    expect(() => sides('push', { from: 'again', to: 'default' }, file)).toThrow('the same site')
+    expect(() =>
+      sides(
+        'push',
+        { from: 'again', to: 'default', 'from-env': 'production', 'to-env': 'production' },
+        file,
+      ),
+    ).toThrow('the same site')
     // One site's two environments are two sites.
-    expect(sides('push', { from: 'staging', to: 'default' }, file).to).toMatchObject({
-      environment: 'production',
-    })
+    expect(
+      sides(
+        'push',
+        { from: 'again', to: 'default', 'from-env': 'staging', 'to-env': 'production' },
+        file,
+      ).to,
+    ).toMatchObject({ environment: 'production' })
   })
 
   test('environments: each side its own, and --env only when one side is hosted', () => {

@@ -351,3 +351,29 @@ so they are still changed directly.
 - Back-office search, the list view and a page's version history read Shared's.
 - Site search on a workspace's site reads Shared's index.
 
+## From the command line (story 386)
+
+The `workspace` commands work in a workspace on this folder's site, through the remote
+protocol's own routes in the command's process, or with `--profile <site> --env <env>` on a
+hosted site's environment: `open`, `list`, `status`, `discard`, `share`/`unshare` (by email),
+`diff` (`--against shared|base|<env>`), `sync`, `conflicts`, `resolve`, `check` (`--all`),
+`errors`, `pages`, `render`, `address`, `merge` (several names as one, `--dry-run`,
+`--accept-lossy`), `push --to` and `pull --from`; with `workspaces`, `changes` and `revert`.
+
+- **Every command says where it acts** first, `<site> › <env> › workspace <name>` or `… (shared)`,
+  and its `-o json` carries it as `where`. Nothing asks: `--yes` does what a dry run shows.
+- **Exit codes say why:** 22 conflicts present, 20 a check failed, 23 a lossy change not
+  accepted, beside the CLI's usual ones.
+- **A profile names a site;** `--env` names the environment, required where it has more than
+  one. A profile that still names an environment is refused, saying to add it again.
+- **Locally, with workspaces on,** a page changed outside a named workspace goes into the
+  person's own (`Changes by …`), named when it is pushed or merged.
+- **`push` never merges:** it stages the workspace's change on the other site, where it is
+  looked at and merged. `pull` brings the changes merged there that this site lacks, in
+  order, or with a name one of its workspaces, to work on here.
+- **A plugin's verb** acts under an environment with `onSite` and `siteFlags` from
+  `@crombolo/cli/plugin`.
+- **The routes** are the remote protocol's `workspaces` (`workspaces`, `workspaces/{key}/…`,
+  the back office's workspace routes for the person), `changes/{id}` and `changes/{id}/revert`,
+  and `PUT changes?check=true`, which says what applying a change would do and changes nothing.
+

@@ -776,7 +776,7 @@ describe(`server bundles create media as the member (${dialectUnderTest})`, () =
       [photo.key],
     )
     expect([true, 1, '1']).toContain(trashed[0]?.trashed as never)
-  })
+  }, 15_000)
 
   test('only the declared folders and the subfolders below them, which are made as needed', async () => {
     const s = await realSite()

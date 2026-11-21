@@ -141,6 +141,25 @@ A change to `schema/` deploys with your code. Each node applies it when it start
 
 To apply the definitions as a pipeline step instead, set `CROMBOLO_SYNC_SCHEMA_AT_BOOT=false` and run `crombolo types sync` before the new nodes start. [Content types](/docs/guides/schema-as-code/) has the detail.
 
+## Moving a change, not a whole site
+
+With workspaces on (`CROMBOLO_WORKSPACES=true`), a change is the thing you move. Open a
+workspace, change it, check it and push it; it waits on the site you pushed to, unmerged,
+where it can be looked at, and is merged there:
+
+```sh
+crombolo workspace open "Spring sale"
+crombolo workspace check "Spring sale"
+crombolo workspace push "Spring sale" --to riverside --to-env production --yes
+crombolo workspace merge "Spring sale" --profile riverside --env production --yes
+```
+
+A profile names a site, and each command its environment with `--env`. `crombolo
+workspaces`, `crombolo changes` and `crombolo revert <change>` look after what is there;
+`crombolo workspace pull --from <site> --from-env <env> --yes` brings back what was merged
+there. A site that takes its content only by a change (`CROMBOLO_CONTENT=locked`) is
+deployed to this way alone.
+
 ## Upgrading crombolo
 
 A production site never upgrades itself: a node started against a database with migrations waiting refuses to start, and says which command to run. An upgrade is check, fix, then upgrade, run with the **new** release's command line against the production database:

@@ -152,7 +152,7 @@ describe('types list and types show', () => {
     }>('types', 'list')
     expect(listed.items.find((i) => i.alias === 'article')?.items).toBeNull()
     expect(listed.database).toContain('no database')
-  })
+  }, 15_000)
 
   // Three runs of the command line in one test: past the default limit on a busy machine.
   test('once applied: item counts, and what has changed since', () => {

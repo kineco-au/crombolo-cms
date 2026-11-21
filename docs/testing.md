@@ -194,6 +194,9 @@ calls the functions directly.
   protocol, staged on the other and looked at while its live site is unchanged, then
   applied by the staged workspace's merge; a later change to a page the second copy
   edited since is refused, naming the field.
+- `workspace-cli.integration.ts` — story `386` with the real command line: a workspace
+  changed in a site's folder, checked, pushed to a copy run with `crombolo start` where it waits
+  unmerged, and merged there, signed in by the device grant.
 - `first-boot.integration.ts` — story `080`'s first boot. It covers a production
   start with no password, set up from the browser with `CROMBOLO_SETUP_CODE`
   (which never appears in the output), then restarted. It covers the holding page

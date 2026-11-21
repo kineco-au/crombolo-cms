@@ -1,8 +1,9 @@
 /**
- * The remote protocol's route for a host to merge a workspace (story 380):
- * `GET workspaces/{key}/merge` says what a merge would do, and `POST` does it,
- * `{ accept?, rehearse? }`, at the `content` level. The rules are the workspace
- * routes' own: the merge permission and each change's verbs, as the person.
+ * The remote protocol's workspace routes (stories 380, 386): a host merging one, and
+ * the command line working in them. `workspaces` lists and opens; `workspaces/{key}`
+ * and what is under it (members, diff, update, conflicts, files, check, pages, errors,
+ * render, open, links, merge) are the workspace routes' own, at the `content` level,
+ * as the person, by the same rules as the back office.
  */
 import type { Principal } from '@crombolo/api-management/domain'
 
@@ -32,12 +33,13 @@ export interface WorkspaceRouteOptions {
 }
 
 const MERGE_PATH = /^workspaces\/([0-9a-f-]{36})\/merge$/i
+const UNDER = /^workspaces(?:\/(.*))?$/
 
 export function createWorkspaceRoutes(options: WorkspaceRouteOptions) {
   return {
     capabilities(): string[] {
       return options.enabled() && options.atLeast('content') && options.workspaces()
-        ? ['workspace-merge']
+        ? ['workspace-merge', 'workspaces']
         : []
     },
 
@@ -47,22 +49,22 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions) {
       principal: Principal,
       what: string,
     ): Promise<Response | undefined> {
-      const key = what.match(MERGE_PATH)?.[1]
       const routes = options.workspaces()
-      if (!key || !routes) return undefined
-      if (request.method !== 'GET' && request.method !== 'POST')
-        return new Response(null, { status: 405 })
-      if (!options.atLeast('content')) return options.notAtLevel('content', 'merging a workspace')
+      const under = UNDER.exec(what)
+      if (!under || !routes) return undefined
+      const key = what.match(MERGE_PATH)?.[1]
+      if (!options.atLeast('content'))
+        return options.notAtLevel('content', key ? 'merging a workspace' : 'workspaces')
       if (!options.enabled())
         return options.problem(404, {
           code: 'not-enabled',
           title: 'Workspaces are not turned on for this site',
         })
-      const answered = await routes.handle(request, principal, `/${key}/merge`, {
+      const answered = await routes.handle(request, principal, `/${under[1] ?? ''}`, {
         ipAddress: null,
         forwardedFor: null,
       })
-      if (answered.ok) return answered
+      if (answered.ok || answered.status === 204) return answered
       const body = (await answered.json().catch(() => ({}))) as {
         message?: string
         blockers?: string[]
@@ -72,7 +74,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions) {
       return options.problem(answered.status, {
         code:
           answered.status === 409 ? 'conflict' : answered.status === 403 ? 'forbidden' : 'refused',
-        title: body.message ?? 'The workspace cannot be merged',
+        title: body.message ?? (key ? 'The workspace cannot be merged' : 'It was refused'),
         ...(items ? { items } : {}),
       })
     },

@@ -10,6 +10,7 @@
  * the media store so any node can serve the download. A node that stops leaves
  * its job's heartbeat to go stale, and the job is then reported failed.
  */
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdir, rm } from 'node:fs/promises'
@@ -142,6 +143,8 @@ export interface RemoteOptions {
   workspaces?: WorkspaceRouteOptions['workspaces']
   /** Moving changes between sites (story 383): absent where workspaces are off. */
   changes?: ChangeRouteOptions['changes']
+  /** A change's detail and revert (story 386). */
+  changeRoutes?: ChangeRouteOptions['changeRoutes']
 }
 
 /** What a supervised restart came to: the new server serving, or why the old one still is. */
@@ -153,6 +156,8 @@ export interface RestartOutcome {
 export interface Remote {
   /** Answers a remote path, or undefined when the path is not one. */
   handle(request: Request, url: URL): Promise<Response | undefined>
+  /** A request as someone already known, on this site, as a local command makes it (story 386). */
+  handleAs(request: Request, url: URL, principal: Principal): Promise<Response | undefined>
   /** Whether a request is an upload the remote takes beyond the usual body limit. */
   isUpload(request: Request, url: URL): boolean
   /**
@@ -224,7 +229,10 @@ export function createRemote(options: RemoteOptions): Remote {
 
   /** What the site takes (story 167): each level the ones before it and more. */
   const level: RemoteAccess = settings.access ?? (settings.enabled ? 'all' : 'off')
+  // A local command's own request (story 386): every level, with the remote off as well.
+  const local = new AsyncLocalStorage<boolean>()
   const atLeast = (wanted: RemoteAccess) =>
+    local.getStore() === true ||
     REMOTE_ACCESS_LEVELS.indexOf(level) >= REMOTE_ACCESS_LEVELS.indexOf(wanted)
   const notAtLevel = (wanted: RemoteAccess, what: string) =>
     problem(403, {
@@ -347,6 +355,7 @@ export function createRemote(options: RemoteOptions): Remote {
     ? createChangeRoutes({
         db,
         changes: options.changes,
+        ...(options.changeRoutes ? { changeRoutes: options.changeRoutes } : {}),
         problem,
         atLeast,
         notAtLevel,
@@ -1572,6 +1581,227 @@ export function createRemote(options: RemoteOptions): Remote {
     }
   }
 
+  /** Every route but discovery and the token exchange, for someone already known. */
+  async function routed(
+    request: Request,
+    url: URL,
+    principal: Principal,
+  ): Promise<Response | undefined> {
+    const { pathname } = url
+    const rest = pathname.slice(REMOTE_API_PATH.length + 1)
+
+    // Who this is, for `crombolo whoami`: a person, or CI acting by a rule.
+    if (rest === 'me' && request.method === 'GET')
+      return Response.json({
+        name: principal.name,
+        kind: principal.ci ? 'ci' : 'person',
+        ...(principal.ci ? { rule: principal.ci.rule, run: principal.ci.claims } : {}),
+        permissions: Object.values(RemotePermissions).filter((verb) => may(principal, verb)),
+      })
+    if (rest === 'trust' || rest.startsWith('trust/')) return trustRoute(request, principal, rest)
+
+    if (rest === 'environments' && request.method === 'GET')
+      return Response.json([
+        {
+          ...environment(),
+          may: {
+            pull: atLeast('read') && may(principal, RemotePermissions.Pull),
+            pullFull: atLeast('read') && may(principal, RemotePermissions.PullFull),
+            // A whole-site push changes structure, so it needs that right and the top level.
+            // A push replaces templates too, which are code (story 336).
+            push:
+              atLeast('all') &&
+              mayChange(principal) &&
+              may(principal, RemotePermissions.ApplyStructure) &&
+              may(principal, RemotePermissions.InstallCode),
+            apply: atLeast('content') && mayChange(principal),
+            applyStructure:
+              atLeast('all') &&
+              mayChange(principal) &&
+              may(principal, RemotePermissions.ApplyStructure),
+            audit: mayReadAudit(principal),
+            backgroundJobs: backgroundJobRoutes.may(principal),
+            extensionActivity: activityRoutes?.may(principal) ?? false,
+            mediaLibrary: mediaLibraryRoutes?.mayMedia(principal) ?? false,
+            contentShow: mediaLibraryRoutes?.mayContent(principal) ?? false,
+            schemaEdit: schemaRoutes?.mayEdit(principal) ?? false,
+            applyChanges:
+              Boolean(changeRoutes?.capabilities().length) &&
+              atLeast('content') &&
+              may(principal, RemotePermissions.ApplyChanges),
+          },
+        },
+      ])
+
+    const job = /^jobs\/([0-9a-f-]{36})(?:\/(download|approve|decline))?$/.exec(rest)
+    if (job) {
+      const [, id, action] = job as unknown as [string, string, string | undefined]
+      if (!action && request.method === 'GET') {
+        const found = await jobs.get(id)
+        // A job is its requester's, and an approver's to look at.
+        if (
+          !found ||
+          (found.requestedBy !== principal.id && !may(principal, RemotePermissions.PushProtected))
+        )
+          return problem(404, { code: 'not-found', title: 'There is no such job' })
+        return Response.json(await describe(found, url.origin))
+      }
+      if (action === 'download' && request.method === 'GET') return download(id, principal)
+      if ((action === 'approve' || action === 'decline') && request.method === 'POST')
+        return decide(request, url, principal, id, action === 'approve')
+      return new Response(null, { status: 405 })
+    }
+
+    const env = /^environments\/([a-z][a-z0-9-]*)\/(.+)$/.exec(rest)
+    if (!env) return problem(404, { code: 'not-found', title: 'There is nothing here' })
+    const [, envId, what] = env as unknown as [string, string, string]
+    if (envId !== settings.environment)
+      return problem(404, {
+        code: 'no-such-environment',
+        title: `There is no environment "${envId}"`,
+      })
+
+    if (what === 'audit' && request.method === 'GET') return readAudit(url, principal)
+    // Finding pages by their facts (story 183), as the signed-in user, as in the back office.
+    if (what === 'content/query' && request.method === 'POST') {
+      if (!hasSection(principal, 'content'))
+        return problem(403, { code: 'forbidden', title: 'You may not search content here' })
+      return answerContentQuery(
+        db,
+        contentQueryScope(principal),
+        await request.json().catch(() => undefined),
+      )
+    }
+    if (what.startsWith('member') || what.startsWith('content/')) {
+      const answered = await memberRoutes.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (what.startsWith('background-jobs')) {
+      const answered = await backgroundJobRoutes.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (what.startsWith('user') || what.startsWith('sign-ins')) {
+      const answered = await userRoutes.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (
+      undo &&
+      (what.startsWith('content/') || what === 'recycle-bin' || what.startsWith('recycle-bin/'))
+    ) {
+      const answered = await undo.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (
+      mediaLibraryRoutes &&
+      (what.startsWith('media-items') || what.startsWith('content-items/'))
+    ) {
+      const answered = await mediaLibraryRoutes.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (
+      changeRoutes &&
+      (what === 'changes' || what.startsWith('changes/') || what.startsWith('workspaces/'))
+    ) {
+      const answered = await changeRoutes.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (workspaceRoutes && (what === 'workspaces' || what.startsWith('workspaces/'))) {
+      const answered = await workspaceRoutes.handle(request, principal, what)
+      if (answered) return answered
+    }
+    if (schemaRoutes && what.startsWith('schema')) {
+      const answered = await schemaRoutes.handle(request, principal, what)
+      if (answered) return answered
+    }
+    if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)
+    if (activityRoutes && what.startsWith('installed/')) {
+      const answered = await activityRoutes.handle(request, url, principal, what)
+      if (answered) return answered
+    }
+    if (what === 'installed' || what.startsWith('installed/'))
+      return manageBundles(request, principal, what)
+    // Story 167: the site's level first, then the person's permissions.
+    const pulling =
+      what === 'pulls' ||
+      what === 'media/links' ||
+      (what.startsWith('media/') && request.method === 'GET')
+    const pushing =
+      what === 'pushes' ||
+      what === 'pushes/check' ||
+      what === 'media/have' ||
+      (what.startsWith('media/') && request.method === 'PUT')
+    if (pulling && !atLeast('read')) return notAtLevel('read', 'pulls')
+    if (pushing && !atLeast('all')) return notAtLevel('all', 'whole-site pushes')
+    // Push and protection are refused by their own routes first, as before story 167.
+    if (pushing && mayChange(principal) && !may(principal, RemotePermissions.ApplyStructure))
+      return problem(403, {
+        code: 'forbidden-structure',
+        title: 'You may not push a whole site here',
+        detail:
+          "A push replaces the site's content types, views and code, which needs Crombolo.Remote.ApplyStructure.",
+      })
+    // Its templates are code, and what a push will change is not known until it is uploaded (story 336).
+    if (pushing && mayChange(principal) && !may(principal, RemotePermissions.InstallCode))
+      return problem(403, {
+        code: 'forbidden-code',
+        title: 'You may not push a whole site here',
+        detail:
+          'A push replaces the site\'s templates, which are code, so it needs "Install code on this site" (Crombolo.Remote.InstallCode).',
+      })
+    if (what === 'bundles' && request.method === 'PUT') return applyBundle(request, principal)
+    if (what === 'runs' && request.method === 'GET') return listRuns(url, principal)
+    const revert = /^runs\/([0-9a-f-]{36})\/revert$/.exec(what)
+    if (revert && request.method === 'POST')
+      return revertBundleRun(request, principal, revert[1] as string)
+    if (what === 'pulls' && request.method === 'POST') return startPull(request, url, principal)
+    if (what === 'pushes' && request.method === 'PUT') return startPush(request, url, principal)
+    if (what === 'pushes/check' && request.method === 'POST') {
+      if (
+        !may(principal, RemotePermissions.Push) ||
+        (settings.protected && !may(principal, RemotePermissions.PushProtected))
+      )
+        return problem(403, { code: 'forbidden', title: 'You may not push to this environment' })
+      return pushCheck(request)
+    }
+    if (what === 'media/links' && request.method === 'POST') {
+      if (!may(principal, RemotePermissions.Pull))
+        return problem(403, {
+          code: 'forbidden',
+          title: 'You may not pull from this environment',
+        })
+      return mediaLinks(request, url)
+    }
+    if (what === 'media/have' && request.method === 'POST') {
+      if (!may(principal, RemotePermissions.Push))
+        return problem(403, { code: 'forbidden', title: 'You may not push to this environment' })
+      return mediaHave(request)
+    }
+    if (what.startsWith('media/')) {
+      const key = mediaKeyOf(what.slice('media/'.length))
+      if (!key) return problem(400, { code: 'bad-key', title: 'That is not a media key' })
+      if (request.method === 'GET') {
+        if (!may(principal, RemotePermissions.Pull))
+          return problem(403, {
+            code: 'forbidden',
+            title: 'You may not pull from this environment',
+          })
+        return mediaGet(key)
+      }
+      if (request.method === 'PUT') {
+        if (
+          !may(principal, RemotePermissions.Push) ||
+          (settings.protected && !may(principal, RemotePermissions.PushProtected))
+        )
+          return problem(403, {
+            code: 'forbidden',
+            title: 'You may not push to this environment',
+          })
+        return mediaPut(request, key)
+      }
+    }
+    return new Response(null, { status: 405 })
+  }
+
   return {
     trust: trustRoute,
 
@@ -1624,218 +1854,15 @@ export function createRemote(options: RemoteOptions): Remote {
           title: 'Sign in first',
           detail: 'Sign in with the device grant the discovery document names.',
         })
-      const rest = pathname.slice(REMOTE_API_PATH.length + 1)
+      return routed(request, url, principal)
+    },
 
-      // Who this is, for `crombolo whoami`: a person, or CI acting by a rule.
-      if (rest === 'me' && request.method === 'GET')
-        return Response.json({
-          name: principal.name,
-          kind: principal.ci ? 'ci' : 'person',
-          ...(principal.ci ? { rule: principal.ci.rule, run: principal.ci.claims } : {}),
-          permissions: Object.values(RemotePermissions).filter((verb) => may(principal, verb)),
-        })
-      if (rest === 'trust' || rest.startsWith('trust/')) return trustRoute(request, principal, rest)
-
-      if (rest === 'environments' && request.method === 'GET')
-        return Response.json([
-          {
-            ...environment(),
-            may: {
-              pull: atLeast('read') && may(principal, RemotePermissions.Pull),
-              pullFull: atLeast('read') && may(principal, RemotePermissions.PullFull),
-              // A whole-site push changes structure, so it needs that right and the top level.
-              // A push replaces templates too, which are code (story 336).
-              push:
-                atLeast('all') &&
-                mayChange(principal) &&
-                may(principal, RemotePermissions.ApplyStructure) &&
-                may(principal, RemotePermissions.InstallCode),
-              apply: atLeast('content') && mayChange(principal),
-              applyStructure:
-                atLeast('all') &&
-                mayChange(principal) &&
-                may(principal, RemotePermissions.ApplyStructure),
-              audit: mayReadAudit(principal),
-              backgroundJobs: backgroundJobRoutes.may(principal),
-              extensionActivity: activityRoutes?.may(principal) ?? false,
-              mediaLibrary: mediaLibraryRoutes?.mayMedia(principal) ?? false,
-              contentShow: mediaLibraryRoutes?.mayContent(principal) ?? false,
-              schemaEdit: schemaRoutes?.mayEdit(principal) ?? false,
-              applyChanges:
-                Boolean(changeRoutes?.capabilities().length) &&
-                atLeast('content') &&
-                may(principal, RemotePermissions.ApplyChanges),
-            },
-          },
-        ])
-
-      const job = /^jobs\/([0-9a-f-]{36})(?:\/(download|approve|decline))?$/.exec(rest)
-      if (job) {
-        const [, id, action] = job as unknown as [string, string, string | undefined]
-        if (!action && request.method === 'GET') {
-          const found = await jobs.get(id)
-          // A job is its requester's, and an approver's to look at.
-          if (
-            !found ||
-            (found.requestedBy !== principal.id && !may(principal, RemotePermissions.PushProtected))
-          )
-            return problem(404, { code: 'not-found', title: 'There is no such job' })
-          return Response.json(await describe(found, url.origin))
-        }
-        if (action === 'download' && request.method === 'GET') return download(id, principal)
-        if ((action === 'approve' || action === 'decline') && request.method === 'POST')
-          return decide(request, url, principal, id, action === 'approve')
-        return new Response(null, { status: 405 })
-      }
-
-      const env = /^environments\/([a-z][a-z0-9-]*)\/(.+)$/.exec(rest)
-      if (!env) return problem(404, { code: 'not-found', title: 'There is nothing here' })
-      const [, envId, what] = env as unknown as [string, string, string]
-      if (envId !== settings.environment)
-        return problem(404, {
-          code: 'no-such-environment',
-          title: `There is no environment "${envId}"`,
-        })
-
-      if (what === 'audit' && request.method === 'GET') return readAudit(url, principal)
-      // Finding pages by their facts (story 183), as the signed-in user, as in the back office.
-      if (what === 'content/query' && request.method === 'POST') {
-        if (!hasSection(principal, 'content'))
-          return problem(403, { code: 'forbidden', title: 'You may not search content here' })
-        return answerContentQuery(
-          db,
-          contentQueryScope(principal),
-          await request.json().catch(() => undefined),
-        )
-      }
-      if (what.startsWith('member') || what.startsWith('content/')) {
-        const answered = await memberRoutes.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (what.startsWith('background-jobs')) {
-        const answered = await backgroundJobRoutes.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (what.startsWith('user') || what.startsWith('sign-ins')) {
-        const answered = await userRoutes.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (
-        undo &&
-        (what.startsWith('content/') || what === 'recycle-bin' || what.startsWith('recycle-bin/'))
-      ) {
-        const answered = await undo.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (
-        mediaLibraryRoutes &&
-        (what.startsWith('media-items') || what.startsWith('content-items/'))
-      ) {
-        const answered = await mediaLibraryRoutes.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (
-        changeRoutes &&
-        (what === 'changes' || what.startsWith('changes/') || what.startsWith('workspaces/'))
-      ) {
-        const answered = await changeRoutes.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (workspaceRoutes && what.startsWith('workspaces/')) {
-        const answered = await workspaceRoutes.handle(request, principal, what)
-        if (answered) return answered
-      }
-      if (schemaRoutes && what.startsWith('schema')) {
-        const answered = await schemaRoutes.handle(request, principal, what)
-        if (answered) return answered
-      }
-      if (what === 'restart' && request.method === 'POST') return restartSite(request, principal)
-      if (activityRoutes && what.startsWith('installed/')) {
-        const answered = await activityRoutes.handle(request, url, principal, what)
-        if (answered) return answered
-      }
-      if (what === 'installed' || what.startsWith('installed/'))
-        return manageBundles(request, principal, what)
-      // Story 167: the site's level first, then the person's permissions.
-      const pulling =
-        what === 'pulls' ||
-        what === 'media/links' ||
-        (what.startsWith('media/') && request.method === 'GET')
-      const pushing =
-        what === 'pushes' ||
-        what === 'pushes/check' ||
-        what === 'media/have' ||
-        (what.startsWith('media/') && request.method === 'PUT')
-      if (pulling && !atLeast('read')) return notAtLevel('read', 'pulls')
-      if (pushing && !atLeast('all')) return notAtLevel('all', 'whole-site pushes')
-      // Push and protection are refused by their own routes first, as before story 167.
-      if (pushing && mayChange(principal) && !may(principal, RemotePermissions.ApplyStructure))
-        return problem(403, {
-          code: 'forbidden-structure',
-          title: 'You may not push a whole site here',
-          detail:
-            "A push replaces the site's content types, views and code, which needs Crombolo.Remote.ApplyStructure.",
-        })
-      // Its templates are code, and what a push will change is not known until it is uploaded (story 336).
-      if (pushing && mayChange(principal) && !may(principal, RemotePermissions.InstallCode))
-        return problem(403, {
-          code: 'forbidden-code',
-          title: 'You may not push a whole site here',
-          detail:
-            'A push replaces the site\'s templates, which are code, so it needs "Install code on this site" (Crombolo.Remote.InstallCode).',
-        })
-      if (what === 'bundles' && request.method === 'PUT') return applyBundle(request, principal)
-      if (what === 'runs' && request.method === 'GET') return listRuns(url, principal)
-      const revert = /^runs\/([0-9a-f-]{36})\/revert$/.exec(what)
-      if (revert && request.method === 'POST')
-        return revertBundleRun(request, principal, revert[1] as string)
-      if (what === 'pulls' && request.method === 'POST') return startPull(request, url, principal)
-      if (what === 'pushes' && request.method === 'PUT') return startPush(request, url, principal)
-      if (what === 'pushes/check' && request.method === 'POST') {
-        if (
-          !may(principal, RemotePermissions.Push) ||
-          (settings.protected && !may(principal, RemotePermissions.PushProtected))
-        )
-          return problem(403, { code: 'forbidden', title: 'You may not push to this environment' })
-        return pushCheck(request)
-      }
-      if (what === 'media/links' && request.method === 'POST') {
-        if (!may(principal, RemotePermissions.Pull))
-          return problem(403, {
-            code: 'forbidden',
-            title: 'You may not pull from this environment',
-          })
-        return mediaLinks(request, url)
-      }
-      if (what === 'media/have' && request.method === 'POST') {
-        if (!may(principal, RemotePermissions.Push))
-          return problem(403, { code: 'forbidden', title: 'You may not push to this environment' })
-        return mediaHave(request)
-      }
-      if (what.startsWith('media/')) {
-        const key = mediaKeyOf(what.slice('media/'.length))
-        if (!key) return problem(400, { code: 'bad-key', title: 'That is not a media key' })
-        if (request.method === 'GET') {
-          if (!may(principal, RemotePermissions.Pull))
-            return problem(403, {
-              code: 'forbidden',
-              title: 'You may not pull from this environment',
-            })
-          return mediaGet(key)
-        }
-        if (request.method === 'PUT') {
-          if (
-            !may(principal, RemotePermissions.Push) ||
-            (settings.protected && !may(principal, RemotePermissions.PushProtected))
-          )
-            return problem(403, {
-              code: 'forbidden',
-              title: 'You may not push to this environment',
-            })
-          return mediaPut(request, key)
-        }
-      }
-      return new Response(null, { status: 405 })
+    /**
+     * A request as `principal`, on this site, as a command run in its folder makes it
+     * (story 386): the same routes, at every level, with the remote off as well.
+     */
+    handleAs(request, url, principal) {
+      return local.run(true, () => routed(request, url, principal))
     },
   }
 }

@@ -56,7 +56,16 @@ export function siteOf(profile: Profile, env?: string): SiteChoice {
       )
     return { kind: 'folder', name: profile.name, path: expandHome(profile.path) }
   }
-  const environment = env ?? profile.environment
+  // Story 386: a profile names a site; the environment is the command's own.
+  if (profile.environment !== undefined)
+    throw new CliError(
+      'usage',
+      `The profile ${profile.name} names an environment, ${profile.environment}: a profile names a site now, and each command its environment.`,
+      {
+        hint: `Add it again as a site profile, \`crombolo profile add ${profile.name} ${profile.url} --force\`, and pass --env ${profile.environment} to the commands that go there.`,
+      },
+    )
+  const environment = env
   return {
     kind: 'hosted',
     name: profile.name,

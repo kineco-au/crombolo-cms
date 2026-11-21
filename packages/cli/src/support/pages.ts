@@ -39,7 +39,7 @@ import {
 } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { CliError } from '../errors.ts'
-import { commandActor } from './acting.ts'
+import { commandActor, signedInPerson } from './acting.ts'
 import { libraryHint, notALibraryPath } from './library.ts'
 import { type Io, siteConfig } from './site.ts'
 
@@ -57,6 +57,22 @@ export interface PageSite {
 }
 
 /** The site's database and the page operations, for one command. */
+/** Whose own workspace a change made here goes into: the person signed in, or the site's administrator. */
+async function ownerHere(db: Db): Promise<{ key: string; name: string } | undefined> {
+  const person = signedInPerson()
+  if (person) return { key: person.id, name: person.name }
+  const admin = await db.q
+    .selectFrom('user_account as u')
+    .innerJoin('user_group_member as m', 'm.user_id', 'u.id')
+    .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+    .select(['u.key', 'u.user_name'])
+    .where('g.alias', '=', 'admin')
+    .orderBy('u.id')
+    .limit(1)
+    .executeTakeFirst()
+  return admin ? { key: String(admin.key), name: String(admin.user_name) } : undefined
+}
+
 export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promise<T> {
   const config = await siteConfig()
   const { db } = await bootstrapDatabase(config)
@@ -69,7 +85,12 @@ export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promis
       db,
       config,
       lookup,
-      operations: (await siteDocumentOperations(db, config)).operations,
+      // Story 386: with workspaces on, a change here goes into the person's own workspace.
+      operations: (
+        await siteDocumentOperations(db, config, {
+          ...(config.workspaces ? { ownWorkspaceOf: await ownerHere(db) } : {}),
+        })
+      ).operations,
       writer: valueWriter(lookup, siteValueRefs(db)),
       reader: pageReader(db, lookup),
       languages,

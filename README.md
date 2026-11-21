@@ -323,6 +323,7 @@ Design documents, in reading order; planned work is in the stories:
 | [features](docs/features.md) | what is implemented, and what is out of scope |
 | [roadmap](docs/roadmap.md) | where this is going, the risks, and what diverges from Umbraco on purpose |
 | [stories](docs/stories/README.md) | every piece of work, built and planned, by epic and state |
+| [proposals](docs/proposals/README.md) | ideas not yet decided on, with their design, alternatives and cost |
 | [performance](docs/performance.md) | the published cache as a site grows: what a change drops, the measured workloads and budgets, and when another topology is right |
 | [testing](docs/testing.md) | the test layers, the containers, the browser suite |
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |

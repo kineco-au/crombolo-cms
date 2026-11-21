@@ -120,6 +120,12 @@ point at `docs/stories/`.
   pages is recorded as replacing everything. Administrators list every pending workspace
   and clear those idle too long (`docs/changes.md`).
 
+- **Workspaces and changes from the command line (386).** `crombolo workspace open|list|status|
+  discard|share|unshare|diff|sync|conflicts|resolve|check|errors|pages|render|address|merge|push|pull`,
+  `crombolo workspaces`, `crombolo changes` and `crombolo revert`, on this folder's site or with
+  `--profile <site> --env <env>` on a hosted one, each saying where it acts and stopping with an exit
+  code of its own (22 conflicts, 20 checks failed, 23 lossy not accepted). A local page change with
+  workspaces on goes into your own workspace.
 - **A property with a value per environment (387).** `CROMBOLO_ENVIRONMENT` names which
   copy a site is, `[environments] names` in `schema.toml` the ones that exist, and a
   property with `varies-by-environment = true` has a value per environment beside its
@@ -170,6 +176,11 @@ point at `docs/stories/`.
   value is for, null for the shared value.
 
 ### Upgrade notes
+
+- **A profile names a site now (386):** one that names an environment is refused. Add it again
+  without one (`crombolo profile add <name> <url> --force`) and pass `--env` to the commands.
+- **The remote environment defaults to `CROMBOLO_ENVIRONMENT` (387):** `local` in development,
+  `production` otherwise; set `CROMBOLO_REMOTE_ENVIRONMENT` to keep another name.
 
 - **`CROMBOLO_CONTENT_MODE` stops the server (391):** set `CROMBOLO_CODE=locked` where it
   said `production`, `CROMBOLO_CODE=editable` (or nothing) where it said `development`;

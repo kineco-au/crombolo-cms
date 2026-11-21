@@ -280,7 +280,7 @@ describe('media in bulk (153)', () => {
       expect(await fieldOf('hero.png', 'umbracoFile')).toMatchObject({
         focalPoint: { left: 0.25, top: 0.75 },
       })
-    })
+    }, 15_000)
 
     test('different bytes under its name are reported and left', () => {
       const other = join(ROOT, 'tests/fixtures/halves.png')

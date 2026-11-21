@@ -539,7 +539,7 @@ it.
 | `382` | A change that loses data says so, and takes two steps | should | M | done | 376, 380 |
 | `383` | A change moves from one site to another | should | L | done | 380, 381 |
 | `384` | Workspaces in the back office | should | L | ready | 375, 376, 377, 379, 380, 381, 382 |
-| `386` | Workspaces and changes from the command line | should | L | ready | 378, 379, 380, 381, 383 |
+| `386` | Workspaces and changes from the command line | should | L | done | 378, 379, 380, 381, 383 |
 | `387` | A property with a value per environment | should | M | done | 383 |
 | `388` | Content and schema that arrive only by a change | should | M | done | 383, 391 |
 | `392` | Changes carry languages, the dictionary, blueprints, forms and workflow set-up | could | L | ready | 376, 377, 381, 383, 388, 390 |

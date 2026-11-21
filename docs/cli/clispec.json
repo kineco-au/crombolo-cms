@@ -627,6 +627,54 @@
       "errors": ["usage", "internal"]
     },
     {
+      "name": "changes",
+      "description": "the changes made there, newest first, or one of them with what it holds",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "change",
+          "type": "object",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "change",
+          "type": "string",
+          "description": "one change, by its id"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--take",
+          "type": "integer",
+          "default": 20,
+          "description": "how many"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
       "name": "components check",
       "description": "compile every component, and report one a type declares with no file",
       "effects": "read_only",
@@ -8709,11 +8757,6 @@
           "description": "a site folder on this machine, instead of an address"
         },
         {
-          "name": "--env",
-          "type": "string",
-          "description": "the environment it goes to by default"
-        },
-        {
           "name": "--force",
           "type": "boolean",
           "description": "replace a profile of the same name"
@@ -9707,6 +9750,57 @@
         }
       ],
       "errors": ["usage", "internal", "refused", "unavailable", "auth", "not_found"]
+    },
+    {
+      "name": "revert",
+      "description": "undo a change as a change of its own, or reopen its work as a workspace to carry on with",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "reverted",
+          "type": "boolean"
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "confirmation_bypass_arg": "yes",
+      "args": [
+        {
+          "name": "change",
+          "type": "string",
+          "required": true,
+          "description": "the change, by its id"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--to-workspace",
+          "type": "string",
+          "description": "reopen its work in a workspace of this name"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "revert it, rather than only saying so"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "conflict", "confirmation_required"]
     },
     {
       "name": "schema",
@@ -16367,6 +16461,954 @@
         "confirmation_required",
         "unavailable"
       ]
+    },
+    {
+      "name": "workspace address",
+      "description": "where a workspace’s site is looked at, as you",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--path",
+          "type": "string",
+          "default": "/",
+          "description": "a page on it"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
+    },
+    {
+      "name": "workspace check",
+      "description": "every check before a merge: each changed page rendered, a sample per changed type and template, every file’s problems",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "ok",
+          "type": "boolean"
+        },
+        {
+          "name": "pages",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "failures",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "notChecked",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "render every affected page, not a sample"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"],
+      "outcomes": ["problems_found"]
+    },
+    {
+      "name": "workspace conflicts",
+      "description": "each conflict, by part: the base, mine and theirs, and the change that made theirs",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"],
+      "outcomes": ["conflicts_found"]
+    },
+    {
+      "name": "workspace diff",
+      "description": "how a workspace differs: from Shared (what a merge changes), from where it began, or from another environment",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "against",
+          "type": "string"
+        },
+        {
+          "name": "pages",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "files",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "conflicts",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--against",
+          "type": "string",
+          "default": "shared",
+          "description": "shared, base, or an environment of the site --to names"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "description": "the profile of the site --against <env> is on"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
+      "name": "workspace discard",
+      "description": "discard a workspace and everything in it",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "discarded",
+          "type": "boolean"
+        }
+      ],
+      "confirmation_bypass_arg": "yes",
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "discard it, rather than only saying what would go"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "confirmation_required"]
+    },
+    {
+      "name": "workspace errors",
+      "description": "what a workspace’s renders logged: exceptions, crashes and timeouts",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--since",
+          "type": "string",
+          "description": "only those since this time"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
+      "name": "workspace list",
+      "description": "the workspaces you may use there, newest first",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "every one, for an administrator"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "refused"]
+    },
+    {
+      "name": "workspace merge",
+      "description": "merge workspaces into Shared, all or none: a dry run says what it would do and runs the checks",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "merged",
+          "type": "boolean"
+        },
+        {
+          "name": "blockers",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "changeId",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "confirmation_bypass_arg": "yes",
+      "args": [
+        {
+          "name": "workspaces",
+          "type": "string",
+          "required": true,
+          "description": "one or more, by name or key, separated by commas"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would do, changing nothing"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "merge, rather than only saying what would"
+        },
+        {
+          "name": "--accept-lossy",
+          "type": "string[]",
+          "description": "a change that loses data, removes or renames, by its id or kind; repeatable"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused", "confirmation_required"],
+      "outcomes": ["conflicts_found", "lossy_unaccepted"]
+    },
+    {
+      "name": "workspace open",
+      "description": "open a workspace, to change pages, types and files apart from Shared",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "key",
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "what to call it"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "refused", "not_found"]
+    },
+    {
+      "name": "workspace pages",
+      "description": "each page a workspace affects: its address, whether it rendered, and how long it took",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--failing",
+          "type": "boolean",
+          "description": "only those that did not render"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "every affected page, not a sample per type and template"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
+      "name": "workspace pull",
+      "description": "bring changes from another site: those merged there that this site lacks, or one of its workspaces to work on here",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "from",
+          "type": "string"
+        },
+        {
+          "name": "applied",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "conflicts",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "confirmation_bypass_arg": "yes",
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "description": "a workspace there, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--from",
+          "type": "string",
+          "required": true,
+          "description": "the site it comes from, by its profile"
+        },
+        {
+          "name": "--from-env",
+          "type": "string",
+          "description": "its environment"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "bring it, rather than only saying what would come"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused", "confirmation_required"],
+      "outcomes": ["conflicts_found"]
+    },
+    {
+      "name": "workspace push",
+      "description": "send a workspace from here to a workspace on another site, where it is looked at and merged; it never merges",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "to",
+          "type": "string"
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "conflicts",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "confirmation_bypass_arg": "yes",
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--to",
+          "type": "string",
+          "required": true,
+          "description": "the site it goes to, by its profile"
+        },
+        {
+          "name": "--to-env",
+          "type": "string",
+          "description": "its environment"
+        },
+        {
+          "name": "--yes",
+          "type": "boolean",
+          "description": "send it, rather than only saying what it holds"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused", "confirmation_required"],
+      "outcomes": ["conflicts_found"]
+    },
+    {
+      "name": "workspace render",
+      "description": "one page of a workspace’s site: whether it rendered, and its error if not",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "status",
+          "type": "string"
+        },
+        {
+          "name": "error",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "html",
+          "type": "string",
+          "nullable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true,
+          "description": "the page’s address on the site"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--html",
+          "type": "boolean",
+          "description": "print the page too"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"],
+      "outcomes": ["problems_found"]
+    },
+    {
+      "name": "workspace resolve",
+      "description": "settle one conflict: a page’s part by --mine or --theirs, a file by those or its merged text",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "item",
+          "type": "string"
+        },
+        {
+          "name": "resolved",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "description": "a page’s part as `conflicts` names it (<key>#<part>), or a file’s path"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--mine",
+          "type": "boolean",
+          "description": "keep the workspace’s"
+        },
+        {
+          "name": "--theirs",
+          "type": "boolean",
+          "description": "take Shared’s"
+        },
+        {
+          "name": "--file",
+          "type": "string",
+          "description": "a file’s merged text, from this file"
+        },
+        {
+          "name": "--value",
+          "type": "string",
+          "description": "a file’s merged text, given here"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
+    },
+    {
+      "name": "workspace share",
+      "description": "let people read and change a workspace, by their email",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "people",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "people",
+          "type": "string",
+          "required": true,
+          "description": "their emails, separated by commas"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
+    },
+    {
+      "name": "workspace status",
+      "description": "what a workspace has changed, and whether it would merge now",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "changes",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "conflicts",
+          "type": "integer"
+        },
+        {
+          "name": "findings",
+          "type": "integer"
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
+      "name": "workspace sync",
+      "description": "bring Shared’s latest into a workspace: what merges is merged, the rest is a conflict",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "conflicts",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
+      "name": "workspace unshare",
+      "description": "take people out of a workspace, by their email",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "people",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "workspace",
+          "type": "string",
+          "required": true,
+          "description": "the workspace, by its name or key"
+        },
+        {
+          "name": "people",
+          "type": "string",
+          "required": true,
+          "description": "their emails, separated by commas"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
+    },
+    {
+      "name": "workspaces",
+      "description": "the workspaces open there, with what each holds",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "every one, for an administrator"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "refused"]
     }
   ],
   "errors": [
@@ -16439,6 +17481,16 @@
       "code": 21,
       "name": "blocked",
       "description": "Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`."
+    },
+    {
+      "code": 22,
+      "name": "conflicts_found",
+      "description": "A workspace has conflicts to resolve: `workspace conflicts`, `workspace merge`."
+    },
+    {
+      "code": 23,
+      "name": "lossy_unaccepted",
+      "description": "A change loses data, removes or renames, and was not accepted: `workspace merge --accept-lossy`."
     }
   ]
 }

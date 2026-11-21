@@ -51,3 +51,15 @@ export {
   profileFlags,
 } from './support/remote.ts'
 export type { Io } from './support/site.ts'
+/**
+ * Story 386: a plugin's verb under an environment, as the workspace commands act —
+ * `siteFlags` for `--profile` and `--env`, `onSite` to say where it acts and reach
+ * the environment's routes, here or hosted. The site is loaded only as one runs.
+ */
+export { siteFlags, whereField } from './support/site-flags.ts'
+export type { WorkSite } from './support/work-site.ts'
+export { onSite } from './support/workspace-commands.ts'
+
+/** The site a verb acts on, loaded as it runs. */
+export const workSite = async (flags: { profile?: string; env?: string }) =>
+  (await import('./support/work-site.ts')).workSite(flags)

@@ -137,11 +137,11 @@ export class ChangeRepository {
       .select('change_key')
       .where('change_key', 'in', wanted)
       .execute()
+    // Made here, even since reverted: a change that was reverted does not come back by another route.
     const made = await this.#db.q
       .selectFrom('content_transfer_run')
       .select('change_key')
       .where('change_key', 'in', wanted)
-      .where('status', '=', 'applied')
       .execute()
     return new Set([
       ...applied.map((r) => String(r.change_key)),

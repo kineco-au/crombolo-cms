@@ -36,6 +36,7 @@ import {
 } from '@crombolo/data'
 import { recordAudit } from './adapters/audit.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
+import type { WorkspaceChecks } from './workspace-checks.ts'
 import type { WorkspaceSchema } from './workspace-schema.ts'
 
 export const WORKSPACE_HEADER = 'crombolo-workspace'
@@ -436,6 +437,8 @@ export function createWorkspacesApi(
     required?: () => boolean
     /** Story 388: the site takes its content only by a change; where it is edited. */
     locked?: () => boolean
+    /** Story 386: the diff, conflicts and checks a command line asks for. */
+    checks?: () => WorkspaceChecks
     editedAt?: () => string | null
     schema?: () => WorkspaceSchema | undefined
     /** Renders one page with the workspace's views (story 377). */
@@ -699,6 +702,37 @@ export function createWorkspacesApi(
       if (sub === 'changes' && !member && request.method === 'GET')
         return json({ items: await workspaces.changes(found.id) })
 
+      // Story 386: what a command line asks before merging.
+      const checks = options.checks?.()
+      if (checks && !member) {
+        const query = new URL(request.url).searchParams
+        if (sub === 'diff' && request.method === 'GET') {
+          const against = query.get('against') === 'base' ? 'base' : 'shared'
+          return json(await checks.diff(found, against))
+        }
+        if (sub === 'conflicts' && request.method === 'GET')
+          return json({ items: await checks.conflicts(found) })
+        if (sub === 'check' && request.method === 'POST') {
+          const asked = await body()
+          return json(await checks.check(found, asked.all === true))
+        }
+        if (sub === 'pages' && request.method === 'GET') {
+          const pages = await checks.pages(found, query.get('all') === 'true')
+          return json({
+            items: query.get('failing') === 'true' ? pages.filter((p) => !p.ok) : pages,
+          })
+        }
+        if (sub === 'errors' && request.method === 'GET') {
+          const since = query.get('since') ? new Date(query.get('since') as string) : undefined
+          return json({
+            items: checks.errors(
+              found,
+              since && !Number.isNaN(since.getTime()) ? since : undefined,
+            ),
+          })
+        }
+      }
+
       // Story 376: its definition files, brought up to Shared's, and a file's conflict answered.
       const schema = options.schema?.()
       if (schema && sub === 'files' && !member && request.method === 'GET') {
@@ -858,11 +892,37 @@ export function createWorkspacesApi(
       }
 
       if (sub === 'members') {
+        // Who is in it (story 386), for anyone in it.
+        if (!member && request.method === 'GET') {
+          const people = await new UserRepository(db).byKeys([found.ownerKey, ...found.memberKeys])
+          return json({
+            items: people.map((u) => ({
+              key: normaliseUuid(u.key),
+              name: u.name,
+              email: u.email,
+              owner: normaliseUuid(u.key) === found.ownerKey,
+            })),
+          })
+        }
         if (!owner) return refused('Only its owner shares a workspace.', 403)
         if (!member && request.method === 'POST') {
           const asked = await body()
-          const userKey = typeof asked.userKey === 'string' ? asked.userKey : ''
-          if (!UUID.test(userKey)) return refused('Name the person by their key.', 400)
+          // By their key, or (story 386, from the command line) by their email.
+          const email = typeof asked.email === 'string' ? asked.email.trim().toLowerCase() : ''
+          const byEmail = email
+            ? await db.q
+                .selectFrom('user_account')
+                .select('key')
+                .where('email', '=', email)
+                .executeTakeFirst()
+            : undefined
+          const userKey = byEmail
+            ? String(byEmail.key)
+            : typeof asked.userKey === 'string'
+              ? asked.userKey
+              : ''
+          if (email && !byEmail) return refused(`Nobody here has the email ${email}.`, 404)
+          if (!UUID.test(userKey)) return refused('Name the person by their key or email.', 400)
           const known = await db.q
             .selectFrom('user_account')
             .select('key')

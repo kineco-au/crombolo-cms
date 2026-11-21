@@ -1,11 +1,11 @@
 {
   "formatVersion": 8,
-  "id": "9aedb665-c195-598b-bd4c-d5914bce7954",
+  "id": "74e5ec17-ab3f-512c-91ac-b17ab42c1b2f",
   "bundleType": "site",
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo site build",
-  "integrity": "sha256-670c545b65984984d722ecad0703f4797ea3c739c091ff83a6478b2043c73249",
+  "integrity": "sha256-23901d3e0a849d220c777a616e13ab4bebdbc0f1cf75ce3b460965a7113cd76c",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
@@ -49,7 +49,7 @@
     ]
   },
   "counts": {
-    "document": 39,
+    "document": 40,
     "element": 25
   },
   "dependencies": {
@@ -101,6 +101,7 @@
       "ab6b30ea-c875-4489-87d4-063c5c4d413c",
       "ad985566-f642-413e-83e5-3e9bb4cdf283",
       "b13339a3-69dd-43a2-a766-9ed92c8e7a28",
+      "bc1f882d-fdd1-4ddc-89c1-08a133017867",
       "bfbe288f-2c69-4228-872f-9977d0ba23ae",
       "c0b0ccb3-faa3-46a4-8af2-80730c1e3ee3",
       "c4d3fed5-e5e4-4eaa-836a-60f841ad9d5a",

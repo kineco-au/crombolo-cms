@@ -26,7 +26,7 @@ export default class ProfileAdd extends BaseCommand {
     'Adding the same profile again changes nothing; a different one under a name already taken needs --force. The rest of the file is left as it was, comments included. CROMBOLO_PROFILES_FILE keeps it somewhere else.',
   ].join('\n\n')
   static override examples = [
-    '<%= config.bin %> profile add default https://riverside.example --env production',
+    '<%= config.bin %> profile add riverside https://riverside.example',
     '<%= config.bin %> profile add riverside-copy --path ~/dev/riverside-copy',
   ]
   static override args = {
@@ -41,7 +41,7 @@ export default class ProfileAdd extends BaseCommand {
       summary: 'a site folder on this machine, instead of an address',
       helpValue: '<dir>',
     }),
-    env: Flags.string({ summary: 'the environment it goes to by default', helpValue: '<id>' }),
+    env: Flags.string({ summary: 'gone: each command names its environment', hidden: true }),
     force: Flags.boolean({ summary: 'replace a profile of the same name' }),
   }
   static override access = 'none' as const
@@ -76,8 +76,11 @@ export default class ProfileAdd extends BaseCommand {
         'usage',
         'A profile is a hosted site or a site folder: give its address, or --path, and not both.',
       )
-    if (flags.path !== undefined && flags.env !== undefined)
-      this.fail('usage', '--env is for a hosted site, and --path names a folder.')
+    if (flags.env !== undefined)
+      this.fail(
+        'usage',
+        'A profile names a site, and each command its environment: leave out --env here, and pass it to the commands that go there.',
+      )
     if (!PROFILE_NAME.test(args.name))
       this.fail(
         'usage',
@@ -93,7 +96,6 @@ export default class ProfileAdd extends BaseCommand {
         : {
             name: args.name,
             url: new URL(args.url as string).origin,
-            ...(flags.env ? { environment: flags.env } : {}),
           }
     const existing = readProfiles(file).find((p) => p.name === args.name)
     const same = existing !== undefined && described(existing) === described(profile)

@@ -120,36 +120,73 @@ crombolo --profile <site> <env> revert <change> [--to-workspace <name>]
 - **Kept whole,** built once `378`, `379`, `381` and `383` have landed, so `check`,
   `errors`, `pages`, `render`, `push`, `pull`, `changes` and `revert` arrive with the rest.
 
+- **The environment is a flag** (2026-11-21): `--profile <site> --env <environment>`,
+  required whenever `--profile` names a hosted site; a bare environment after the profile
+  cannot be told from a command by the CLI's parser.
+
 ## Acceptance criteria
 
-- [ ] **A profile names a site** and lists its environments.
-- [ ] **A workspace is opened, changed, pushed and merged** from the command line, local
+- [x] **A profile names a site** and lists its environments.
+- [x] **A workspace is opened, changed, pushed and merged** from the command line, local
       and remote.
-- [ ] **`push` leaves a workspace on the site,** unmerged.
-- [ ] **`pull`** brings merged changes, or a named workspace, and leaves conflicts to
+- [x] **`push` leaves a workspace on the site,** unmerged.
+- [x] **`pull`** brings merged changes, or a named workspace, and leaves conflicts to
       resolve.
-- [ ] **`diff`** compares a workspace with Shared, with its base and with an
+- [x] **`diff`** compares a workspace with Shared, with its base and with an
       environment, by property and by line.
-- [ ] **`sync` then `conflicts`** lists each conflict with base, mine, theirs and the
+- [x] **`sync` then `conflicts`** lists each conflict with base, mine, theirs and the
       other change's author, name and description.
-- [ ] **`resolve`** settles a file, a type's property and a page's property, and
+- [x] **`resolve`** settles a file, a type's property and a page's property, and
       refuses a file that still has markers.
-- [ ] **A script resolves a conflict and merges** with no prompt, branching on exit
+- [x] **A script resolves a conflict and merges** with no prompt, branching on exit
       codes alone.
-- [ ] **`check`** renders the changed pages and a sample per changed type, and exits
+- [x] **`check`** renders the changed pages and a sample per changed type, and exits
       non-zero with each failure named; `--all` renders every affected page.
-- [ ] **`errors`, `pages` and `render`** answer for a workspace and for a staged change.
-- [ ] **`merge --dry-run`** changes nothing.
-- [ ] **`revert`** undoes a change, and with `--to-workspace` reopens its work.
-- [ ] **`share` and `unshare`** change who can read a workspace.
-- [ ] **`merge` with several names** merges all or none.
-- [ ] **Every command prints where it acts** first, and `-o json` carries it.
-- [ ] **A change made outside a workspace locally** is in the unnamed one.
-- [ ] **A site with workspaces off** refuses the `workspace` commands by name.
-- [ ] **A plugin's verb** runs under an environment.
-- [ ] **The clispec schema and `docs/cli`** carry the commands.
-- [ ] **Getting started, the deployment guide and the guide `init` writes for agents**
+- [x] **`errors`, `pages` and `render`** answer for a workspace and for a staged change.
+- [x] **`merge --dry-run`** changes nothing.
+- [x] **`revert`** undoes a change, and with `--to-workspace` reopens its work.
+- [x] **`share` and `unshare`** change who can read a workspace.
+- [x] **`merge` with several names** merges all or none.
+- [x] **Every command prints where it acts** first, and `-o json` carries it.
+- [x] **A change made outside a workspace locally** is in the unnamed one.
+- [x] **A site with workspaces off** refuses the `workspace` commands by name.
+- [x] **A plugin's verb** runs under an environment.
+- [x] **The clispec schema and `docs/cli`** carry the commands.
+- [x] **Getting started, the deployment guide and the guide `init` writes for agents**
       (`370`) describe open, change, push, merge as the way to work.
-- [ ] **Tests** against a site served by the harness.
-- [ ] **An integration scenario** opens, changes, pushes and merges a workspace with the
+- [x] **Tests** against a site served by the harness.
+- [x] **An integration scenario** opens, changes, pushes and merges a workspace with the
       real command line against a site run with `crombolo start`.
+
+## Built (2026-11-21)
+
+- **The routes:** the remote protocol's workspace routes pass every workspace route through for
+  the person (`remote-workspaces.ts`, capability `workspaces`), with new ones for the command line
+  (`workspace-checks.ts`: `diff?against=`, `GET conflicts` with the other change's author and name,
+  `check`, `pages`, `errors`), `GET members` and sharing by email; `changes/{id}`,
+  `changes/{id}/revert`; `PUT changes?check=true` and `stage=true&editable=true`.
+- **Local and hosted alike:** `Remote.handleAs` and `ServerHandle.remoteAs` answer a request as a
+  person in process, so a command in a site's folder boots the site (`role: web`, no watching) and
+  calls the same paths (`support/work-site.ts`); with `--profile` and `--env` it calls the hosted
+  environment. The command line acts as the person signed in, or the site's administrator.
+- **The commands:** `workspace open|list|status|discard|share|unshare|diff|sync|conflicts|resolve|
+  check|errors|pages|render|address|merge|push|pull`, `workspaces`, `changes`, `revert`; outcomes
+  `conflicts_found` (22) and `lossy_unaccepted` (23) beside `problems_found` (20).
+- **Profiles:** a profile naming an environment is refused with what to run; `profile add --env` is
+  refused.
+- **A local change with workspaces on** goes into the person's own workspace
+  (`siteDocumentOperations(…, { ownWorkspaceOf })`, from `support/pages.ts`).
+- **A plugin's verb:** `onSite`, `siteFlags`, `workSite` from `@crombolo/cli/plugin`.
+- **Fixed on the way:** a change made here and since reverted counts as held, so a pull does not
+  bring it back.
+- **Tests:** `tests/workspace-cli.test.ts`, `tests/integration/workspace-cli.integration.ts`.
+
+## Departures
+
+- **`--env` is a flag,** as decided 2026-11-21.
+- **Changes move with `workspace push --to` and `workspace pull --from`;** `crombolo push` and
+  `pull` still copy whole sites, their `--from`/`--to` flags unchanged.
+- **`resolve --value`** is for a file's merged text; a page's part is settled with `--mine` or
+  `--theirs`.
+- **`errors`** are what this node's renders of the workspace said, kept in memory.
+

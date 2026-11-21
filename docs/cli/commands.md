@@ -4105,7 +4105,7 @@ crombolo site urls [--hide-top-level] [--show-top-level] [--dry-run] [--no-apply
 Name a site, hosted or in a folder here, for --profile to choose: kept in ~/.crombolo/profiles. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo profile add <name> [<url>] [--path <path>] [--env <env>] [--force]
+crombolo profile add <name> [<url>] [--path <path>] [--force]
 ```
 
 | Argument | Type | What it is |
@@ -4113,7 +4113,6 @@ crombolo profile add <name> [<url>] [--path <path>] [--env <env>] [--force]
 | `name` | string | A name for it: lower case letters, digits and dashes. Required. |
 | `url` | string | A hosted site's address. |
 | `--path` | string | A site folder on this machine, instead of an address. |
-| `--env` | string | The environment it goes to by default. |
 | `--force` | boolean | Replace a profile of the same name. |
 
 **Output** (single, with `-o json`):
@@ -6459,6 +6458,525 @@ crombolo restart [--profile <profile>] [--env <env>]
 
 **Fails with:** `usage`, `internal`, `refused`, `unavailable`, `auth`, `not_found`.
 
+## changes
+
+The changes commands.
+
+### `crombolo changes`
+
+The changes made there, newest first, or one of them with what it holds. Changes nothing.
+
+```
+crombolo changes [<change>] [--profile <profile>] [--env <env>] [--take <take>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `change` | string | One change, by its id. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--take` | integer | How many. Default `20`. |
+
+**Output** (bounded, with `-o json`):
+
+- `where` (string)
+- `items` (array of object)
+- `change` (object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+## revert
+
+The revert commands.
+
+### `crombolo revert`
+
+Undo a change as a change of its own, or reopen its work as a workspace to carry on with. Each run acts again.
+
+```
+crombolo revert <change> [--profile <profile>] [--env <env>] [--to-workspace <to-workspace>] [--yes]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `change` | string | The change, by its id. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--to-workspace` | string | Reopen its work in a workspace of this name. |
+| `--yes` | boolean | Revert it, rather than only saying so. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `reverted` (boolean)
+- `workspace` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `conflict`, `confirmation_required`.
+
+## workspace
+
+The workspace commands.
+
+### `crombolo workspace address`
+
+Where a workspace’s site is looked at, as you. Each run acts again.
+
+```
+crombolo workspace address <workspace> [--profile <profile>] [--env <env>] [--path <path>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--path` | string | A page on it. Default `/`. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `url` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
+
+### `crombolo workspace check`
+
+Every check before a merge: each changed page rendered, a sample per changed type and template, every file’s problems. Changes nothing.
+
+```
+crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--all]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--all` | boolean | Render every affected page, not a sample. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `ok` (boolean)
+- `pages` (array of object)
+- `failures` (array of object)
+- `notChecked` (array of string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+**Outcomes:** `problems_found`.
+
+### `crombolo workspace conflicts`
+
+Each conflict, by part: the base, mine and theirs, and the change that made theirs. Changes nothing.
+
+```
+crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+
+**Output** (bounded, with `-o json`):
+
+- `where` (string)
+- `items` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+**Outcomes:** `conflicts_found`.
+
+### `crombolo workspace diff`
+
+How a workspace differs: from Shared (what a merge changes), from where it began, or from another environment. Changes nothing.
+
+```
+crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--against <against>] [--to <to>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--against` | string | Shared, base, or an environment of the site --to names. Default `shared`. |
+| `--to` | string | The profile of the site --against <env> is on. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `against` (string)
+- `pages` (array of object)
+- `files` (array of object)
+- `conflicts` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+### `crombolo workspace discard`
+
+Discard a workspace and everything in it. Each run acts again.
+
+```
+crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--yes]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--yes` | boolean | Discard it, rather than only saying what would go. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `discarded` (boolean)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `confirmation_required`.
+
+### `crombolo workspace errors`
+
+What a workspace’s renders logged: exceptions, crashes and timeouts. Changes nothing.
+
+```
+crombolo workspace errors <workspace> [--profile <profile>] [--env <env>] [--since <since>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--since` | string | Only those since this time. |
+
+**Output** (bounded, with `-o json`):
+
+- `where` (string)
+- `items` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+### `crombolo workspace list`
+
+The workspaces you may use there, newest first. Changes nothing.
+
+```
+crombolo workspace list [--profile <profile>] [--env <env>] [--all]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--all` | boolean | Every one, for an administrator. |
+
+**Output** (bounded, with `-o json`):
+
+- `where` (string)
+- `items` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`.
+
+### `crombolo workspace merge`
+
+Merge workspaces into Shared, all or none: a dry run says what it would do and runs the checks. Each run acts again.
+
+```
+crombolo workspace merge <workspaces> [--profile <profile>] [--env <env>] [--dry-run] [--yes] [--accept-lossy <accept-lossy>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspaces` | string | One or more, by name or key, separated by commas. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--dry-run` | boolean | Say what it would do, changing nothing. |
+| `--yes` | boolean | Merge, rather than only saying what would. |
+| `--accept-lossy` | string[] | A change that loses data, removes or renames, by its id or kind; repeatable. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `merged` (boolean)
+- `blockers` (array of string)
+- `changeId` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `confirmation_required`.
+
+**Outcomes:** `conflicts_found`, `lossy_unaccepted`.
+
+### `crombolo workspace open`
+
+Open a workspace, to change pages, types and files apart from Shared. Each run acts again.
+
+```
+crombolo workspace open <name> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `name` | string | What to call it. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `key` (string)
+- `name` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`, `not_found`.
+
+### `crombolo workspace pages`
+
+Each page a workspace affects: its address, whether it rendered, and how long it took. Changes nothing.
+
+```
+crombolo workspace pages <workspace> [--profile <profile>] [--env <env>] [--failing] [--all]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--failing` | boolean | Only those that did not render. |
+| `--all` | boolean | Every affected page, not a sample per type and template. |
+
+**Output** (bounded, with `-o json`):
+
+- `where` (string)
+- `items` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+### `crombolo workspace pull`
+
+Bring changes from another site: those merged there that this site lacks, or one of its workspaces to work on here. Each run acts again.
+
+```
+crombolo workspace pull [<workspace>] [--profile <profile>] [--env <env>] --from <from> [--from-env <from-env>] [--yes]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | A workspace there, by its name or key. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--from` | string | The site it comes from, by its profile. Required. |
+| `--from-env` | string | Its environment. |
+| `--yes` | boolean | Bring it, rather than only saying what would come. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `from` (string)
+- `applied` (array of string)
+- `workspace` (string)
+- `conflicts` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `confirmation_required`.
+
+**Outcomes:** `conflicts_found`.
+
+### `crombolo workspace push`
+
+Send a workspace from here to a workspace on another site, where it is looked at and merged; it never merges. Each run acts again.
+
+```
+crombolo workspace push <workspace> [--profile <profile>] [--env <env>] --to <to> [--to-env <to-env>] [--yes]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--to` | string | The site it goes to, by its profile. Required. |
+| `--to-env` | string | Its environment. |
+| `--yes` | boolean | Send it, rather than only saying what it holds. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `to` (string)
+- `workspace` (string)
+- `conflicts` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `confirmation_required`.
+
+**Outcomes:** `conflicts_found`.
+
+### `crombolo workspace render`
+
+One page of a workspace’s site: whether it rendered, and its error if not. Changes nothing.
+
+```
+crombolo workspace render <workspace> <path> [--profile <profile>] [--env <env>] [--html]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `path` | string | The page’s address on the site. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--html` | boolean | Print the page too. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `status` (string)
+- `error` (string)
+- `html` (string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+**Outcomes:** `problems_found`.
+
+### `crombolo workspace resolve`
+
+Settle one conflict: a page’s part by --mine or --theirs, a file by those or its merged text. Safe to run again: a second run changes nothing more.
+
+```
+crombolo workspace resolve <workspace> <item> [--profile <profile>] [--env <env>] [--mine] [--theirs] [--file <file>] [--value <value>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `item` | string | A page’s part as `conflicts` names it (<key>#<part>), or a file’s path. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--mine` | boolean | Keep the workspace’s. |
+| `--theirs` | boolean | Take Shared’s. |
+| `--file` | string | A file’s merged text, from this file. |
+| `--value` | string | A file’s merged text, given here. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `item` (string)
+- `resolved` (boolean)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
+
+### `crombolo workspace share`
+
+Let people read and change a workspace, by their email. Safe to run again: a second run changes nothing more.
+
+```
+crombolo workspace share <workspace> <people> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `people` | string | Their emails, separated by commas. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `people` (array of string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
+
+### `crombolo workspace status`
+
+What a workspace has changed, and whether it would merge now. Changes nothing.
+
+```
+crombolo workspace status <workspace> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `changes` (array of object)
+- `conflicts` (integer)
+- `findings` (integer)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+### `crombolo workspace sync`
+
+Bring Shared’s latest into a workspace: what merges is merged, the rest is a conflict. Safe to run again: a second run changes nothing more.
+
+```
+crombolo workspace sync <workspace> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `conflicts` (array of string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+### `crombolo workspace unshare`
+
+Take people out of a workspace, by their email. Safe to run again: a second run changes nothing more.
+
+```
+crombolo workspace unshare <workspace> <people> [--profile <profile>] [--env <env>]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `workspace` | string | The workspace, by its name or key. Required. |
+| `people` | string | Their emails, separated by commas. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `people` (array of string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
+
+## workspaces
+
+The workspaces commands.
+
+### `crombolo workspaces`
+
+The workspaces open there, with what each holds. Changes nothing.
+
+```
+crombolo workspaces [--profile <profile>] [--env <env>] [--all]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--all` | boolean | Every one, for an administrator. |
+
+**Output** (bounded, with `-o json`):
+
+- `where` (string)
+- `items` (array of object)
+
+**Fails with:** `usage`, `internal`, `auth`, `refused`.
+
 ## Exit codes
 
 | Code | Kind | When |
@@ -6475,4 +6993,6 @@ crombolo restart [--profile <profile>] [--env <env>]
 | 10 | `io` | A file could not be read or written. |
 | 20 | `problems_found` | The check found problems: `status`, `types check`, `components check`. |
 | 21 | `blocked` | Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`. |
+| 22 | `conflicts_found` | A workspace has conflicts to resolve: `workspace conflicts`, `workspace merge`. |
+| 23 | `lossy_unaccepted` | A change loses data, removes or renames, and was not accepted: `workspace merge --accept-lossy`. |
 | 130 | `interrupted` | Stopped by a signal. |

@@ -174,7 +174,7 @@ url = "https://staging.example"
 describe('choosing the site', () => {
   const setUp = () => {
     const file = join(temp('profiles'), 'profiles')
-    addProfile({ name: 'default', url: 'https://live.example', environment: 'production' }, file)
+    addProfile({ name: 'default', url: 'https://live.example' }, file)
     addProfile({ name: 'staging', url: 'https://staging.example' }, file)
     addProfile({ name: 'other', url: 'https://other.example' }, file)
     return file
@@ -203,12 +203,20 @@ describe('choosing the site', () => {
       environment: 'qa',
       profile: false,
     })
-    expect(chosen({}, {})).toMatchObject({ name: 'default', environment: 'production' })
-    // --env goes in place of a profile's own environment.
+    expect(chosen({}, {})).toMatchObject({ name: 'default' })
+    // Story 386: --env names the environment; a profile names only the site.
     expect(chosen({ env: 'staging' }, {})).toMatchObject({
       name: 'default',
       environment: 'staging',
     })
+  })
+
+  test('a profile that still names an environment is refused, saying what to run (386)', () => {
+    const file = join(temp('old-profile'), 'profiles')
+    addProfile({ name: 'live', url: 'https://live.example', environment: 'production' }, file)
+    expect(() =>
+      withEnv(NOTHING_SET, () => chooseSite({ profile: 'live' }, { mayDefault: false, file })),
+    ).toThrow('a profile names a site now')
   })
 
   test('the default never moves a command that can act here', () => {

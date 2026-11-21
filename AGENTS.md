@@ -13,6 +13,7 @@
 - Move a story doc to `docs/stories/05_completed` once tested and all acceptance criteria are met
 - Each time a story is closed, check every `**Depends on:**` in `docs/stories/02_backlog` and move each story whose dependencies are now all in `05_completed` to `03_ready`, updating its row in `docs/stories/README.md`
 - Planned work is a story, not a section of an info doc: the docs at the root of `docs/` describe what exists and why, and point at a story by number for what is still to come
+- An idea not yet decided on is a proposal, not a story: one file in `docs/proposals`, listed in its README with its status. Write stories from it only once it is accepted
 
 ## Boundaries
 
