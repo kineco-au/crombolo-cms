@@ -237,6 +237,7 @@ requests, only server-side and build-time front ends can call it.
 | `073` | Import a WordPress site | should | L | on hold | 141, 142 |
 | `278` | A site can be written from the public package | should | S | done | — |
 | `279` | The Umbraco importer leaves the CMS | should | M | done | 278 |
+| `393` | A bundle's user groups arrive as they were | should | M | ready | 071, 385 |
 
 ### Epic I — Hardening
 
