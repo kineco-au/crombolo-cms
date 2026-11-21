@@ -21,7 +21,10 @@ change's pages are recorded the way a bundle's are, and reverted the same way.
 
 A type, a data type, a component, a stylesheet or a script saved straight in Shared is
 recorded as a change by its author, with the file's text before and after (a type as
-the schema writes its file). A person's edits gather in one change until ten minutes
+the schema writes its file). So are a language (`schema/languages.toml`), a form or a
+workflow (its file under `schema/`), and the dictionary, as the file a workspace holds
+it in (`content/dictionary.jsonl`, one item per line); a blueprint is listed as a page
+is (story 392). A person's edits gather in one change until ten minutes
 pass with none (`EDIT_WINDOW_MS`); then it closes and the next opens. Their page edits
 in that time are listed on it too (story 388): each page as it stood before their first
 save there and as they left it.
@@ -66,6 +69,8 @@ protocol's `changes` routes ([`remote-protocol.md`](remote-protocol.md)).
   after, and each page, media item or Library item with its values, names and
   publishing before and after, matched on another site by key. A page the change
   deleted is kept among its items as it stood, since a delete takes its history.
+  Languages, forms, workflows and the dictionary travel as files, blueprints as pages
+  (story 392); on the target the dictionary merges by item, against its rows.
 - **Its dependencies are named per item:** each item says which change last touched it
   where the change was made, and the change lists those and the changes that made what
   its values refer to. A target missing one refuses only an item that is not as the

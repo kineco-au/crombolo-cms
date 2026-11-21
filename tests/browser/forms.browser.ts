@@ -80,8 +80,11 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
     ).toBe(trade)
   }).toPass({ timeout: 15_000 })
 
-  await select.selectOption({ label: 'No form' })
-  await expect(picker.locator('details')).toHaveCount(0)
+  // The save above re-renders the picker, which can put the choice back as it lands.
+  await expect(async () => {
+    await select.selectOption({ label: 'No form' })
+    await expect(picker.locator('details')).toHaveCount(0, { timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
   await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
   await expect
     .poll(async () => {

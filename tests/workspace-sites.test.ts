@@ -35,7 +35,7 @@ const WORKSPACES = `${BACKOFFICE}/crombolo/api/workspaces`
 const enc = encodeURIComponent
 
 async function site(
-  options: { components?: number; host?: string | null; linkDays?: number } = {},
+  options: { components?: number; host?: string | null; linkDays?: number; page?: string } = {},
 ) {
   mkdirSync(join(process.cwd(), 'output'), { recursive: true })
   const root = mkdtempSync(join(process.cwd(), 'output', 'workspace-sites-'))
@@ -46,7 +46,8 @@ async function site(
   writeFileSync(join(root, 'schema', 'content-types', 'page.toml'), PAGE_TOML)
   writeFileSync(
     join(root, 'components', 'page.tsx'),
-    "import Heading from './parts/heading.tsx'\nexport default () => <main><Heading /></main>\n",
+    options.page ??
+      "import Heading from './parts/heading.tsx'\nexport default () => <main><Heading /></main>\n",
   )
   writeFileSync(
     join(root, 'components', 'parts', 'heading.tsx'),
@@ -275,6 +276,32 @@ describe(`a workspace's site (${dialectUnderTest})`, () => {
       await (await h.server.fetch(new Request('http://localhost/css/site.css'))).text(),
     ).toContain('black')
   })
+
+  test('its site has the dictionary it holds (story 392)', async () => {
+    const { send, opened, rendered, sharedPage } = await site({
+      page: "export default ({ dictionary }) => <main><p>{dictionary('Greeting')}</p></main>\n",
+    })
+    const greeting = {
+      id: crypto.randomUUID(),
+      name: 'Greeting',
+      parent: null,
+      translations: [{ isoCode: 'en-US', translation: 'Hello' }],
+    }
+    expect((await send('POST', `${V1}/dictionary`, greeting)).status).toBe(201)
+    const sale = await opened('Spring sale')
+    expect(
+      (
+        await send(
+          'PUT',
+          `${V1}/dictionary/${greeting.id}`,
+          { name: 'Greeting', translations: [{ isoCode: 'en-US', translation: 'Sale on' }] },
+          sale.key,
+        )
+      ).status,
+    ).toBe(200)
+    expect((await rendered(sale.key)).html).toContain('Sale on')
+    expect(await sharedPage()).toContain('Hello')
+  }, 20_000)
 
   test('a page changed there but not published shows as Shared had it published when the workspace began', async () => {
     const { h, send, opened, home } = await site()

@@ -292,6 +292,7 @@ import { handleTransferAction, pendingTransfers } from './transfer-dashboard.ts'
 import { createTrustedSignersAdmin } from './trusted-signers-admin.ts'
 import { changeUrlOptions, urlSettingEditable } from './url-settings.ts'
 import type { JobsStatus } from './worker-watch.ts'
+import { inSchemaPlace, type SchemaPlace } from './workspace-schema-dir.ts'
 
 export { PREVIEW_COOKIE }
 
@@ -1681,6 +1682,27 @@ export async function createServer(
       })
     },
   })
+  // Story 375: a request in a workspace, with the workspace held while it runs.
+  const workspaceScope = createWorkspaceScope(db, {
+    enabled: () => workspacesOn(config),
+    required: () => config.workspacesRequired,
+    locked: () => contentLocked(config),
+    merge: () => core.operations.merge,
+    schema: () => workspaceSchema,
+  })
+  /** Story 392: a designer's request, in the workspace it names, against its `schema/`. */
+  const inDesignerPlace = async (
+    request: Request,
+    principal: Principal,
+    operationId: string,
+    shared: { schemaDir: string; writable: boolean },
+    run: (place: SchemaPlace) => Promise<Response>,
+  ): Promise<Response> => {
+    const scope = await workspaceScope(request, principal, { operationId })
+    if (scope instanceof Response) return scope
+    const go = () => inSchemaPlace(db, shared, request, run, principal.id)
+    return scope ? scope.run(go) : go()
+  }
   const api = createManagementApiRouter({
     deps: managementDeps,
     authenticate,
@@ -1702,13 +1724,7 @@ export async function createServer(
     },
     onServerEvent: announce,
     // Story 375: a request in a workspace, with the workspace held while it runs.
-    scope: createWorkspaceScope(db, {
-      enabled: () => workspacesOn(config),
-      required: () => config.workspacesRequired,
-      locked: () => contentLocked(config),
-      merge: () => core.operations.merge,
-      schema: () => workspaceSchema,
-    }),
+    scope: workspaceScope,
   })
 
   // Fixed by the contract and the client's SDK, wherever the editor is mounted.
@@ -3477,373 +3493,396 @@ export async function createServer(
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       const action = pathname.slice(`${paths.pluginPath}/api/forms`.length).replace(/^\//, '')
-      // Through the registry the renderer uses, so the designer and a render
-      // cannot disagree; a save invalidates it rather than waiting out the memo.
-      const definitions = forms.all()
+      // Story 392: in a workspace, its copy of the forms; looking up choices is a read.
+      // Story 392: a site that takes its content by change shows its forms read-only.
+      const shared = {
+        schemaDir: config.schemaDir,
+        writable: config.schemaWritable && !contentLocked(config),
+      }
+      const formsIn = async (place: SchemaPlace): Promise<Response> => {
+        // Through the registry the renderer uses, so the designer and a render
+        // cannot disagree; a save invalidates it rather than waiting out the memo.
+        const definitions = place.inWorkspace
+          ? (loadSchemaDirectory(place.schemaDir, { formTypes: formTypes.types }).set.forms ?? [])
+          : forms.all()
 
-      // A definition is structure, like a content type: anyone who may open the
-      // section may read it, and the picker needs it in the Content section too.
-      if (action === '' && request.method === 'GET') {
-        const files = loadSchemaDirectory(config.schemaDir, { formTypes: formTypes.types }).files
-        const file = (alias: string) => files.get(`form:${alias}`)
-        return Response.json({
-          items: definitions.map((form) => ({
-            ...formSummary(form, formTypes.types),
-            folder: file(form.alias)
-              ? folderOf(config.schemaDir, 'forms', file(form.alias) as string)
-              : '',
-          })),
-          folders: foldersIn(config.schemaDir, 'forms'),
-          readOnlyBecause: !config.schemaWritable
-            ? 'site'
-            : principal.isAdmin || principal.permissions.includes(FormPermissions.Manage)
-              ? null
-              : 'permission',
-        })
-      }
-      // Hyphenated, so no form alias (letters and digits) can be mistaken for it.
-      if (action === 'available-types' && request.method === 'GET')
-        return Response.json(describeFormTypes(formTypes.types))
-      // The Library forms (story 239), for a page's form picker and the entries filter.
-      if (action === 'library-forms' && request.method === 'GET') {
-        const known = new Map(definitions.map((form) => [form.key ?? form.alias, form]))
-        return Response.json({
-          items: (await listLibraryForms(db)).map((item) => ({
-            ...item,
-            formAlias: known.get(item.formKey)?.alias ?? null,
-            formName: known.get(item.formKey)?.name ?? null,
-          })),
-        })
-      }
-      // Which content types are made from a form, for the note in their editor.
-      if (action === 'library-types' && request.method === 'GET')
-        return Response.json({
-          items: definitions.map((form) => ({
-            typeKey: libraryFormTypeKey(libraryFormId(form)),
-            formName: form.name,
-          })),
-        })
-      // The designer's "E-mail design" picker.
-      if (action === 'email-templates' && request.method === 'GET')
-        return Response.json({
-          items: listEmailTemplates(
-            config.componentsDir,
-            definitions.flatMap((form) =>
-              form.workflows.flatMap((workflow) =>
-                typeof workflow.settings.template === 'string' ? [workflow.settings.template] : [],
+        // A definition is structure, like a content type: anyone who may open the
+        // section may read it, and the picker needs it in the Content section too.
+        if (action === '' && request.method === 'GET') {
+          const files = loadSchemaDirectory(place.schemaDir, { formTypes: formTypes.types }).files
+          const file = (alias: string) => files.get(`form:${alias}`)
+          return Response.json({
+            items: definitions.map((form) => ({
+              ...formSummary(form, formTypes.types),
+              folder: file(form.alias)
+                ? folderOf(place.schemaDir, 'forms', file(form.alias) as string)
+                : '',
+            })),
+            folders: foldersIn(place.schemaDir, 'forms'),
+            readOnlyBecause: !place.writable
+              ? 'site'
+              : principal.isAdmin || principal.permissions.includes(FormPermissions.Manage)
+                ? null
+                : 'permission',
+          })
+        }
+        // Hyphenated, so no form alias (letters and digits) can be mistaken for it.
+        if (action === 'available-types' && request.method === 'GET')
+          return Response.json(describeFormTypes(formTypes.types))
+        // The Library forms (story 239), for a page's form picker and the entries filter.
+        if (action === 'library-forms' && request.method === 'GET') {
+          const known = new Map(definitions.map((form) => [form.key ?? form.alias, form]))
+          return Response.json({
+            items: (await listLibraryForms(db)).map((item) => ({
+              ...item,
+              formAlias: known.get(item.formKey)?.alias ?? null,
+              formName: known.get(item.formKey)?.name ?? null,
+            })),
+          })
+        }
+        // Which content types are made from a form, for the note in their editor.
+        if (action === 'library-types' && request.method === 'GET')
+          return Response.json({
+            items: definitions.map((form) => ({
+              typeKey: libraryFormTypeKey(libraryFormId(form)),
+              formName: form.name,
+            })),
+          })
+        // The designer's "E-mail design" picker.
+        if (action === 'email-templates' && request.method === 'GET')
+          return Response.json({
+            items: listEmailTemplates(
+              config.componentsDir,
+              definitions.flatMap((form) =>
+                form.workflows.flatMap((workflow) =>
+                  typeof workflow.settings.template === 'string'
+                    ? [workflow.settings.template]
+                    : [],
+                ),
               ),
             ),
-          ),
-        })
-
-      const entries = new FormEntryRepository(db)
-      const byKey = formsByKey(definitions)
-      // Submissions are personal data, so reading them asks for more than a
-      // session. Four verbs, because designing a form and reading what people
-      // sent it are different jobs (`docs/forms.md`).
-      const may = (verb: string) => principal.isAdmin || principal.permissions.includes(verb)
-      const formFiles = {
-        schemaDir: config.schemaDir,
-        writable: config.schemaWritable,
-        formTypes: formTypes.types,
-        componentAliases: () => componentAliasesIn(config.componentsDir, config.siteDir),
-        onChanged: config.schemaStore
-          ? async () => {
-              await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
-            }
-          : undefined,
-      }
-      // Every dictionary item in the default language, for the designer to suggest.
-      if (action === 'words' && request.method === 'GET') {
-        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
-        const entries = await cache.dictionaryEntries(null)
-        return Response.json({
-          words: Object.entries(entries).map(([name, text]) => ({ name, text })),
-        })
-      }
-
-      const maySeeEntries = may(FormPermissions.EntriesView)
-      const mayManageEntries = may(FormPermissions.EntriesManage)
-      // The group alias still counts: `sensitiveData` is how Umbraco carries
-      // this and how members already work, so both routes to it are honoured.
-      const maySeeSensitive =
-        may(FormPermissions.EntriesSensitive) || hasAccessToSensitiveData(principal.groups)
-
-      const entryMatch = /^entries\/([^/]+)(?:\/(state))?$/.exec(action)
-      if (entryMatch) {
-        if (!maySeeEntries) return new Response('Forbidden', { status: 403 })
-        const id = decodeURIComponent(entryMatch[1] as string)
-        if (entryMatch[2] === 'state' && request.method === 'POST') {
-          if (!mayManageEntries) return new Response('Forbidden', { status: 403 })
-          const body = (await request.json().catch(() => ({}))) as { state?: unknown }
-          const next = parseEntryState(typeof body.state === 'string' ? body.state : null)
-          if (!next) return new Response('Bad Request', { status: 400 })
-          const updated = await entries.setState(id, next)
-          if (!updated) return new Response('Not Found', { status: 404 })
-          // Approval is the other trigger: a workflow declared `on = "approve"`
-          // runs now, from the values the entry holds.
-          if (next === 'approved') {
-            const form = byKey.get(updated.formKey)
-            const onApprove = form?.workflows.filter((workflow) => workflow.on === 'approve') ?? []
-            // Through a Library form: its recipients as they are now (story 239).
-            const recipients = updated.libraryKey
-              ? (await cache.libraryForm(updated.libraryKey))?.library?.recipients
-              : undefined
-            if (onApprove.length > 0)
-              await new FormWorkflowRepository(db).enqueue(
-                onApprove.map((workflow) => ({
-                  formKey: updated.formKey,
-                  formAlias: updated.formAlias,
-                  workflowName: workflow.name,
-                  workflowType: workflow.type,
-                  runOn: workflow.on,
-                  entryId: updated.id,
-                  payload: updated.values.map((value) => ({
-                    fieldAlias: value.fieldAlias,
-                    values: value.values,
-                  })),
-                  ...(recipients ? { recipients } : {}),
-                })),
-              )
-          }
-          log.info('{user} set form entry {id} to {state}', {
-            user: principal.email,
-            id,
-            state: next,
           })
-          return Response.json({ id: updated.id, state: updated.state })
+
+        const entries = new FormEntryRepository(db)
+        const byKey = formsByKey(definitions)
+        // Submissions are personal data, so reading them asks for more than a
+        // session. Four verbs, because designing a form and reading what people
+        // sent it are different jobs (`docs/forms.md`).
+        const may = (verb: string) => principal.isAdmin || principal.permissions.includes(verb)
+        const formFiles = {
+          schemaDir: place.schemaDir,
+          writable: place.writable,
+          formTypes: formTypes.types,
+          componentAliases: () => componentAliasesIn(config.componentsDir, config.siteDir),
+          onChanged:
+            !place.inWorkspace && config.schemaStore
+              ? async () => {
+                  await publishSchema(config.schemaStore as SchemaStore, place.schemaDir)
+                }
+              : undefined,
         }
-        if (request.method === 'DELETE') {
-          if (!mayManageEntries) return new Response('Forbidden', { status: 403 })
-          if (!(await entries.remove(id))) return new Response('Not Found', { status: 404 })
-          log.info('{user} deleted form entry {id}', { user: principal.email, id })
-          return new Response(null, { status: 200 })
-        }
-        if (request.method === 'GET') {
-          const entry = await entries.byId(id)
-          if (!entry) return new Response('Not Found', { status: 404 })
+        // Every dictionary item in the default language, for the designer to suggest.
+        if (action === 'words' && request.method === 'GET') {
+          if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+          const entries = await cache.dictionaryEntries(null)
           return Response.json({
-            ...entry,
-            values: redactSensitive(entry, byKey.get(entry.formKey), maySeeSensitive),
+            words: Object.entries(entries).map(([name, text]) => ({ name, text })),
           })
         }
-        return new Response('Method Not Allowed', { status: 405 })
-      }
 
-      const csvMatch = /^([^/]+)\/entries\.csv$/.exec(action)
-      if (csvMatch && request.method === 'GET') {
-        if (!maySeeEntries) return new Response('Forbidden', { status: 403 })
-        const key = decodeURIComponent(csvMatch[1] as string)
-        const form = byKey.get(key)
-        if (!form) return new Response('Not Found', { status: 404 })
-        const page = await entries.list({ formKey: key, take: 10_000 })
-        const result = entriesCsv(await cache.resolveForm(form), page.items, {
-          includeSensitive: maySeeSensitive,
-          types: formTypes.types,
-        })
-        if (!result.ok)
-          return new Response(result.reason, {
-            status: 403,
-            headers: { 'content-type': 'text/plain; charset=utf-8' },
-          })
-        return new Response(result.csv, {
-          headers: {
-            'content-type': 'text/csv; charset=utf-8',
-            'content-disposition': `attachment; filename="${result.fileName}"`,
-          },
-        })
-      }
+        const maySeeEntries = may(FormPermissions.EntriesView)
+        const mayManageEntries = may(FormPermissions.EntriesManage)
+        // The group alias still counts: `sensitiveData` is how Umbraco carries
+        // this and how members already work, so both routes to it are honoured.
+        const maySeeSensitive =
+          may(FormPermissions.EntriesSensitive) || hasAccessToSensitiveData(principal.groups)
 
-      const listMatch = /^([^/]+)\/entries$/.exec(action)
-      if (listMatch && request.method === 'GET') {
-        if (!maySeeEntries) return new Response('Forbidden', { status: 403 })
-        const key = decodeURIComponent(listMatch[1] as string)
-        const since = url.searchParams.get('from')
-        const until = url.searchParams.get('to')
-        // `library=none` for the entries that came through no Library form.
-        const library = url.searchParams.get('library')
-        const page = await entries.list({
-          formKey: key,
-          ...(library ? { libraryKey: library === 'none' ? null : library } : {}),
-          state: parseEntryState(url.searchParams.get('state')),
-          culture: url.searchParams.get('language') || undefined,
-          from: since ? new Date(since) : undefined,
-          to: until ? new Date(until) : undefined,
-          search: url.searchParams.get('search') ?? undefined,
-          includeSpam: url.searchParams.get('includeSpam') === 'true',
-          skip: Number(url.searchParams.get('skip') ?? 0) || 0,
-          take: Number(url.searchParams.get('take') ?? 100) || 100,
-        })
-        const form = byKey.get(key)
-        return Response.json({
-          total: page.total,
-          languages: await entries.languages(key),
-          items: page.items.map((entry) => ({
-            ...entry,
-            values: redactSensitive(entry, form, maySeeSensitive),
-          })),
-        })
-      }
-
-      // A send-to-URL workflow's secret header (story 304): sealed here, never
-      // in the form's file, and never shown back. Set on any site, schema
-      // writable or not, since it is the site's own and not the form's.
-      const secretMatch = /^([^/]+)\/workflows\/([^/]+)\/secrets\/([^/]+)$/.exec(action)
-      if (secretMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
-        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
-        const [, formKey, workflowKey, header] = secretMatch.map((part) =>
-          decodeURIComponent(part),
-        ) as [string, string, string, string]
-        const form = byKey.get(formKey)
-        const workflow = form?.workflows.find((candidate) => candidate.key === workflowKey)
-        const headers = workflow?.settings.headers as Record<string, unknown> | undefined
-        if (!form?.key || !workflow || !isSecretHeader(headers?.[header]))
-          return Response.json(
-            { message: 'The form names no such secret header; save the form first.' },
-            { status: 404 },
-          )
-        const secrets = new FormWorkflowSecretRepository(db)
-        let set: { sealed: string; url: string } | undefined
-        if (request.method === 'PUT') {
-          const body = (await request.json().catch(() => ({}))) as { value?: unknown }
-          if (typeof body.value !== 'string' || body.value === '')
-            return Response.json({ message: 'Give the header a value.' }, { status: 400 })
-          const key = usableSecretKey(config.secretKey)
-          if (!key)
-            return Response.json(
-              {
-                message: `Keeping a secret header needs ${SECRET_KEY_VARIABLE} set on the server.`,
-              },
-              { status: 409 },
-            )
-          set = { sealed: sealSecret(body.value, key), url: String(workflow.settings.url ?? '') }
-        }
-        await secrets.set(form.key, workflowKey, header, set, principal.name ?? null)
-        await recordAudit(db, {
-          category: 'settings',
-          action: set ? 'secret header set' : 'secret header removed',
-          source: 'request',
-          userKey: principal.id,
-          userName: principal.name,
-          entityType: 'form',
-          entityKey: form.key,
-          entityName: form.name,
-          detail: `${workflow.name}: ${header}`,
-          ...clientAddress(request),
-        })
-        return Response.json({ ok: true })
-      }
-
-      if (action && request.method === 'GET') {
-        const form = byKey.get(decodeURIComponent(action))
-        if (!form) return new Response('Not Found', { status: 404 })
-        // Which secret headers are set for the address each workflow sends to, never their values.
-        const secrets: { workflow: string; header: string; set: boolean }[] = []
-        for (const workflow of form.workflows) {
-          const headers = workflow.settings.headers as Record<string, unknown> | undefined
-          const named = Object.keys(headers ?? {}).filter((name) => isSecretHeader(headers?.[name]))
-          if (named.length === 0 || !workflow.key || !form.key) continue
-          const kept = await new FormWorkflowSecretRepository(db).of(form.key, workflow.key)
-          for (const header of named)
-            secrets.push({
-              workflow: workflow.key,
-              header,
-              set: kept.get(header)?.url === workflow.settings.url,
+        const entryMatch = /^entries\/([^/]+)(?:\/(state))?$/.exec(action)
+        if (entryMatch) {
+          if (!maySeeEntries) return new Response('Forbidden', { status: 403 })
+          const id = decodeURIComponent(entryMatch[1] as string)
+          if (entryMatch[2] === 'state' && request.method === 'POST') {
+            if (!mayManageEntries) return new Response('Forbidden', { status: 403 })
+            const body = (await request.json().catch(() => ({}))) as { state?: unknown }
+            const next = parseEntryState(typeof body.state === 'string' ? body.state : null)
+            if (!next) return new Response('Bad Request', { status: 400 })
+            const updated = await entries.setState(id, next)
+            if (!updated) return new Response('Not Found', { status: 404 })
+            // Approval is the other trigger: a workflow declared `on = "approve"`
+            // runs now, from the values the entry holds.
+            if (next === 'approved') {
+              const form = byKey.get(updated.formKey)
+              const onApprove =
+                form?.workflows.filter((workflow) => workflow.on === 'approve') ?? []
+              // Through a Library form: its recipients as they are now (story 239).
+              const recipients = updated.libraryKey
+                ? (await cache.libraryForm(updated.libraryKey))?.library?.recipients
+                : undefined
+              if (onApprove.length > 0)
+                await new FormWorkflowRepository(db).enqueue(
+                  onApprove.map((workflow) => ({
+                    formKey: updated.formKey,
+                    formAlias: updated.formAlias,
+                    workflowName: workflow.name,
+                    workflowType: workflow.type,
+                    runOn: workflow.on,
+                    entryId: updated.id,
+                    payload: updated.values.map((value) => ({
+                      fieldAlias: value.fieldAlias,
+                      values: value.values,
+                    })),
+                    ...(recipients ? { recipients } : {}),
+                  })),
+                )
+            }
+            log.info('{user} set form entry {id} to {state}', {
+              user: principal.email,
+              id,
+              state: next,
             })
+            return Response.json({ id: updated.id, state: updated.state })
+          }
+          if (request.method === 'DELETE') {
+            if (!mayManageEntries) return new Response('Forbidden', { status: 403 })
+            if (!(await entries.remove(id))) return new Response('Not Found', { status: 404 })
+            log.info('{user} deleted form entry {id}', { user: principal.email, id })
+            return new Response(null, { status: 200 })
+          }
+          if (request.method === 'GET') {
+            const entry = await entries.byId(id)
+            if (!entry) return new Response('Not Found', { status: 404 })
+            return Response.json({
+              ...entry,
+              values: redactSensitive(entry, byKey.get(entry.formKey), maySeeSensitive),
+            })
+          }
+          return new Response('Method Not Allowed', { status: 405 })
         }
-        // The whole definition, which is what the designer edits.
-        return Response.json({ ...formDetail(form), definition: form, secrets })
-      }
 
-      // What a choice source offers now, in the default language, for the
-      // designer to show beside the source it is editing.
-      if (action === 'choices' && request.method === 'POST') {
-        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
-        const body = (await request.json().catch(() => ({}))) as { source?: unknown }
-        const source = body.source as { kind?: unknown; parent?: unknown } | undefined
-        if (
-          !source ||
-          !CHOICE_SOURCE_KINDS.includes(source.kind as ChoiceSourceKind) ||
-          typeof source.parent !== 'string'
-        )
-          return new Response('Bad Request', { status: 400 })
-        const options = await cache.choiceOptions({
-          kind: source.kind as ChoiceSourceKind,
-          parent: source.parent,
-        })
-        return Response.json({ options })
-      }
-
-      // Designing a form is a developer's job, so it is its own verb rather
-      // than something an entry reader can do.
-      if (action === 'tree-folders' || action === 'tree-move') {
-        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
-        const response = await folderAction('forms', action, request, {
-          ...formFiles,
-          file: (alias) =>
-            loadSchemaDirectory(config.schemaDir, { formTypes: formTypes.types }).files.get(
-              `form:${alias}`,
-            ),
-        })
-        if (response) return response
-      }
-      if (request.method === 'POST' || request.method === 'PUT') {
-        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
-        const body = await request.json().catch(() => ({}))
-        const folder = url.searchParams.get('folder') ?? undefined
-        const refused = await refusedSendAddresses(coerceForm(body), config.allowPrivateAddresses)
-        if (refused.length > 0)
-          return Response.json({ status: 'invalid', problems: refused }, { status: 400 })
-        const written = await saveForm(coerceForm(body), { ...formFiles, folder })
-        if (!written.ok) {
-          log.warning('{user} could not save a form: {detail}', {
-            user: principal.email,
-            detail: written.problems.map((problem) => problem.message).join('; '),
+        const csvMatch = /^([^/]+)\/entries\.csv$/.exec(action)
+        if (csvMatch && request.method === 'GET') {
+          if (!maySeeEntries) return new Response('Forbidden', { status: 403 })
+          const key = decodeURIComponent(csvMatch[1] as string)
+          const form = byKey.get(key)
+          if (!form) return new Response('Not Found', { status: 404 })
+          const page = await entries.list({ formKey: key, take: 10_000 })
+          const result = entriesCsv(await cache.resolveForm(form), page.items, {
+            includeSensitive: maySeeSensitive,
+            types: formTypes.types,
           })
-          return Response.json(
-            { status: written.status, problems: written.problems },
-            { status: written.status === 'readOnly' ? 409 : 400 },
-          )
+          if (!result.ok)
+            return new Response(result.reason, {
+              status: 403,
+              headers: { 'content-type': 'text/plain; charset=utf-8' },
+            })
+          return new Response(result.csv, {
+            headers: {
+              'content-type': 'text/csv; charset=utf-8',
+              'content-disposition': `attachment; filename="${result.fileName}"`,
+            },
+          })
         }
-        // The memo would otherwise hold the old definition for a second, which
-        // is exactly long enough for the designer to reload and see it.
-        forms.invalidate()
-        await ensureFormLibraryTypes(db, forms.all())
-        cache.invalidate()
-        const saved = coerceForm(body)
-        if (saved.key)
-          await new FormWorkflowSecretRepository(db).forget(
-            saved.key,
-            saved.workflows.flatMap((workflow) => (workflow.key ? [workflow.key] : [])),
-          )
-        log.info('{user} saved the form {form}', {
-          user: principal.email,
-          form: coerceForm(body).alias,
-        })
-        return Response.json({ ok: true })
-      }
 
-      if (action && request.method === 'DELETE') {
-        if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
-        const form = byKey.get(decodeURIComponent(action))
-        if (!form) return new Response('Not Found', { status: 404 })
-        const removed = await deleteForm(form.alias, formFiles)
-        if (!removed.ok)
-          return Response.json(
-            { status: removed.status, problems: removed.problems },
-            { status: removed.status === 'readOnly' ? 409 : 404 },
+        const listMatch = /^([^/]+)\/entries$/.exec(action)
+        if (listMatch && request.method === 'GET') {
+          if (!maySeeEntries) return new Response('Forbidden', { status: 403 })
+          const key = decodeURIComponent(listMatch[1] as string)
+          const since = url.searchParams.get('from')
+          const until = url.searchParams.get('to')
+          // `library=none` for the entries that came through no Library form.
+          const library = url.searchParams.get('library')
+          const page = await entries.list({
+            formKey: key,
+            ...(library ? { libraryKey: library === 'none' ? null : library } : {}),
+            state: parseEntryState(url.searchParams.get('state')),
+            culture: url.searchParams.get('language') || undefined,
+            from: since ? new Date(since) : undefined,
+            to: until ? new Date(until) : undefined,
+            search: url.searchParams.get('search') ?? undefined,
+            includeSpam: url.searchParams.get('includeSpam') === 'true',
+            skip: Number(url.searchParams.get('skip') ?? 0) || 0,
+            take: Number(url.searchParams.get('take') ?? 100) || 100,
+          })
+          const form = byKey.get(key)
+          return Response.json({
+            total: page.total,
+            languages: await entries.languages(key),
+            items: page.items.map((entry) => ({
+              ...entry,
+              values: redactSensitive(entry, form, maySeeSensitive),
+            })),
+          })
+        }
+
+        // A send-to-URL workflow's secret header (story 304): sealed here, never
+        // in the form's file, and never shown back. Set on any site, schema
+        // writable or not, since it is the site's own and not the form's.
+        const secretMatch = /^([^/]+)\/workflows\/([^/]+)\/secrets\/([^/]+)$/.exec(action)
+        if (secretMatch && (request.method === 'PUT' || request.method === 'DELETE')) {
+          if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+          const [, formKey, workflowKey, header] = secretMatch.map((part) =>
+            decodeURIComponent(part),
+          ) as [string, string, string, string]
+          const form = byKey.get(formKey)
+          const workflow = form?.workflows.find((candidate) => candidate.key === workflowKey)
+          const headers = workflow?.settings.headers as Record<string, unknown> | undefined
+          if (!form?.key || !workflow || !isSecretHeader(headers?.[header]))
+            return Response.json(
+              { message: 'The form names no such secret header; save the form first.' },
+              { status: 404 },
+            )
+          const secrets = new FormWorkflowSecretRepository(db)
+          let set: { sealed: string; url: string } | undefined
+          if (request.method === 'PUT') {
+            const body = (await request.json().catch(() => ({}))) as { value?: unknown }
+            if (typeof body.value !== 'string' || body.value === '')
+              return Response.json({ message: 'Give the header a value.' }, { status: 400 })
+            const key = usableSecretKey(config.secretKey)
+            if (!key)
+              return Response.json(
+                {
+                  message: `Keeping a secret header needs ${SECRET_KEY_VARIABLE} set on the server.`,
+                },
+                { status: 409 },
+              )
+            set = { sealed: sealSecret(body.value, key), url: String(workflow.settings.url ?? '') }
+          }
+          await secrets.set(form.key, workflowKey, header, set, principal.name ?? null)
+          await recordAudit(db, {
+            category: 'settings',
+            action: set ? 'secret header set' : 'secret header removed',
+            source: 'request',
+            userKey: principal.id,
+            userName: principal.name,
+            entityType: 'form',
+            entityKey: form.key,
+            entityName: form.name,
+            detail: `${workflow.name}: ${header}`,
+            ...clientAddress(request),
+          })
+          return Response.json({ ok: true })
+        }
+
+        if (action && request.method === 'GET') {
+          const form = byKey.get(decodeURIComponent(action))
+          if (!form) return new Response('Not Found', { status: 404 })
+          // Which secret headers are set for the address each workflow sends to, never their values.
+          const secrets: { workflow: string; header: string; set: boolean }[] = []
+          for (const workflow of form.workflows) {
+            const headers = workflow.settings.headers as Record<string, unknown> | undefined
+            const named = Object.keys(headers ?? {}).filter((name) =>
+              isSecretHeader(headers?.[name]),
+            )
+            if (named.length === 0 || !workflow.key || !form.key) continue
+            const kept = await new FormWorkflowSecretRepository(db).of(form.key, workflow.key)
+            for (const header of named)
+              secrets.push({
+                workflow: workflow.key,
+                header,
+                set: kept.get(header)?.url === workflow.settings.url,
+              })
+          }
+          // The whole definition, which is what the designer edits.
+          return Response.json({ ...formDetail(form), definition: form, secrets })
+        }
+
+        // What a choice source offers now, in the default language, for the
+        // designer to show beside the source it is editing.
+        if (action === 'choices' && request.method === 'POST') {
+          if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+          const body = (await request.json().catch(() => ({}))) as { source?: unknown }
+          const source = body.source as { kind?: unknown; parent?: unknown } | undefined
+          if (
+            !source ||
+            !CHOICE_SOURCE_KINDS.includes(source.kind as ChoiceSourceKind) ||
+            typeof source.parent !== 'string'
           )
-        forms.invalidate()
-        await ensureFormLibraryTypes(db, forms.all())
-        cache.invalidate()
-        if (form.key) await new FormWorkflowSecretRepository(db).forget(form.key)
-        log.info('{user} deleted the form {form}; its entries are kept', {
-          user: principal.email,
-          form: form.alias,
-        })
-        return Response.json({ ok: true })
+            return new Response('Bad Request', { status: 400 })
+          const options = await cache.choiceOptions({
+            kind: source.kind as ChoiceSourceKind,
+            parent: source.parent,
+          })
+          return Response.json({ options })
+        }
+
+        // Designing a form is a developer's job, so it is its own verb rather
+        // than something an entry reader can do.
+        if (action === 'tree-folders' || action === 'tree-move') {
+          if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+          const response = await folderAction('forms', action, request, {
+            ...formFiles,
+            file: (alias) =>
+              loadSchemaDirectory(place.schemaDir, { formTypes: formTypes.types }).files.get(
+                `form:${alias}`,
+              ),
+          })
+          if (response) return response
+        }
+        if (request.method === 'POST' || request.method === 'PUT') {
+          if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+          const body = await request.json().catch(() => ({}))
+          const folder = url.searchParams.get('folder') ?? undefined
+          const refused = await refusedSendAddresses(coerceForm(body), config.allowPrivateAddresses)
+          if (refused.length > 0)
+            return Response.json({ status: 'invalid', problems: refused }, { status: 400 })
+          const written = await saveForm(coerceForm(body), { ...formFiles, folder })
+          if (!written.ok) {
+            log.warning('{user} could not save a form: {detail}', {
+              user: principal.email,
+              detail: written.problems.map((problem) => problem.message).join('; '),
+            })
+            return Response.json(
+              { status: written.status, problems: written.problems },
+              { status: written.status === 'readOnly' ? 409 : 400 },
+            )
+          }
+          // The memo would otherwise hold the old definition for a second, which
+          // is exactly long enough for the designer to reload and see it.
+          if (!place.inWorkspace) {
+            forms.invalidate()
+            await ensureFormLibraryTypes(db, forms.all())
+            cache.invalidate()
+          }
+          const saved = coerceForm(body)
+          if (saved.key && !place.inWorkspace)
+            await new FormWorkflowSecretRepository(db).forget(
+              saved.key,
+              saved.workflows.flatMap((workflow) => (workflow.key ? [workflow.key] : [])),
+            )
+          log.info('{user} saved the form {form}', {
+            user: principal.email,
+            form: coerceForm(body).alias,
+          })
+          return Response.json({ ok: true })
+        }
+
+        if (action && request.method === 'DELETE') {
+          if (!may(FormPermissions.Manage)) return new Response('Forbidden', { status: 403 })
+          const form = byKey.get(decodeURIComponent(action))
+          if (!form) return new Response('Not Found', { status: 404 })
+          const removed = await deleteForm(form.alias, formFiles)
+          if (!removed.ok)
+            return Response.json(
+              { status: removed.status, problems: removed.problems },
+              { status: removed.status === 'readOnly' ? 409 : 404 },
+            )
+          if (!place.inWorkspace) {
+            forms.invalidate()
+            await ensureFormLibraryTypes(db, forms.all())
+            cache.invalidate()
+          }
+          if (form.key && !place.inWorkspace)
+            await new FormWorkflowSecretRepository(db).forget(form.key)
+          log.info('{user} deleted the form {form}; its entries are kept', {
+            user: principal.email,
+            form: form.alias,
+          })
+          return Response.json({ ok: true })
+        }
+        return new Response('Not Found', { status: 404 })
       }
-      return new Response('Not Found', { status: 404 })
+      if (action === 'choices') return formsIn({ ...shared, inWorkspace: false })
+      return inDesignerPlace(request, principal, 'CromboloFormDesigner', shared, formsIn)
     }
 
     // Non-contract: what the Changes dashboard and the read-only banner read.
@@ -3978,23 +4017,40 @@ export async function createServer(
         return new Response('Forbidden', { status: 403 })
       const approvals = managementDeps.approvals as Approvals | undefined
       if (!approvals) return new Response('Not Found', { status: 404 })
-      const response = await handleApprovalsApi(
-        request,
-        pathname.slice(`${paths.pluginPath}/api/approvals/`.length),
-        {
+      const rest = pathname.slice(`${paths.pluginPath}/api/approvals/`.length)
+      const approvalsIn = async (place: SchemaPlace) =>
+        (await handleApprovalsApi(request, rest, {
           db,
           approvals,
           principal,
-          schemaDir: config.schemaDir,
-          writable: config.schemaWritable,
-          onChanged: config.schemaStore
-            ? async () => {
-                await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
-              }
-            : undefined,
-        },
-      )
-      if (response) {
+          schemaDir: place.schemaDir,
+          writable: place.writable,
+          inWorkspace: place.inWorkspace,
+          onChanged:
+            config.schemaStore && !place.inWorkspace
+              ? async () => {
+                  await publishSchema(config.schemaStore as SchemaStore, config.schemaDir)
+                }
+              : undefined,
+        })) ?? new Response('Not Found', { status: 404 })
+      // Story 392: setting up a workflow in a workspace changes its copy; deciding is Shared's.
+      const response = rest.startsWith('workflows')
+        ? await inDesignerPlace(
+            request,
+            principal,
+            'CromboloWorkflowDesigner',
+            {
+              schemaDir: config.schemaDir,
+              writable: config.schemaWritable && !contentLocked(config),
+            },
+            approvalsIn,
+          )
+        : await approvalsIn({
+            schemaDir: config.schemaDir,
+            writable: config.schemaWritable,
+            inWorkspace: false,
+          })
+      if (response.status !== 404) {
         if (request.method !== 'GET')
           log.info('{user} {verb} on approvals: {status}', {
             user: principal.email,

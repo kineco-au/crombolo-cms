@@ -52,6 +52,8 @@ import {
 } from '../domains.ts'
 import { TemporaryFileMissingError } from '../file-intake.ts'
 import { NO_REDIRECT_TRACKING, type RedirectTracker } from '../redirects.ts'
+import { workspaceDictionary } from './workspace-dictionary.ts'
+import { workspaceLanguages } from './workspace-languages.ts'
 
 async function toTreeItems(
   repo: DocumentRepository,
@@ -586,14 +588,32 @@ export function createPublishedContentSource(
       }))
     },
     async loadLanguages() {
+      // Story 392: a workspace's site has the languages it holds.
+      const own =
+        options.workspace !== undefined
+          ? await workspaceLanguages(db, options.workspace)
+          : undefined
+      if (own)
+        return own.map((l) => ({
+          isoCode: l.isoCode,
+          isDefault: l.isDefault,
+          fallbackIsoCode: l.fallbackIsoCode,
+        }))
       return (await new LanguageRepository(db).all()).map((l) => ({
         isoCode: l.isoCode,
         isDefault: l.isDefault,
         fallbackIsoCode: l.fallbackIsoCode,
       }))
     },
-    loadDictionary: () => new DictionaryRepository(db).translations(),
-    loadDictionaryOutline: () => new DictionaryRepository(db).outline(),
+    // Story 392: a workspace's site reads the dictionary it holds.
+    loadDictionary: async () =>
+      (options.workspace !== undefined
+        ? (await workspaceDictionary(db, options.workspace))?.translations
+        : undefined) ?? new DictionaryRepository(db).translations(),
+    loadDictionaryOutline: async () =>
+      (options.workspace !== undefined
+        ? (await workspaceDictionary(db, options.workspace))?.outline
+        : undefined) ?? new DictionaryRepository(db).outline(),
     async loadDomains() {
       return (await new DomainRepository(db).all()).map((row) => ({
         nodeId: row.nodeId,

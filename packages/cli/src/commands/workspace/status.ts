@@ -1,4 +1,3 @@
-import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { onSite, siteFlags, whereField, workspaceArg } from '../../support/workspace-commands.ts'
 

@@ -559,6 +559,16 @@ The implementation is shared with the Management API endpoint rather than
 duplicated: `importDictionaryUdt` in `@crombolo/server`, which the adapter now
 calls too.
 
+### Where translators work
+
+A translator works in Shared, as before, or in a workspace (story 392): there the
+dictionary is the workspace's own until its merge, and its site shows the translations
+it holds. An item translated on both sides is a conflict, settled by choosing one. On a
+site that takes its content by change (`CROMBOLO_CONTENT=locked`), the dictionary is
+read-only: it is translated where the content is made and arrives with the change
+([`changes.md`](changes.md), "Between sites"). The commands below still carry it between
+sites outside a change.
+
 ### The dictionary as a file
 
 `.udt` is for carrying a dictionary between sites, and nobody writes it by hand.

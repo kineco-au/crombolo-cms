@@ -379,11 +379,13 @@ describe(`a site that takes its content by change (${dialectUnderTest})`, () => 
           (JSON.parse(String(e.facts)) as { webhook: { change: { key: string } } }).webhook.change
             .key,
       )
-    const seeded = (await announced()).length
+    // Events have no order of their own, so each new one is told by what was there before.
+    const seeded = await announced()
     await s.edit(HOME, { title: 'Spring sale' })
     const first = await announced()
-    expect(first).toHaveLength(seeded + 1)
-    const key = first.at(-1) as string
+    const fresh = first.filter((k) => !seeded.includes(k))
+    expect(fresh).toHaveLength(1)
+    const key = fresh[0] as string
     const change = await new ChangeRepository(s.h.server.db).byId(key)
     expect(change).toMatchObject({ kind: 'edit', pages: 1 })
     expect(change?.closedAt).not.toBeNull()
@@ -392,9 +394,9 @@ describe(`a site that takes its content by change (${dialectUnderTest})`, () => 
     const bundle = await s.take(`changes/${change?.id}/bundle`)
     expect(bundle.bytes.length).toBeGreaterThan(0)
     await s.edit(HOME, { title: 'Summer' })
-    const later = await announced()
-    expect(later).toHaveLength(seeded + 2)
-    expect(later.at(-1)).not.toBe(key)
+    const later = (await announced()).filter((k) => !first.includes(k))
+    expect(later).toHaveLength(1)
+    expect(later[0]).not.toBe(key)
   })
 
   test('the change a publish closed carries the page to the serving copy', async () => {

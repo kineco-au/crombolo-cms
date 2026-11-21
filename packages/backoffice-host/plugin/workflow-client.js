@@ -3,6 +3,8 @@
  * The cookie carries the session. Every answer resolves; a refusal carries the
  * server's own words in `message`.
  */
+import { workspaceHeaders } from './workspace-client.js'
+
 const apiBase = () =>
   `${(document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')}/crombolo/api/approvals`
 
@@ -10,7 +12,13 @@ async function call(path, init = {}) {
   const response = await fetch(`${apiBase()}/${path}`, {
     credentials: 'include',
     ...init,
-    headers: { accept: 'application/json', 'content-type': 'application/json', ...init.headers },
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      // Story 392: setting up a workflow happens in the tab's workspace.
+      ...(path.startsWith('workflows') ? workspaceHeaders() : {}),
+      ...init.headers,
+    },
   })
   const body = await response.json().catch(() => ({}))
   if (response.status === 403 && !body.message)

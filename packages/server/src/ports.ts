@@ -50,7 +50,7 @@ import { createNodeLookup } from './access.ts'
 import { createAuditHistory } from './adapters/audit.ts'
 import { createBlueprintPort } from './adapters/blueprints.ts'
 import { createPackagePort } from './adapters/bundles.ts'
-import { recordingFilePort } from './adapters/change-recording.ts'
+import { recordEdit, recordingFilePort } from './adapters/change-recording.ts'
 import {
   createContentTypePort,
   createDataTypePort,
@@ -80,9 +80,15 @@ import { createTemplateQueryPort } from './adapters/template-query.ts'
 import { avatarUrls, createUserPorts, type DeclaredGroups } from './adapters/users.ts'
 import { createWebhookPort } from './adapters/webhooks.ts'
 import {
+  recordingDictionaryPort,
+  WORKSPACE_DICTIONARY,
+  workspaceDictionaryPort,
+} from './adapters/workspace-dictionary.ts'
+import {
   createWorkspaceFilePort,
   type WorkspaceFileAreaOptions,
 } from './adapters/workspace-file-port.ts'
+import { workspaceLocalizationPort, writeLanguagesFile } from './adapters/workspace-languages.ts'
 import { backOfficeUrl } from './back-office-url.ts'
 import { COMPONENT_SNIPPETS } from './component-snippets.ts'
 import { type CromboloConfig, contentFilesLocked, type UserLinkSender, VERSION } from './config.ts'
@@ -219,6 +225,31 @@ function createLocalizationPort(db: Db | undefined, files?: SchemaFileWriter): L
     },
   }
   return db ? underSchemaLock(db, port, ['saveLanguage', 'deleteLanguage']) : port
+}
+
+/**
+ * Story 392: in a workspace, the languages it holds; in Shared, each write by someone
+ * recorded as their change to `schema/languages.toml`.
+ */
+function localizationIn(db: Db | undefined, shared: LocalizationPort): LocalizationPort {
+  if (!db) return shared
+  const text = async () => writeLanguagesFile(await shared.allLanguages())
+  const recorded: LocalizationPort = {
+    ...shared,
+    async saveLanguage(language, by) {
+      const before = by ? await text() : ''
+      await shared.saveLanguage(language)
+      if (by) await recordEdit(db, by, 'schema/languages.toml', before, await text())
+    },
+    async deleteLanguage(isoCode, by) {
+      const before = by ? await text() : ''
+      const result = await shared.deleteLanguage(isoCode)
+      if (by && result === 'deleted')
+        await recordEdit(db, by, 'schema/languages.toml', before, await text())
+      return result
+    },
+  }
+  return inWorkspaces(recorded, (w) => workspaceLocalizationPort(db, shared, w.id))
 }
 
 function createCurrentUserPort(
@@ -451,9 +482,12 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       options.readyExtensions ?? (async () => options.extensions.list()),
       options.previewInApp ? [] : [APP_PREVIEW_MANIFEST_ID],
     ),
-    localization: createLocalizationPort(
+    localization: localizationIn(
       options.db,
-      options.db ? createSchemaFileWriter(options.db, schemaFiles(options.config)) : undefined,
+      createLocalizationPort(
+        options.db,
+        options.db ? createSchemaFileWriter(options.db, schemaFiles(options.config)) : undefined,
+      ),
     ),
     currentUser: createCurrentUserPort(
       options.config,
@@ -604,10 +638,14 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     deps.mediaOperations = operations
       ? inWorkspaces(operations.media, operations.mediaIn)
       : undefined
-    deps.blueprints = createBlueprintPort(options.db, {
-      nodeState: options.schema?.nodeState,
-      valueIntake,
-    })
+    // Story 392: with the header, a workspace's blueprints.
+    const blueprintsIn = (workspace?: number) =>
+      createBlueprintPort(options.db as Db, {
+        nodeState: options.schema?.nodeState,
+        valueIntake,
+        workspace,
+      })
+    deps.blueprints = inWorkspaces(blueprintsIn(), (w) => blueprintsIn(w.id))
     // Story 376: a request in a workspace reads and writes its own copy of the types,
     // built from its copy of the files at its first schema save.
     const db = options.db
@@ -733,10 +771,19 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
         isRebuilding: () => false,
       }
     }
-    deps.dictionary = createDictionaryPort(options.db, mediaFiles, {
-      onChange: () => options.cache?.invalidate(),
-      nodeId: options.schema?.nodeId,
-    })
+    // Story 392: in a workspace, the dictionary it holds.
+    deps.dictionary = inWorkspaces(
+      recordingDictionaryPort(
+        options.db as Db,
+        createDictionaryPort(options.db, mediaFiles, {
+          onChange: () => options.cache?.invalidate(),
+          nodeId: options.schema?.nodeId,
+        }),
+        (by, before, after) =>
+          recordEdit(options.db as Db, by, WORKSPACE_DICTIONARY, before, after).then(() => {}),
+      ),
+      (w) => workspaceDictionaryPort(options.db as Db, w.id),
+    )
     if (operations && options.cache) {
       const cache = options.cache
       const db = options.db

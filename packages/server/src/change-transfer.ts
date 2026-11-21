@@ -37,7 +37,7 @@ import type { MediaFileStore } from './media-files.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
 
 type PageKind = ChangeBundlePage['kind']
-const PAGE_KINDS: readonly PageKind[] = ['document', 'media', 'element']
+const PAGE_KINDS: readonly PageKind[] = ['document', 'media', 'element', 'blueprint']
 const isPageKind = (kind: string): kind is PageKind => (PAGE_KINDS as string[]).includes(kind)
 
 /** One thing a change could not do on this site, in the words it is shown in. */

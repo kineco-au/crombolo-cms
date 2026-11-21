@@ -302,6 +302,65 @@ describe(`a change moved between sites (${dialectUnderTest})`, () => {
     expect(((await again.json()) as { skipped: string[] }).skipped).toEqual([made.key])
   }, 20_000)
 
+  test('a language, a dictionary item and a blueprint made in a workspace travel with its change', async () => {
+    const greeting = crypto.randomUUID()
+    const blueprint = crypto.randomUUID()
+    let typeKey = ''
+    const made = await madeThere(async (s, w) => {
+      typeKey = (await new ContentTypeRepository(s.h.server.db).byAlias('page'))?.key as string
+      const at = { 'crombolo-workspace': w }
+      const sent = [
+        await s.send(
+          'POST',
+          `${V1}/language`,
+          {
+            isoCode: 'da-DK',
+            name: 'Danish',
+            isDefault: false,
+            isMandatory: false,
+            fallbackIsoCode: null,
+          },
+          at,
+        ),
+        await s.send(
+          'POST',
+          `${V1}/dictionary`,
+          {
+            id: greeting,
+            name: 'Greeting',
+            parent: null,
+            translations: [{ isoCode: 'en-US', translation: 'Hello' }],
+          },
+          at,
+        ),
+        await s.send(
+          'POST',
+          `${V1}/document-blueprint`,
+          {
+            id: blueprint,
+            documentType: { id: typeKey },
+            parent: null,
+            values: [{ alias: 'title', culture: null, segment: null, value: 'Sale' }],
+            variants: [{ culture: null, segment: null, name: 'Sale page' }],
+          },
+          at,
+        ),
+      ]
+      for (const response of sent) expect(response.status, await response.clone().text()).toBe(201)
+    })
+    const target = await site()
+    const applied = await target.put(made.bundle)
+    expect(applied.status, await applied.clone().text()).toBe(200)
+    const isos = (
+      (await (await target.send('GET', `${V1}/language?skip=0&take=50`)).json()) as {
+        items: Array<{ isoCode: string }>
+      }
+    ).items.map((l) => l.isoCode)
+    expect(isos).toContain('da-DK')
+    expect((await target.send('GET', `${V1}/dictionary/${greeting}`)).status).toBe(200)
+    expect((await target.send('GET', `${V1}/document-blueprint/${blueprint}`)).status).toBe(200)
+  }, 30_000)
+
   test('a property the change did not touch keeps the target’s edit', async () => {
     const made = await madeThere((s, w) => s.edit(HOME, { title: 'Spring sale' }, w))
     const target = await site()

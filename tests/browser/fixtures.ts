@@ -30,6 +30,9 @@ const UPSTREAM_BY_DESIGN = [
   'No refresh token was presented',
   '[UmbAuthClient] Token request failed: 400 Bad Request',
   'status of 400 (Bad Request) (http://localhost:',
+  // Logged by the back office, not thrown, when a screen is left before a context it
+  // asked for arrives: leaving one quickly is ordinary, on a fast runner most of all.
+  'Context request was cancelled, host was disconnected',
 ]
 
 export class Diagnostics {

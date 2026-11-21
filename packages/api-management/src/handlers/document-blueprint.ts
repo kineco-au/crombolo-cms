@@ -96,7 +96,7 @@ export function registerDocumentBlueprintHandlers(
   })
 
   router.handle('DeleteDocumentBlueprintById', async (ctx) => {
-    const removed = await port.remove(ctx.params.id as string)
+    const removed = await port.remove(ctx.params.id as string, ctx.principal)
     if (!removed) return problemResponse(notFound('The blueprint could not be found'))
     return new Response(null, { status: 200 })
   })

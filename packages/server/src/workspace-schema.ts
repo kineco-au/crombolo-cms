@@ -27,6 +27,7 @@ import {
   appendCacheInstruction,
   type ChangeItemInput,
   type Db,
+  ensureFormLibraryTypes,
   type NodeSchemaState,
   WorkspaceFileRepository,
   WorkspaceRepository,
@@ -46,6 +47,12 @@ import {
 } from '@crombolo/schema'
 import { merge as mergeLines } from 'node-diff3'
 import { WORKSPACE_SCHEMA_PREFIX } from './adapters/schema-files.ts'
+import {
+  applyDictionaryLines,
+  mergeDictionaryLines,
+  sharedDictionaryLines,
+  WORKSPACE_DICTIONARY,
+} from './adapters/workspace-dictionary.ts'
 import { WORKSPACE_FILE_LIMIT } from './adapters/workspace-file-port.ts'
 import { checkComponents } from './components.ts'
 import type { CromboloConfig } from './config.ts'
@@ -53,6 +60,7 @@ import { formTypesFor } from './form-types.ts'
 import { componentAliasesIn, syncOptionsFor } from './schema.ts'
 import { publishSchema, type SchemaStore } from './schema-store.ts'
 import { schemaFilesIn } from './schema-transfer.ts'
+import { withLosses } from './workspace-losses.ts'
 
 /** A file both the workspace and Shared changed, where the lines overlap. */
 export interface FileConflict {
@@ -171,7 +179,7 @@ export function createWorkspaceSchema(
     key.startsWith(WORKSPACE_SCHEMA_PREFIX) ? key.slice(WORKSPACE_SCHEMA_PREFIX.length) : key
   /** A path as a person names it, back to its key in the workspace's list. */
   const keyFor = (path: string) =>
-    areaOf(path) || path.startsWith(WORKSPACE_SCHEMA_PREFIX)
+    areaOf(path) || path.startsWith(WORKSPACE_SCHEMA_PREFIX) || path === WORKSPACE_DICTIONARY
       ? path
       : `${WORKSPACE_SCHEMA_PREFIX}${path}`
 
@@ -180,6 +188,12 @@ export function createWorkspaceSchema(
     if (existsSync(config.schemaDir)) return schemaFilesIn(config.schemaDir)
     return schemaSetFiles(await exportSchemaSet(handle, boot.nodeState.version))
   }
+
+  /** The dictionary merges by item (story 392); every other file by line. */
+  const mergeOf = (key: string, base: string | null, mine: string | null, now: string | null) =>
+    key === WORKSPACE_DICTIONARY
+      ? mergeDictionaryLines(base, mine, now)
+      : mergeFile(base, mine, now)
 
   /** Every file a workspace copies, as Shared has it now, by its key. */
   async function sharedCopied(handle: Db = db): Promise<Map<string, string>> {
@@ -336,12 +350,18 @@ export function createWorkspaceSchema(
     async plan(workspaceId: number, handle: Db = db): Promise<FileMergePlan> {
       const changes = await new WorkspaceFileRepository(handle).changes(workspaceId)
       const schema = await sharedFiles(handle)
+      // Story 392: Shared's dictionary is rows, read as the workspace's file holds it.
+      const dictionary = changes.some((c) => c.path === WORKSPACE_DICTIONARY)
+        ? await sharedDictionaryLines(handle)
+        : null
+      const nowOf = (key: string) =>
+        key === WORKSPACE_DICTIONARY ? dictionary : sharedText(key, schema)
       const writes: Record<string, string | null> = {}
       const conflicts: FileConflict[] = []
       let change: ChangeClass = 'none'
       for (const c of changes) {
-        const now = sharedText(c.path, schema)
-        const merged = mergeFile(c.base, c.now, now)
+        const now = nowOf(c.path)
+        const merged = mergeOf(c.path, c.base, c.now, now)
         const definition = c.path.startsWith(WORKSPACE_SCHEMA_PREFIX)
         if (!merged) {
           conflicts.push({
@@ -361,7 +381,7 @@ export function createWorkspaceSchema(
       // What each written file's change is, against Shared now, and what a lossy one costs.
       const items: FileMergePlan['items'] = []
       for (const [key, text] of Object.entries(writes))
-        for (const found of describeFileChange(shown(key), sharedText(key, schema), text, {
+        for (const found of describeFileChange(shown(key), nowOf(key), text, {
           definition: key.startsWith(WORKSPACE_SCHEMA_PREFIX),
         }))
           items.push(
@@ -370,13 +390,16 @@ export function createWorkspaceSchema(
               : found,
           )
       const befores: Record<string, string | null> = {}
-      for (const key of Object.keys(writes)) befores[key] = sharedText(key, schema)
+      for (const key of Object.keys(writes)) befores[key] = nowOf(key)
+      const costed = await withLosses(handle, items)
+      for (const found of costed)
+        if (RANK[found.class as ChangeClass] > RANK[change]) change = found.class as ChangeClass
       return {
         writes,
         conflicts,
         problems: await componentProblems(writes),
         change,
-        items,
+        items: costed,
         befores,
       }
     },
@@ -422,6 +445,9 @@ export function createWorkspaceSchema(
           'schema.toml',
           writeSchemaVersion(next, loaded(files).set.urls, loaded(files).set.environments),
         )
+        // Story 392: the Library's types made from forms follow them, as a sync's do.
+        if (definitions.some(([key]) => key.startsWith(`${WORKSPACE_SCHEMA_PREFIX}forms/`)))
+          await ensureFormLibraryTypes(tx, loaded(files).set.forms ?? [])
         const report = await syncSchema(
           tx,
           loaded(files),
@@ -469,6 +495,9 @@ export function createWorkspaceSchema(
           : []
       })
       if (others.length > 0) restores.push(writeOut(others))
+      // Story 392: the dictionary goes into Shared's rows, with the merge.
+      const dictionary = plan.writes[WORKSPACE_DICTIONARY]
+      if (typeof dictionary === 'string') await applyDictionaryLines(tx, dictionary)
       const views = Object.keys(plan.writes).some((key) => key.startsWith('components/'))
       return {
         items,
@@ -502,6 +531,8 @@ export function createWorkspaceSchema(
       const store = new WorkspaceFileRepository(db)
       const theirs = await sharedCopied()
       const all = await store.files(workspace.id)
+      if (all.has(WORKSPACE_DICTIONARY))
+        theirs.set(WORKSPACE_DICTIONARY, await sharedDictionaryLines(db))
       const own = new Map([...all].filter(([key]) => !key.startsWith('site/')))
       const bases = new Map<string, string | null>()
       for (const c of await store.changes(workspace.id)) bases.set(c.path, c.base)
@@ -513,7 +544,7 @@ export function createWorkspaceSchema(
         const base = bases.has(key) ? (bases.get(key) ?? null) : mine
         const now = theirs.get(key) ?? null
         if (now === base) continue
-        const merged = mergeFile(base, mine, now)
+        const merged = mergeOf(key, base, mine, now)
         if (!merged) {
           conflicts.push({
             path: shown(key),
@@ -543,7 +574,10 @@ export function createWorkspaceSchema(
     ): Promise<boolean> {
       const key = keyFor(path)
       const store = new WorkspaceFileRepository(db)
-      const theirs = sharedText(key, await sharedFiles())
+      const theirs =
+        key === WORKSPACE_DICTIONARY
+          ? await sharedDictionaryLines(db)
+          : sharedText(key, await sharedFiles())
       const mine = (await store.files(workspace.id)).get(key) ?? null
       const text = 'text' in answer ? answer.text : answer.side === 'mine' ? mine : theirs
       if ('text' in answer && /^(<{7}|={7}|>{7})/m.test(answer.text)) return false

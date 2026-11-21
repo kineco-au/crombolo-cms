@@ -132,12 +132,15 @@ export function registerDictionaryHandlers(
     const body = (await ctx.request.json()) as Record<string, unknown>
     const key = typeof body.id === 'string' ? body.id : crypto.randomUUID()
     const failed = statusResult(
-      await dictionary.create({
-        key,
-        name: String(body.name ?? '').trim(),
-        parentKey: refId(body.parent),
-        translations: readTranslations(body.translations),
-      }),
+      await dictionary.create(
+        {
+          key,
+          name: String(body.name ?? '').trim(),
+          parentKey: refId(body.parent),
+          translations: readTranslations(body.translations),
+        },
+        ctx.principal?.id,
+      ),
     )
     if (failed) return failed
     return created(`${ctx.url.origin}/umbraco/management/api/v1/dictionary/${key}`, key)
@@ -146,23 +149,31 @@ export function registerDictionaryHandlers(
   router.handle('PutDictionaryById', async (ctx) => {
     const body = (await ctx.request.json()) as Record<string, unknown>
     const failed = statusResult(
-      await dictionary.update(ctx.params.id as string, {
-        name: String(body.name ?? '').trim(),
-        translations: readTranslations(body.translations),
-      }),
+      await dictionary.update(
+        ctx.params.id as string,
+        {
+          name: String(body.name ?? '').trim(),
+          translations: readTranslations(body.translations),
+        },
+        ctx.principal?.id,
+      ),
     )
     return failed ?? new Response(null, { status: 200 })
   })
 
-  router.handle('DeleteDictionaryById', async ({ params }) => {
-    return statusResult(await dictionary.delete(params.id as string)) ?? new Response(null)
+  router.handle('DeleteDictionaryById', async (ctx) => {
+    return (
+      statusResult(await dictionary.delete(ctx.params.id as string, ctx.principal?.id)) ??
+      new Response(null)
+    )
   })
 
   router.handle('PutDictionaryByIdMove', async (ctx) => {
     const body = (await ctx.request.json()) as Record<string, unknown>
     return (
-      statusResult(await dictionary.move(ctx.params.id as string, refId(body.target))) ??
-      new Response(null)
+      statusResult(
+        await dictionary.move(ctx.params.id as string, refId(body.target), ctx.principal?.id),
+      ) ?? new Response(null)
     )
   })
 

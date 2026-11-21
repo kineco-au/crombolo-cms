@@ -76,6 +76,40 @@ export const ELEMENT_WRITE_OPERATIONS: ReadonlySet<string> = new Set([
  * header is honoured on these.
  */
 export const WORKSPACE_OPERATIONS: ReadonlySet<string> = new Set([
+  // Story 392: blueprints, held as pages are; their folders are Shared's.
+  'PostDocumentBlueprint',
+  'GetDocumentBlueprintById',
+  'PutDocumentBlueprintById',
+  'DeleteDocumentBlueprintById',
+  'GetDocumentBlueprintByIdScaffold',
+  'PostDocumentBlueprintFromDocument',
+  'GetItemDocumentBlueprint',
+  'GetTreeDocumentBlueprintAncestors',
+  'GetTreeDocumentBlueprintChildren',
+  'GetTreeDocumentBlueprintRoot',
+  'GetTreeDocumentBlueprintSiblings',
+  'GetDocumentTypeByIdBlueprint',
+  // Story 392: the form and workflow designers (Crombolo's own routes), in a workspace's copy.
+  'CromboloFormDesigner',
+  'CromboloWorkflowDesigner',
+  // Story 392: the languages and dictionary a workspace holds, read and changed there.
+  'GetLanguage',
+  'GetLanguageByIsoCode',
+  'GetItemLanguage',
+  'GetItemLanguageDefault',
+  'PostLanguage',
+  'PutLanguageByIsoCode',
+  'DeleteLanguageByIsoCode',
+  'GetDictionary',
+  'GetDictionaryById',
+  'PostDictionary',
+  'PutDictionaryById',
+  'DeleteDictionaryById',
+  'PutDictionaryByIdMove',
+  'GetItemDictionary',
+  'GetTreeDictionaryRoot',
+  'GetTreeDictionaryChildren',
+  'GetTreeDictionaryAncestors',
   'GetDocumentById',
   'GetItemDocument',
   'GetTreeDocumentRoot',
@@ -214,6 +248,9 @@ export const WORKSPACE_OPERATIONS: ReadonlySet<string> = new Set([
  */
 export const WORKSPACE_SHARED_SCHEMA_READS: ReadonlySet<string> = new Set(
   [
+    // Story 392: a blueprint's folders and history are Shared's.
+    'GetDocumentBlueprintFolderById',
+    'GetDocumentBlueprintByIdAuditLog',
     'GetDataTypeConfiguration',
     'GetDataTypeFolderById',
     'GetItemDataType',
@@ -263,6 +300,14 @@ export const WORKSPACE_SHARED_SCHEMA_READS: ReadonlySet<string> = new Set(
  * users and settings are, and the header does not change it.
  */
 export const WORKSPACE_REFUSALS: ReadonlyMap<string, string> = new Map([
+  ...[
+    'PostDocumentBlueprintFolder',
+    'PutDocumentBlueprintFolderById',
+    'DeleteDocumentBlueprintFolderById',
+    'PutDocumentBlueprintByIdMove',
+  ].map((id) => [id, 'Blueprint folders are the site’s, and are changed in Shared.'] as const),
+  ['GetDictionaryByIdExport', 'A dictionary file is exported from Shared, for now.'],
+  ['PostDictionaryImport', 'A dictionary file is imported into Shared, for now.'],
   // Story 390: media and the Library are held, but not their bins or the Library's folders.
   ...[
     'PutRecycleBinMediaByIdRestore',

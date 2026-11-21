@@ -1,7 +1,7 @@
 import { Args, Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { workspaceNamed } from '../../support/work-site.ts'
-import { onSite, siteFlags, whereField, workspaceArg } from '../../support/workspace-commands.ts'
+import { onSite, siteFlags, whereField } from '../../support/workspace-commands.ts'
 
 export default class WorkspaceMerge extends BaseCommand {
   static override summary =

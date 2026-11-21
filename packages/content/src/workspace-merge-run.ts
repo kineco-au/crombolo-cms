@@ -167,7 +167,7 @@ export async function previewWorkspaceMerge(
 }
 
 /** The kinds a workspace holds, in the order a merge writes them: what pages use, first (story 390). */
-const KINDS = ['element', 'media', 'document'] as const
+const KINDS = ['element', 'media', 'blueprint', 'document'] as const
 
 /** What each pending change's node is, by its object type. */
 const KIND_OF: Record<string, (typeof KINDS)[number]> = {
@@ -177,6 +177,8 @@ const KIND_OF: Record<string, (typeof KINDS)[number]> = {
   [ObjectTypes.WorkspaceMedia]: 'media',
   [ObjectTypes.Element]: 'element',
   [ObjectTypes.WorkspaceElement]: 'element',
+  [ObjectTypes.DocumentBlueprint]: 'blueprint',
+  [ObjectTypes.WorkspaceDocumentBlueprint]: 'blueprint',
 }
 
 async function planFor(

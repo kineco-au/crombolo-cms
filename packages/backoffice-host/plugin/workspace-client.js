@@ -59,8 +59,20 @@ export function headerFor(chosen, required) {
   return required ? 'mine' : undefined
 }
 
+let requiredHere = false
+
+/**
+ * The header for Crombolo's own designer calls, forms and workflows (story 392), which
+ * do not go through the Management API's client.
+ */
+export const workspaceHeaders = (storage) => {
+  const header = headerFor(currentWorkspace(storage), requiredHere)
+  return header ? { [WORKSPACE_HEADER]: header } : {}
+}
+
 /** A request, sent in the tab's workspace unless it names one. */
 export const inWorkspace = (required, storage) => (request) => {
+  requiredHere = required
   const path = new URL(request.url, globalThis.location?.href ?? 'http://localhost/').pathname
   const header = headerFor(currentWorkspace(storage), required)
   if (header && path.includes('/management/api/') && !request.headers.has(WORKSPACE_HEADER))

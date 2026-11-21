@@ -13,6 +13,10 @@ export const LOCKED_WORKSPACES = [
   'Umb.Workspace.Document',
   'Umb.Workspace.Media',
   'Umb.Workspace.Element',
+  // Story 392: changes carry these too.
+  'Umb.Workspace.Dictionary',
+  'Umb.Workspace.Language',
+  'Umb.Workspace.DocumentBlueprint',
 ]
 
 /** What the line says. */

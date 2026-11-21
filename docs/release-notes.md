@@ -148,6 +148,16 @@ point at `docs/stories/`.
 - **The code setting says what it locks (391).** `CROMBOLO_CONTENT_MODE` is now
   `CROMBOLO_CODE=editable|locked` (`code` in `crombolo.config.ts`), and Home says
   "Code: Editable" or "Code: Locked".
+- **Languages, the dictionary, blueprints, forms and workflows in workspaces and changes
+  (392).** Each is changed in a workspace without Shared changing, and merged into it:
+  languages, forms and workflows as the workspace's copy of their files, the dictionary
+  as a file of its own merged item by item, and blueprints as pages are. An item
+  translated on both sides is a conflict, settled by choosing one. Removing a language
+  that holds values, a form field that entries hold or a workflow with requests waiting
+  is accepted by name first. A direct edit of each is recorded as a change, a change
+  carries each to another site, the workspace's site shows its own languages and
+  dictionary, and with `CROMBOLO_CONTENT=locked` each is read-only
+  (`docs/workspaces.md`).
 
 ### Migrations
 

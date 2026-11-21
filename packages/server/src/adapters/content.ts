@@ -89,6 +89,8 @@ export function createSettingsTree(
   containerType: string,
   itemType: string,
   decorate: (item: TreeItem) => Promise<void>,
+  /** Story 392: a workspace's items too, without those it deleted. */
+  workspace?: () => Promise<{ id: number; hidden: readonly string[] } | undefined>,
 ) {
   const types = (foldersOnly: boolean | undefined) =>
     foldersOnly ? [containerType] : [containerType, itemType]
@@ -97,7 +99,13 @@ export function createSettingsTree(
     const items: TreeItem[] = []
     for (const row of rows) {
       const parent = row.parentId > 0 ? await nodes.byId(row.parentId) : undefined
-      const inside = await nodes.childrenOf(row.id, [containerType, itemType], 0, 1)
+      const inside = await nodes.childrenOf(
+        row.id,
+        [containerType, itemType],
+        0,
+        1,
+        await workspace?.(),
+      )
       const item: TreeItem = {
         key: row.key,
         name: row.text ?? '',
@@ -120,6 +128,7 @@ export function createSettingsTree(
       types(paging.foldersOnly),
       paging.skip,
       paging.take,
+      await workspace?.(),
     )
     return { total: result.total, items: await shape(result.items) }
   }

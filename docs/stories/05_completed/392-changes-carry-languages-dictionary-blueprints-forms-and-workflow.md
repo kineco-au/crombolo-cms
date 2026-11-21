@@ -61,17 +61,41 @@ They are stored in two ways today:
 - **The schema-file kinds travel as their texts,** the dictionary and blueprints as
   values per item, as `383` carries types and pages.
 
+## Built (2026-11-21)
+
+- **Languages:** `workspace-languages.ts`, the localization port in a workspace over its
+  copy of `schema/languages.toml`; the site's languages come from it in the workspace.
+- **The dictionary:** `workspace-dictionary.ts`, the port over `content/dictionary.jsonl`
+  (an item per line), merged by item (`mergeDictionaryLines`) and written to Shared's rows
+  in the merge's transaction (`applyDictionaryLines`); its renders read it; Shared's
+  writes are recorded (`recordingDictionaryPort`). Export and import stay Shared's.
+- **Blueprints:** `WorkspaceDocumentBlueprint`, held as pages are, the settings tree reading
+  the workspace's own and leaving out its deletes; the merge takes them before pages, a
+  change carries them (`blueprint` page kind). Folders, moves and history are Shared's.
+- **Forms and workflows:** `workspace-schema-dir.ts` runs their routes against a folder of
+  the workspace's `schema/` and keeps what changed; in Shared it records what changed. The
+  back office sends the header on those calls (`workspaceHeaders`). A merge that brings a
+  form creates its Library type.
+- **Costs:** the kinds `language-*`, `form-field-*` and `workflow-*` in `@crombolo/core`,
+  described from the files and raised against the site's data (`workspace-losses.ts`).
+- **Locked:** the operations are in `WORKSPACE_OPERATIONS`, so the lock and a required
+  workspace cover them; the designers say read-only, and the dictionary, language and
+  blueprint editors show the locked line.
+- **Tests:** `tests/workspace-dictionary.test.ts`, `tests/workspace-designers.test.ts`, and
+  additions to `tests/change-transfer.test.ts`, `tests/workspace-sites.test.ts` and
+  `tests/workspace-schema-api.test.ts`.
+
 ## Acceptance criteria
 
-- [ ] **In a workspace,** a language, a dictionary item, a blueprint, a form definition
+- [x] **In a workspace,** a language, a dictionary item, a blueprint, a form definition
       and a workflow are changed without Shared changing, and are merged into it.
-- [ ] **A translation changed on both sides,** or a schema file changed in the same
+- [x] **A translation changed on both sides,** or a schema file changed in the same
       lines, is a conflict, settled by choosing one.
-- [ ] **Removing a language with values, a form field with entries or a workflow with
+- [x] **Removing a language with values, a form field with entries or a workflow with
       open requests** is lossy and needs accepting.
-- [ ] **A direct edit** to each kind is recorded as a change.
-- [ ] **An exported change** carries each kind and applies it on another site (`383`).
-- [ ] **The workspace's site** shows its own languages and dictionary.
-- [ ] **With `CROMBOLO_CONTENT=locked`,** each is read-only, the dictionary included.
-- [ ] **Tests** on both dialects; `docs/workspaces.md`, `docs/changes.md` and
+- [x] **A direct edit** to each kind is recorded as a change.
+- [x] **An exported change** carries each kind and applies it on another site (`383`).
+- [x] **The workspace's site** shows its own languages and dictionary.
+- [x] **With `CROMBOLO_CONTENT=locked`,** each is read-only, the dictionary included.
+- [x] **Tests** on both dialects; `docs/workspaces.md`, `docs/changes.md` and
       `docs/content-transfer.md` (where translators work) updated.

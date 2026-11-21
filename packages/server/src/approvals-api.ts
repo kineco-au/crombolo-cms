@@ -37,6 +37,8 @@ export interface ApprovalsApiContext {
   /** False on a deployed node with no schema store: a save would not last. */
   writable: boolean
   onChanged?: () => Promise<void>
+  /** Story 392: `schemaDir` is a workspace's copy, so nothing is synced from it. */
+  inWorkspace?: boolean
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
@@ -49,6 +51,10 @@ export async function syncWorkflowFiles(db: Db, schemaDir: string) {
     workflows.map((workflow) => ({ workflow, version: workflowVersion(workflow) })),
   )
 }
+
+/** Shared's workflows synced from its files; a workspace's wait for its merge. */
+const syncedFrom = (ctx: ApprovalsApiContext) =>
+  ctx.inWorkspace ? Promise.resolve(null) : syncWorkflowFiles(ctx.db, ctx.schemaDir)
 
 /** What saving a workflow would do to the requests in flight under it. */
 /** Setting up workflows, which Structure brings (story 385). Deciding on a page is separate. */
@@ -182,9 +188,12 @@ export async function handleApprovalsApi(
     if (path === 'workflows' && request.method === 'GET') {
       const loaded = loadSchemaDirectory(ctx.schemaDir)
       return json({
-        items: (await readWorkflows(ctx.db)).map((s) => ({
-          ...s.workflow,
-          folder: folderIn(loaded.files.get(`workflow:${s.workflow.alias}`)),
+        items: (ctx.inWorkspace
+          ? (loaded.set.workflows ?? [])
+          : (await readWorkflows(ctx.db)).map((s) => s.workflow)
+        ).map((workflow) => ({
+          ...workflow,
+          folder: folderIn(loaded.files.get(`workflow:${workflow.alias}`)),
         })),
         folders: foldersIn(ctx.schemaDir, 'workflows'),
         readOnlyBecause: ctx.writable
@@ -216,7 +225,7 @@ export async function handleApprovalsApi(
           return json({ ok: false, message: 'There is no such workflow.' }, 404)
         rmSync(file)
         await ctx.onChanged?.()
-        return json({ ok: true, report: await syncWorkflowFiles(ctx.db, ctx.schemaDir) })
+        return json({ ok: true, report: await syncedFrom(ctx) })
       }
       if (request.method !== 'PUT' && request.method !== 'POST') return undefined
       const b = await body()
@@ -256,7 +265,7 @@ export async function handleApprovalsApi(
       if (alias !== workflow.alias && existsSync(file)) rmSync(file)
       writeFileSync(join(dir, fileNameFor(workflow.alias)), source, 'utf8')
       await ctx.onChanged?.()
-      return json({ ok: true, affected, report: await syncWorkflowFiles(ctx.db, ctx.schemaDir) })
+      return json({ ok: true, affected, report: await syncedFrom(ctx) })
     }
   } catch (error) {
     if (error instanceof ApprovalRefused)

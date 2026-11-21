@@ -18,6 +18,8 @@ export const ObjectTypes = {
   /** A media item, or a Library item, made in a workspace (story 390), until it is merged. */
   WorkspaceMedia: '6f2dac81-4a3b-4e9f-b2d7-0390a3c0e390',
   WorkspaceElement: '7a3ebd92-5b4c-4fa0-83e8-0390b4d1f390',
+  /** A blueprint made in a workspace (story 392), until it is merged. */
+  WorkspaceDocumentBlueprint: '8b4fce03-6c5d-4ab1-94f9-0392c5e2a392',
   DocumentType: 'a2cb7800-f571-4787-9638-bc48539a0efb',
   /**
    * A workspace's copy of a content, media or member type, or a data type (story 376):

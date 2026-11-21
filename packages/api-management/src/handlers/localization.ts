@@ -71,7 +71,7 @@ export function registerLocalizationHandlers(
           operationStatus: 'DuplicateIsoCode',
         }),
       )
-    await localization.saveLanguage(readLanguage(isoCode, body))
+    await localization.saveLanguage(readLanguage(isoCode, body), ctx.principal?.id)
     ctx.notifications.push({ message: 'Language created', category: 'Language', type: 'Success' })
     return new Response(null, {
       status: 201,
@@ -83,12 +83,15 @@ export function registerLocalizationHandlers(
     const existing = await localization.language(isoCode)
     if (!existing) return problemResponse(notFound('The language could not be found'))
     const body = (await ctx.request.json()) as Record<string, unknown>
-    await localization.saveLanguage(readLanguage(existing.isoCode, body))
+    await localization.saveLanguage(readLanguage(existing.isoCode, body), ctx.principal?.id)
     ctx.notifications.push({ message: 'Language saved', category: 'Language', type: 'Success' })
     return new Response(null, { status: 200 })
   })
   router.handle('DeleteLanguageByIsoCode', async (ctx) => {
-    const result = await localization.deleteLanguage(ctx.params.isoCode as string)
+    const result = await localization.deleteLanguage(
+      ctx.params.isoCode as string,
+      ctx.principal?.id,
+    )
     if (result === 'not-found') return problemResponse(notFound('The language could not be found'))
     if (result !== 'deleted')
       return problemResponse(

@@ -477,7 +477,8 @@ export interface BlueprintPort {
     init: { key: string; name: string; parentKey: string | null },
     principal: Principal,
   ): Promise<{ ok: true; key: string } | PortFailure>
-  remove(key: string): Promise<boolean>
+  /** `principal`: who removed it, for the change it is recorded as (story 392). */
+  remove(key: string, principal?: Principal): Promise<boolean>
   move(key: string, targetKey: string | null): Promise<{ ok: true } | PortFailure>
   versions(key: string): Promise<DocumentVersionSummary[]>
   systemUserKey(): Promise<string | null>

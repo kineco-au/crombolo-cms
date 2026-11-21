@@ -422,7 +422,7 @@ describe('the workspace header on type, data-type and file operations', () => {
     const unclassified = listOperations(loadSpec())
       .map((o) => o.operationId)
       .filter((id) =>
-        /DocumentType|MediaType|MemberType|DataType|PartialView|Stylesheet|Script|Template/.test(
+        /DocumentType|MediaType|MemberType|DataType|PartialView|Stylesheet|Script|Template|Dictionary|Language|Blueprint/.test(
           id,
         ),
       )

@@ -192,6 +192,7 @@ const KINDS: Record<
     recycleBin: undefined,
     container: ObjectTypes.DocumentBlueprintContainer,
     lock: Locks.ContentTree,
+    workspaceObjectType: ObjectTypes.WorkspaceDocumentBlueprint,
   },
   // Umbraco 18's Elements: publishable content with no URL, gathered in folders
   // and trashed into a bin of its own at -22, as its Constants.System says.

@@ -7,7 +7,9 @@
  */
 import { CHANGE_CLASSES, type ChangeClass, type ChangeKind, needsAcceptance } from '@crombolo/core'
 import { allProperties, type SchemaContentType, type SchemaProperty } from './model.ts'
-import { parseContentType, parseDataType } from './parse.ts'
+import { parseContentType, parseDataType, parseLanguages } from './parse.ts'
+import { parseForm } from './parse-forms.ts'
+import { parseWorkflow } from './workflows.ts'
 
 /** One item of a change. */
 export interface ChangeItem {
@@ -197,10 +199,68 @@ export function describeFileChange(
       if (now) return [item('data-type-changed', now.alias, `The data type "${now.name}" changes.`)]
       return []
     }
+    if (path === 'languages.toml') return languageItems(before, after)
+    if (folder === 'forms') {
+      const items = formItems(path, before, after)
+      if (items) return items
+    }
+    if (folder === 'workflows' && after === null && before !== null) {
+      const was = parseWorkflow(path, before).value
+      if (was)
+        return [item('workflow-removed', was.alias, `The workflow "${was.name}" is removed.`)]
+    }
   }
   if (before === null) return [item('file-added', path, `${path} is added.`)]
   if (after === null) return [item('file-removed', path, `${path} is removed.`)]
   return [item('file-changed', path, `${path} changes.`)]
+}
+
+/** Story 392: each language added, changed or removed. */
+function languageItems(before: string | null, after: string | null): ChangeItem[] {
+  const read = (text: string | null) =>
+    new Map(
+      (text === null ? [] : (parseLanguages('languages.toml', text).value ?? [])).map((l) => [
+        l.iso.toLowerCase(),
+        l,
+      ]),
+    )
+  const was = read(before)
+  const now = read(after)
+  const out: ChangeItem[] = []
+  for (const [iso, l] of now)
+    if (!was.has(iso)) out.push(item('language-added', l.iso, `The language "${l.name}" is added.`))
+    else if (JSON.stringify(was.get(iso)) !== JSON.stringify(l))
+      out.push(item('language-changed', l.iso, `The language "${l.name}" changes.`))
+  for (const [iso, l] of was)
+    if (!now.has(iso))
+      out.push(item('language-removed', l.iso, `The language "${l.name}" is removed.`))
+  return out
+}
+
+/** Story 392: each field a form loses, beside the file's own change; undefined where unread. */
+function formItems(
+  path: string,
+  before: string | null,
+  after: string | null,
+): ChangeItem[] | undefined {
+  if (before === null || after === null) return undefined
+  const was = parseForm(path, before).value
+  const now = parseForm(path, after).value
+  if (!was || !now) return undefined
+  const fields = (form: typeof was) =>
+    new Set(form.pages.flatMap((p) => p.groups.flatMap((g) => g.fields.map((f) => f.alias))))
+  const kept = fields(now)
+  const removed = [...fields(was)].filter((alias) => !kept.has(alias))
+  return [
+    item('file-changed', path, `${path} changes.`),
+    ...removed.map((alias) =>
+      item(
+        'form-field-removed',
+        `${was.alias}.${alias}`,
+        `The field "${alias}" is removed from "${was.name}".`,
+      ),
+    ),
+  ]
 }
 
 /** Whether every item needing acceptance is accepted, by its id or by its kind. */

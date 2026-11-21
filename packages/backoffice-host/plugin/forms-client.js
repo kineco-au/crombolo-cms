@@ -3,6 +3,7 @@
  * <backoffice>/crombolo/api/forms/*. The session cookie carries the auth.
  */
 import { downloadFile } from './download.js'
+import { workspaceHeaders } from './workspace-client.js'
 
 const base = () => {
   const href = document.querySelector('base')?.getAttribute('href') ?? '/umbraco/'
@@ -15,6 +16,7 @@ const call = async (path, init) => {
     headers: {
       accept: 'application/json',
       ...(init?.body ? { 'content-type': 'application/json' } : {}),
+      ...workspaceHeaders(),
     },
     ...init,
   })

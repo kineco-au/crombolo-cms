@@ -78,6 +78,7 @@ const WORKSPACE_OBJECT_TYPES: Record<string, string> = {
   [ObjectTypes.Document]: ObjectTypes.WorkspaceDocument,
   [ObjectTypes.Media]: ObjectTypes.WorkspaceMedia,
   [ObjectTypes.Element]: ObjectTypes.WorkspaceElement,
+  [ObjectTypes.DocumentBlueprint]: ObjectTypes.WorkspaceDocumentBlueprint,
 }
 
 export class NodeRepository {
@@ -213,13 +214,29 @@ export class NodeRepository {
     objectTypes: readonly string[],
     skip: number,
     take: number,
+    /** Story 392: a workspace's own are children too, and those it deleted are not. */
+    workspace?: { id: number; hidden: readonly string[] },
   ): Promise<Page<NodeRow>> {
     if (objectTypes.length === 0) return { total: 0, items: [] }
+    const own = objectTypes.flatMap((t) => {
+      const mapped = WORKSPACE_OBJECT_TYPES[t]
+      return mapped ? [mapped] : []
+    })
     const matching = this.#db.q
       .selectFrom('node')
       .where('parent_id', '=', parentId)
-      .where('node_object_type', 'in', objectTypes)
+      .where((eb) =>
+        workspace && own.length > 0
+          ? eb.or([
+              eb('node_object_type', 'in', objectTypes),
+              eb.and([eb('node_object_type', 'in', own), eb('workspace_id', '=', workspace.id)]),
+            ])
+          : eb('node_object_type', 'in', objectTypes),
+      )
       .where('trashed', '=', this.#db.dialect.boolValue(false))
+      .$if((workspace?.hidden.length ?? 0) > 0, (q) =>
+        q.where('unique_id', 'not in', (workspace?.hidden ?? []).map(normaliseUuid)),
+      )
     const totals = await matching.select((eb) => eb.fn.countAll().as('n')).execute()
     const rows = await matching
       .select(NODE_COLUMNS)

@@ -61,8 +61,12 @@ export interface LocalizationPort {
   /** Languages live in the database (and `schema/languages.toml`); cultures are the fixed list. */
   allLanguages(): Promise<LanguageInput[]>
   language(isoCode: string): Promise<LanguageInput | undefined>
-  saveLanguage(language: LanguageInput): Promise<void>
-  deleteLanguage(isoCode: string): Promise<'deleted' | 'default' | 'in-use' | 'not-found'>
+  /** `by`: who made the write, for the change it is recorded as (story 392). */
+  saveLanguage(language: LanguageInput, by?: string): Promise<void>
+  deleteLanguage(
+    isoCode: string,
+    by?: string,
+  ): Promise<'deleted' | 'default' | 'in-use' | 'not-found'>
   cultures(): ResponseOf<'GetCulture'>['items']
 }
 
@@ -232,13 +236,15 @@ export interface DictionaryPort {
   ): Promise<Array<{ key: string; name: string; parentKey: string | null; hasChildren: boolean }>>
   /** The item and its ancestors, root first. */
   ancestry(key: string): Promise<DictionaryItemModel[]>
-  create(item: DictionaryItemModel): Promise<DictionaryWriteStatus>
+  /** `by`: who made the write, for the change it is recorded as (story 392). */
+  create(item: DictionaryItemModel, by?: string): Promise<DictionaryWriteStatus>
   update(
     key: string,
     change: { name: string; translations: DictionaryItemModel['translations'] },
+    by?: string,
   ): Promise<DictionaryWriteStatus>
-  move(key: string, parentKey: string | null): Promise<DictionaryWriteStatus>
-  delete(key: string): Promise<DictionaryWriteStatus>
+  move(key: string, parentKey: string | null, by?: string): Promise<DictionaryWriteStatus>
+  delete(key: string, by?: string): Promise<DictionaryWriteStatus>
   /** The item, with its descendants when asked, as a `.udt` file. */
   export(
     key: string,

@@ -35,6 +35,15 @@ export const CHANGE_CLASSES = {
   'file-removed': 'additive',
   'file-moved': 'additive',
   'page-deleted': 'breaking',
+  // Story 392: what is lost is known only against the site's data, so each comes in two.
+  'language-added': 'additive',
+  'language-changed': 'none',
+  'language-removed': 'additive',
+  'language-values-dropped': 'breaking',
+  'form-field-removed': 'additive',
+  'form-field-entries-orphaned': 'breaking',
+  'workflow-removed': 'additive',
+  'workflow-requests-withdrawn': 'breaking',
 } as const satisfies Record<string, ChangeClass>
 
 export type ChangeKind = keyof typeof CHANGE_CLASSES

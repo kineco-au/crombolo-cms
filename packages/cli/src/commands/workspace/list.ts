@@ -1,6 +1,6 @@
-import { Args, Flags } from '@oclif/core'
+import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
-import { onSite, siteFlags, whereField, workspaceArg } from '../../support/workspace-commands.ts'
+import { onSite, siteFlags, whereField } from '../../support/workspace-commands.ts'
 
 export default class WorkspaceList extends BaseCommand {
   static override summary = 'the workspaces you may use there, newest first'

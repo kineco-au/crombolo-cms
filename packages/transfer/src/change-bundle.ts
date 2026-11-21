@@ -43,7 +43,7 @@ export interface ChangePageState {
 
 export interface ChangeBundlePage {
   key: string
-  kind: 'document' | 'media' | 'element'
+  kind: 'document' | 'media' | 'element' | 'blueprint'
   action: 'create' | 'update' | 'delete'
   parentKey: string | null
   /** Where it was before, when the change moved it. */

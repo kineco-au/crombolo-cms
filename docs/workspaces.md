@@ -26,6 +26,8 @@ workspace is refused with 400, so nothing is silently written to Shared.
   are carried to the merge.
 - **Media and Library items** (`390`), made, changed, moved, sorted and deleted as pages
   are; a media item's file is its own until the merge (below).
+- **Languages, the dictionary, blueprints, forms and workflow set-up** (`392`): the first
+  four as files in its copy, blueprints as pages are (below).
 - **Not yet:** copying a page, bringing back an earlier
   version, the recycle bin, publishing a whole branch, hostnames, who may see a page and
   notifications. Each is refused in a workspace with a reason, and done in Shared.
@@ -199,6 +201,34 @@ wrote it.
   named that nothing else in the site names.
 - **With `CROMBOLO_WORKSPACES_REQUIRED`,** a direct media or Library edit is refused too.
 
+## Languages, the dictionary, blueprints, forms and workflows (story 392)
+
+- **Languages** are the workspace's copy of `schema/languages.toml`, read and written
+  there by the language operations with the header. The merge brings the file in with
+  the other definitions, and the sync applies it.
+- **The dictionary** is a file of the workspace's own, `content/dictionary.jsonl`: one
+  item per line, with its key, parent and translations, in name order. Until the
+  workspace first changes it, it reads Shared's rows. It merges three ways by item:
+  items changed on one side each come through, and an item changed on both is a conflict,
+  settled by choosing one (`files/resolve`). The merge writes the result into Shared's
+  rows in its own transaction. Exporting and importing a dictionary file are done in
+  Shared.
+- **Blueprints** are held as pages are: one made there is a node of its own
+  (`WorkspaceDocumentBlueprint`), and a change to Shared's is a version of the
+  workspace's, its delete waiting for the merge. Their folders, moves and history are
+  Shared's.
+- **Forms and workflows** are set up through Crombolo's own routes, which read and write
+  `schema/` as files. With the header (the back office sends it on these calls too), a
+  request runs against a folder holding the workspace's copy (`inSchemaPlace`), and
+  whatever the request changed there becomes the workspace's files. A workflow changed
+  in a workspace is not in force until the merge.
+- **What a removal costs is checked against the site.** A language that holds values, a
+  form field that entries hold, and a workflow with requests waiting under it each become
+  a change that loses something (`language-values-dropped`,
+  `form-field-entries-orphaned`, `workflow-requests-withdrawn`), and each is accepted by
+  name before the merge goes ahead. Without data at stake they merge as they are.
+- **The workspace's site** renders with its own languages and dictionary.
+
 ## Looking at a workspace (story 379)
 
 - **Its own host.** With `CROMBOLO_WORKSPACES_HOST` set, such as
@@ -343,8 +373,6 @@ so they are still changed directly.
 
 ## Known gaps
 
-- The back office cannot send the header until its switch (`384`), so today a named
-  workspace is worked in through the API; only a person's own is used by the back office.
 - The item classes a merge lists come with `382`.
 - A template made in a workspace has no template row until it is merged, so a type
   there cannot allow it yet.
