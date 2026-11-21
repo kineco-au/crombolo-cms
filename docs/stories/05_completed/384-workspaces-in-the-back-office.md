@@ -80,21 +80,41 @@ where it has an effect.
 
 ## Acceptance criteria
 
-- [ ] **The switch lists a person's workspaces and Shared,** and switching keeps the
+- [x] **The switch lists a person's workspaces and Shared,** and switching keeps the
       item open.
-- [ ] **A new workspace** is made from the switch and entered at once.
-- [ ] **Every screen under Content** shows which workspace it is in; no screen outside
+- [x] **A new workspace** is made from the switch and entered at once.
+- [x] **Every screen under Content** shows which workspace it is in; no screen outside
       Content does.
-- [ ] **An edit begun in Shared** can be moved to a new workspace before it is saved.
-- [ ] **The trees mark what the workspace changed.**
-- [ ] **The Changes panel** lists each change with its difference, and drops one.
-- [ ] **Merge into Shared** runs `380`'s merge from the screen, conflicts and all.
-- [ ] **The Workspaces view** lists open and closed workspaces.
-- [ ] **Someone without the merge permission** sees no Merge.
-- [ ] **A workspace is shared and unshared** from the switch.
-- [ ] **Its owner chooses who can see it and whether others are told** of an item it
+- [x] **An edit begun in Shared** can be moved to a new workspace before it is saved.
+- [x] **The trees mark what the workspace changed.**
+- [x] **The Changes panel** lists each change with its difference, and drops one.
+- [x] **Merge into Shared** runs `380`'s merge from the screen, conflicts and all.
+- [x] **The Workspaces view** lists open and closed workspaces.
+- [x] **Someone without the merge permission** sees no Merge.
+- [x] **A workspace is shared and unshared** from the switch.
+- [x] **Its owner chooses who can see it and whether others are told** of an item it
       changed, when opening it and later.
-- [ ] **With a workspace required,** Shared opens read-only and an edit lands in the
+- [x] **With a workspace required,** Shared opens read-only and an edit lands in the
       person's own workspace.
-- [ ] **With workspaces off,** none of this shows.
-- [ ] **Browser tests** for the switch, a change and a merge.
+- [x] **With workspaces off,** none of this shows.
+- [x] **Browser tests** for the switch, a change and a merge.
+
+## Built (2026-11-21)
+
+- **The switch** (`workspace-switch.js`) in the Content strip, which shows wherever workspaces
+  are on; its pure parts (`workspace-client.js`: the tab's choice, `headerFor`, `colourOf`,
+  `menuFor`) and its calls. `workspaces.js` sends the header, registers the trees' sign, the
+  page's Info (`workspace-info.js`), "Save in a new workspace" (`workspace-move-action.js`) and,
+  with a workspace required, Shared read only (`workspace-shared-guard.js`).
+- **Server:** migration 090 `AddWorkspacePrivacy`; `POST /` and `PATCH /{key}` take
+  `visibility` and `tellOthers`; a workspace shown to editors is listed and read by them;
+  `GET /touched/{page}`; `DELETE /{key}/changes/{page}`; `/mine` says `enabled` and `mayMerge`;
+  tree items read in a workspace carry `Crombolo.Workspace.Changed`.
+- **Tests:** `tests/workspace-backoffice.test.ts`, `tests/browser/workspaces.browser.ts`; the
+  browser suite's site has workspaces on.
+
+## Left for later
+
+- **A filter for only the changed items** in the trees: the Changes panel lists them.
+- **Comparing a type** side by side: pages are compared on their Info.
+

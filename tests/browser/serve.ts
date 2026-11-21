@@ -330,6 +330,8 @@ const server = await createServer(
       // re-vendors, so the hashed path is safe to cache.
       immutableAssets: true,
       allowPasswordReset: true,
+      // Story 384: the workspace switch, at the head of Content; Shared is as before until one is chosen.
+      workspaces: true,
       // Seals the site's own signing key, which Trusted signers lists (story 316).
       secretKey: 'browser-suite-secret-key-that-is-long-enough-0123',
       // The site's code grants what it asks for, its back-office code included, so it runs

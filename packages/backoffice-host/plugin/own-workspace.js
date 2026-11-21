@@ -5,9 +5,6 @@
  */
 export const WORKSPACE_HEADER = 'Crombolo-Workspace'
 
-const base = () =>
-  (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')
-
 /** A Management API request, sent in the person's own workspace unless it names one. */
 export const withOwnWorkspace = (request) => {
   const path = new URL(request.url, globalThis.location?.href ?? 'http://localhost/').pathname
@@ -16,13 +13,5 @@ export const withOwnWorkspace = (request) => {
   return request
 }
 
-export const onInit = async () => {
-  const response = await fetch(`${base()}/crombolo/api/workspaces/mine`, {
-    credentials: 'include',
-  }).catch(() => undefined)
-  if (!response?.ok) return
-  const { required } = await response.json()
-  if (!required) return
-  const { umbHttpClient } = await import('@umbraco-cms/backoffice/http-client')
-  umbHttpClient.interceptors.request.use(withOwnWorkspace)
-}
+/** Story 384: the workspace switch (`workspaces.js`) sends the header now, the own one included. */
+export const onInit = async () => {}

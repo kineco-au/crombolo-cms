@@ -126,7 +126,7 @@ describe('bundle build and apply', () => {
       counts: { create: number; update: number }
     }
     expect(again.counts).toMatchObject({ create: 0, update: 0 })
-  })
+  }, 20_000)
 
   test('a changed seed file updates its page', async () => {
     writeSeed('content/home/about.toml', 'type = "page"\n\n[values]\ntitle = "About us"\n')

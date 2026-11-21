@@ -1125,6 +1125,7 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddWorkspaceLinks',
       'AddChangeTransfer',
       'AddEnvironmentValues',
+      'AddWorkspacePrivacy',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

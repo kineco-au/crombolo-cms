@@ -538,7 +538,7 @@ it.
 | `381` | Every change is recorded, and every item has its history | should | L | done | 376, 380 |
 | `382` | A change that loses data says so, and takes two steps | should | M | done | 376, 380 |
 | `383` | A change moves from one site to another | should | L | done | 380, 381 |
-| `384` | Workspaces in the back office | should | L | ready | 375, 376, 377, 379, 380, 381, 382 |
+| `384` | Workspaces in the back office | should | L | done | 375, 376, 377, 379, 380, 381, 382 |
 | `386` | Workspaces and changes from the command line | should | L | done | 378, 379, 380, 381, 383 |
 | `387` | A property with a value per environment | should | M | done | 383 |
 | `388` | Content and schema that arrive only by a change | should | M | done | 383, 391 |

@@ -218,6 +218,10 @@ export function inWorkspaces<T extends object>(shared: T, make: (workspace: Work
 export interface WorkspaceView {
   key: string
   name: string
+  visibility: 'members' | 'editors'
+  tellOthers: boolean
+  /** Whether the person asking is in it, and may change it. */
+  member: boolean
   ownerKey: string
   memberKeys: string[]
   mine: boolean
@@ -227,8 +231,24 @@ export interface WorkspaceView {
   updatedAt: string
 }
 
+/** What a request asks of a workspace's privacy (story 384). */
+function privacyOf(asked: Record<string, unknown>): {
+  visibility?: 'members' | 'editors'
+  tellOthers?: boolean
+} {
+  return {
+    ...(asked.visibility === 'members' || asked.visibility === 'editors'
+      ? { visibility: asked.visibility }
+      : {}),
+    ...(typeof asked.tellOthers === 'boolean' ? { tellOthers: asked.tellOthers } : {}),
+  }
+}
+
 const viewOf = (workspace: Workspace, principal: Principal): WorkspaceView => ({
   key: workspace.key,
+  visibility: workspace.visibility,
+  tellOthers: workspace.tellOthers,
+  member: mayUse(workspace, principal),
   name: workspace.name,
   ownerKey: workspace.ownerKey,
   memberKeys: workspace.memberKeys,
@@ -578,6 +598,9 @@ export function createWorkspacesApi(
         return json({
           required: on && !locked && options.required?.() === true,
           workspace: own ? viewOf(own, principal) : null,
+          // Story 384: whether the switch shows at all, and whether Merge is offered.
+          enabled: on,
+          mayMerge: on && mayMerge(principal),
           // Story 388: what the back office shows each item as, and where it links.
           contentLocked: locked,
           editedAt: locked ? (options.editedAt?.() ?? null) : null,
@@ -595,8 +618,14 @@ export function createWorkspacesApi(
           const all = new URL(request.url).searchParams.get('all') === 'true'
           if (all && !principal.isAdmin)
             return refused('Only an administrator lists them all.', 403)
-          const found = all ? await workspaces.all() : await workspaces.forUser(principal.id)
-          return json({ items: found.map((w) => viewOf(w, principal)) })
+          const mine = all ? await workspaces.all() : await workspaces.forUser(principal.id)
+          // Story 384: and those their owners show to every editor.
+          const shown = all
+            ? []
+            : (await workspaces.all()).filter(
+                (w) => w.visibility === 'editors' && w.state === 'open' && !mayUse(w, principal),
+              )
+          return json({ items: [...mine, ...shown].map((w) => viewOf(w, principal)) })
         }
         if (request.method === 'POST') {
           if (options.locked?.())
@@ -604,9 +633,14 @@ export function createWorkspacesApi(
               `${CONTENT_LOCKED.title}: a workspace is opened where its content is made.`,
               409,
             )
-          const name = nameOf(await body())
+          const asked = await body()
+          const name = nameOf(asked)
           if (!name) return refused('A workspace needs a name of up to 255 characters.', 400)
-          const opened = await workspaces.open({ name, ownerKey: principal.id })
+          const opened = await workspaces.open({
+            name,
+            ownerKey: principal.id,
+            ...privacyOf(asked),
+          })
           // Its copy of the schema files, the base its changes to them merge from (story 376).
           await options.schema?.()?.snapshot(opened.id)
           await audit(principal, 'Open', opened, `Opened "${name}"`, client)
@@ -632,6 +666,24 @@ export function createWorkspacesApi(
         }
         if (chosen.length === 0) return refused('Name the workspaces to merge.', 400)
         return mergeNow(merging, chosen, principal, asked, client)
+      }
+
+      // Story 384: which other people's workspaces changed a page, by whose, never what.
+      if (parts[0] === 'touched' && parts[1] && UUID.test(parts[1]) && request.method === 'GET') {
+        const node = await db.q
+          .selectFrom('node')
+          .select('id')
+          .where('unique_id', '=', normaliseUuid(parts[1]))
+          .where('workspace_id', 'is', null)
+          .executeTakeFirst()
+        const touching = node ? await workspaces.touching(Number(node.id), principal.id) : []
+        const owners = await new UserRepository(db).byKeys(touching.map((w) => w.ownerKey))
+        return json({
+          items: touching.map((w) => ({
+            owner: owners.find((u) => normaliseUuid(u.key) === w.ownerKey)?.name ?? 'someone',
+            ...(w.visibility === 'editors' ? { workspace: { key: w.key, name: w.name } } : {}),
+          })),
+        })
       }
 
       // Story 383: every workspace still open, staged changes included, and those idle too long cleared.
@@ -672,15 +724,28 @@ export function createWorkspacesApi(
       // An administrator may list and discard any, to clear one left behind, never read it.
       const usable = found && mayUse(found, principal)
       const discardable = found && (usable || principal.isAdmin)
-      if (!found || (!usable && !(discardable && request.method === 'DELETE' && !sub)))
+      // Story 384: one its owner shows to every editor is read by them, and changed by its members.
+      const readable =
+        found?.visibility === 'editors' &&
+        request.method === 'GET' &&
+        (sub === undefined || ['changes', 'diff', 'merge', 'members', 'conflicts'].includes(sub))
+      if (!found || (!usable && !readable && !(discardable && request.method === 'DELETE' && !sub)))
         return refused('There is no such workspace.', 404)
       const owner = found.ownerKey === normaliseUuid(principal.id)
 
       if (!sub) {
         if (request.method === 'GET') return json(viewOf(found, principal))
         if (request.method === 'PATCH') {
-          if (!owner) return refused('Only its owner renames a workspace.', 403)
-          const name = nameOf(await body())
+          if (!owner) return refused('Only its owner changes a workspace.', 403)
+          const asked = await body()
+          // Story 384: who sees it, and whether others are told, changed by its owner.
+          const privacy = privacyOf(asked)
+          await workspaces.setPrivacy(found.id, privacy)
+          if (asked.name === undefined && Object.keys(privacy).length > 0) {
+            await audit(principal, 'Privacy', found, `Privacy of "${found.name}" changed`, client)
+            return json(viewOf((await workspaces.byKey(found.key)) as Workspace, principal))
+          }
+          const name = nameOf(asked)
           if (!name) return refused('A workspace needs a name of up to 255 characters.', 400)
           await workspaces.rename(found.id, name)
           await audit(principal, 'Rename', found, `Renamed "${found.name}" to "${name}"`, client)
@@ -701,6 +766,18 @@ export function createWorkspacesApi(
 
       if (sub === 'changes' && !member && request.method === 'GET')
         return json({ items: await workspaces.changes(found.id) })
+      // Story 384: "Drop this change": the page goes back to Shared's, here.
+      if (sub === 'changes' && member && UUID.test(member) && request.method === 'DELETE') {
+        if (!usable) return refused('Only its members change a workspace.', 403)
+        const node = await db.q
+          .selectFrom('node')
+          .select('id')
+          .where('unique_id', '=', normaliseUuid(member))
+          .executeTakeFirst()
+        if (!node) return refused('There is no such page.', 404)
+        await workspaces.dropPage(found.id, Number(node.id))
+        return new Response(null, { status: 204 })
+      }
 
       // Story 386: what a command line asks before merging.
       const checks = options.checks?.()

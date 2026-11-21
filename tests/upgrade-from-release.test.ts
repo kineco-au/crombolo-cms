@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_ENVIRONMENT_VALUES,
+  STATE_WORKSPACE_PRIVACY,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -157,10 +157,11 @@ describe('upgrading from the previous release', () => {
       'AddWorkspaceLinks',
       'AddChangeTransfer',
       'AddEnvironmentValues',
+      'AddWorkspacePrivacy',
     ])
-    expect(await readState(db)).toBe(STATE_ENVIRONMENT_VALUES)
+    expect(await readState(db)).toBe(STATE_WORKSPACE_PRIVACY)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.70.0', steps: 40 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.70.0', steps: 41 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

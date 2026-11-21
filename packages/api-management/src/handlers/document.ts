@@ -26,7 +26,7 @@ import { APP_PREVIEW_PROVIDER, type PreviewPort } from '../ports.ts'
 import type { DocumentPort, PortFailure, SaveDocument } from '../ports-content.ts'
 import type { ManagementApiRouter, RequestContext } from '../router.ts'
 import { created, paging } from './content-type.ts'
-import { itemFlags, variantFlags } from './flags.ts'
+import { itemFlags, variantFlags, WORKSPACE_CHANGED } from './flags.ts'
 import {
   type TreeSource,
   visibleChildren,
@@ -276,7 +276,10 @@ export function toDocumentTreeItemResponse(item: DocumentTreeItem, noAccess = fa
       state: v.state,
       flags: variantFlags(v),
     })),
-    flags: itemFlags(item.variants),
+    flags: [
+      ...itemFlags(item.variants),
+      ...(item.workspaceChanged ? [{ alias: WORKSPACE_CHANGED }] : []),
+    ],
   }
 }
 

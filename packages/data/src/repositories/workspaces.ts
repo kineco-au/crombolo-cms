@@ -28,6 +28,10 @@ export interface Workspace {
   stagedChanges: Array<{ key: string; name: string | null }> | null
   /** Staged to be looked at and applied: nobody edits it. A refused apply's is open to edit. */
   stagedReadOnly: boolean
+  /** Who can see it (story 384): its members, or everyone who may edit, reading only. */
+  visibility: 'members' | 'editors'
+  /** Whether someone opening an item it changed is told so, and by whose workspace. */
+  tellOthers: boolean
 }
 
 /** A move, reorder or delete waiting for the merge, with where its page stood (story 380). */
@@ -61,7 +65,13 @@ export class WorkspaceRepository {
     this.#db = db
   }
 
-  async open(input: { name: string; ownerKey: string; personal?: boolean }): Promise<Workspace> {
+  async open(input: {
+    name: string
+    ownerKey: string
+    personal?: boolean
+    visibility?: 'members' | 'editors'
+    tellOthers?: boolean
+  }): Promise<Workspace> {
     const key = normaliseUuid(crypto.randomUUID())
     const now = DbDate.toDb(new Date())
     await this.#db.q
@@ -71,6 +81,8 @@ export class WorkspaceRepository {
         name: input.name,
         owner_key: normaliseUuid(input.ownerKey),
         personal: this.#db.dialect.boolValue(input.personal === true) as boolean,
+        visibility: input.visibility ?? 'members',
+        tell_others: this.#db.dialect.boolValue(input.tellOthers !== false) as boolean,
         created_at: now,
         updated_at: now,
       })
@@ -245,6 +257,47 @@ export class WorkspaceRepository {
   }
 
   /** Whether the workspace has rows of its own for its types yet (story 376). */
+  /** Its owner's choice of who sees it and whether others are told (story 384). */
+  async setPrivacy(
+    id: number,
+    privacy: { visibility?: 'members' | 'editors'; tellOthers?: boolean },
+  ): Promise<void> {
+    const set: Record<string, unknown> = {}
+    if (privacy.visibility) set.visibility = privacy.visibility
+    if (privacy.tellOthers !== undefined)
+      set.tell_others = this.#db.dialect.boolValue(privacy.tellOthers)
+    if (Object.keys(set).length === 0) return
+    await this.#db.q.updateTable('workspace').set(set).where('id', '=', id).execute()
+  }
+
+  /** Open workspaces, other than `except`'s own, that changed a page and say so (story 384). */
+  async touching(nodeId: number, exceptUser: string): Promise<Workspace[]> {
+    const documents = await this.#db.q
+      .selectFrom('workspace_document')
+      .select('workspace_id')
+      .where('node_id', '=', nodeId)
+      .execute()
+    const pending = await this.#db.q
+      .selectFrom('workspace_pending')
+      .select('workspace_id')
+      .where('node_id', '=', nodeId)
+      .execute()
+    const ids = [...new Set([...documents, ...pending].map((r) => Number(r.workspace_id)))]
+    if (ids.length === 0) return []
+    const rows = await this.#db.q
+      .selectFrom('workspace')
+      .selectAll()
+      .where('id', 'in', ids)
+      .where('state', '=', 'open')
+      .execute()
+    return (await this.#withMembers(rows)).filter(
+      (w) =>
+        w.tellOthers &&
+        w.ownerKey !== normaliseUuid(exceptUser) &&
+        !w.memberKeys.includes(normaliseUuid(exceptUser)),
+    )
+  }
+
   /** Marks a workspace as holding changes from another site, read-only or open to edit (story 383). */
   async setStaged(
     id: number,
@@ -394,6 +447,8 @@ export class WorkspaceRepository {
       created_at: unknown
       updated_at: unknown
       staged_changes?: string | null
+      visibility?: string | null
+      tell_others?: unknown
     }>,
   ): Promise<Workspace[]> {
     if (rows.length === 0) return []
@@ -422,6 +477,8 @@ export class WorkspaceRepository {
       createdAt: DbDate.fromDb(row.created_at) ?? new Date(0),
       updatedAt: DbDate.fromDb(row.updated_at) ?? new Date(0),
       ...stagedOf(row.staged_changes),
+      visibility: row.visibility === 'editors' ? 'editors' : 'members',
+      tellOthers: row.tell_others === undefined ? true : fromDbBool(row.tell_others),
     }))
   }
 }

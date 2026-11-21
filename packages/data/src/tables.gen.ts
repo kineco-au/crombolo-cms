@@ -1014,7 +1014,9 @@ export interface CoreTables {
     schema_built: Default<Bool>
     staged_changes: string | null
     state: Generated<string>
+    tell_others: Default<Bool>
     updated_at: Timestamp
+    visibility: Generated<string>
   }
   workspace_document: {
     base_event_id: number | null

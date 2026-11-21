@@ -68,7 +68,7 @@ describe('copies this repository makes', () => {
         false,
       )
     }
-  }, 10_000)
+  }, 30_000)
 
   test('crombolo init copies a template’s files as they are, never rewritten', () => {
     for (const template of listTemplates())

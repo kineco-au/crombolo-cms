@@ -311,6 +311,8 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
       workspace: null,
       contentLocked: false,
       editedAt: null,
+      enabled: expect.any(Boolean),
+      mayMerge: expect.any(Boolean),
     })
     expect(
       (

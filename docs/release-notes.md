@@ -120,6 +120,11 @@ point at `docs/stories/`.
   pages is recorded as replacing everything. Administrators list every pending workspace
   and clear those idle too long (`docs/changes.md`).
 
+- **Workspaces in the back office (384).** A switch at the head of Content says which
+  workspace the tab is in, in its colour, and opens, shares, merges and drops changes from
+  there; the trees mark what a workspace changed, a page's Info sets it against Shared, an edit
+  begun in Shared can be saved in a new workspace, and an owner chooses who sees a workspace and
+  whether others are told of an item it changed.
 - **Workspaces and changes from the command line (386).** `crombolo workspace open|list|status|
   discard|share|unshare|diff|sync|conflicts|resolve|check|errors|pages|render|address|merge|push|pull`,
   `crombolo workspaces`, `crombolo changes` and `crombolo revert`, on this folder's site or with
@@ -174,6 +179,8 @@ point at `docs/stories/`.
   workspace holds.
 - **089 `AddEnvironmentValues`** (expand): `property_value.environment`, the environment a
   value is for, null for the shared value.
+- **090 `AddWorkspacePrivacy`** (expand): `workspace.visibility` and `workspace.tell_others`, an
+  owner's choice of who sees a workspace and whether others are told of an item it changed.
 
 ### Upgrade notes
 

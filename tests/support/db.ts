@@ -134,6 +134,8 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 090, a workspace's privacy (story 384): columns on workspaces, which 082's undo drops.
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspacePrivacy'")
   // 089, a value per environment (story 387): a column on values that stay.
   await db.exec('ALTER TABLE property_value DROP COLUMN environment')
   await db.exec("DELETE FROM migration_history WHERE name = 'AddEnvironmentValues'")

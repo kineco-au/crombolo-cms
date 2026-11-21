@@ -88,6 +88,8 @@ export interface DocumentTreeItem {
   ancestorKeys: string[]
   /** Public access rules apply: its own, or a page's above it. */
   isProtected?: boolean
+  /** Read in a workspace: it changed, made, moved or deleted this one (story 384). */
+  workspaceChanged?: boolean
   variants: Array<{
     culture: string | null
     name: string

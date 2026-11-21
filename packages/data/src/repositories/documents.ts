@@ -4298,6 +4298,7 @@ export class DocumentRepository {
       if (mine) {
         const parent = row.parentId > 0 ? above.get(row.parentId) : undefined
         items.push({
+          workspaceChanged: true,
           key: row.key,
           name: mine.variants[0]?.name ?? row.text ?? '',
           hasChildren: (counts.get(row.id) ?? 0) > 0,

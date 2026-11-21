@@ -377,3 +377,28 @@ hosted site's environment: `open`, `list`, `status`, `discard`, `share`/`unshare
   the back office's workspace routes for the person), `changes/{id}` and `changes/{id}/revert`,
   and `PUT changes?check=true`, which says what applying a change would do and changes nothing.
 
+## In the back office (story 384)
+
+- **The switch at the head of Content** (`workspace-switch.js`, in the strip of
+  `content-strip.js`): where this tab is, Shared or a workspace in its colour (from its key,
+  `colourOf`), and from there: switch (the open screen reloads in that workspace), New
+  workspace, Changes, Merge into Shared (for who may merge, with the count), Share, Open at
+  its address, and All workspaces, open and merged. The choice is kept per tab in
+  `sessionStorage` and sent as `Crombolo-Workspace` with every Management API call
+  (`workspaces.js`, which takes over `own-workspace.js`'s header). Outside Content nothing
+  is in a workspace; with workspaces off, none of this shows.
+- **A workspace's privacy, its owner's** (migration 090): who can see it, its members or
+  everyone who may edit (listed, its changes readable, changed only by its members), and
+  whether someone opening an item it changed is told "Also changed in a workspace by …",
+  never what changed (`GET /touched/{page}`). Both are chosen as it opens and later, by
+  `POST /` and `PATCH /{key}` `{ visibility, tellOthers }`.
+- **In the trees,** an item the workspace changed carries the `Crombolo.Workspace.Changed`
+  flag, drawn as a sign.
+- **The Changes panel** lists each change with what differs from Shared, and drops one
+  (`DELETE /{key}/changes/{page}`); a page's Info sets its fields against Shared's.
+- **The merge screen:** what it brings, each conflict with Keep mine and Keep theirs, the
+  lossy changes to accept, and the pages sent for approval where a workflow applies.
+- **Save in a new workspace,** on a page's actions, saves an edit begun in Shared in a new
+  workspace the tab then works in. Where a workspace is required, Shared opened from the
+  switch is read only.
+

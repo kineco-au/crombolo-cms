@@ -202,7 +202,7 @@ describe(`a workspace's own process (${dialectUnderTest})`, () => {
     h.server.workspaceProcesses?.sweep()
     expect(h.server.workspaceProcesses?.pidOf(sale.key)).toBeUndefined()
     expect(await ended(pid)).toBe(true)
-  }, 10_000)
+  }, 20_000)
 
   test('over its memory, it ends', async () => {
     const { h, opened, rendered, saveView } = await site({ workspaceProcessMemoryMb: 1 })

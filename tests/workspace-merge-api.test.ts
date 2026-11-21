@@ -303,6 +303,8 @@ describe(`a site that requires a workspace (${dialectUnderTest})`, () => {
       workspace: null,
       contentLocked: false,
       editedAt: null,
+      enabled: expect.any(Boolean),
+      mayMerge: expect.any(Boolean),
     })
 
     expect((await save(h, home, 'Directly')).status).toBe(409)

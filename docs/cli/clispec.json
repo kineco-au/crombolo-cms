@@ -9771,7 +9771,7 @@
           "nullable": true
         }
       ],
-      "confirmation_bypass_arg": "yes",
+      "confirmation_bypass_arg": "--yes",
       "args": [
         {
           "name": "change",
@@ -16686,7 +16686,7 @@
           "type": "boolean"
         }
       ],
-      "confirmation_bypass_arg": "yes",
+      "confirmation_bypass_arg": "--yes",
       "args": [
         {
           "name": "workspace",
@@ -16819,7 +16819,7 @@
           "nullable": true
         }
       ],
-      "confirmation_bypass_arg": "yes",
+      "confirmation_bypass_arg": "--yes",
       "args": [
         {
           "name": "workspaces",
@@ -16977,7 +16977,7 @@
           }
         }
       ],
-      "confirmation_bypass_arg": "yes",
+      "confirmation_bypass_arg": "--yes",
       "args": [
         {
           "name": "workspace",
@@ -17041,7 +17041,7 @@
           }
         }
       ],
-      "confirmation_bypass_arg": "yes",
+      "confirmation_bypass_arg": "--yes",
       "args": [
         {
           "name": "workspace",

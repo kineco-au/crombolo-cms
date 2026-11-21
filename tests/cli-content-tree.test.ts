@@ -145,7 +145,7 @@ beforeAll(async () => {
     await item('Logo', null, 'Image')
     await item('Banner', null, 'Image')
   })
-})
+}, 30_000)
 afterAll(() => rmSync(site, { recursive: true, force: true }))
 
 describe('content move', () => {

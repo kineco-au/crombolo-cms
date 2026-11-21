@@ -8,6 +8,8 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { watchApprovals } from './approvals-active.js'
 import { activeItem, stripItems } from './content-strip-items.js'
 import { approvalsActive } from './workflow-client.js'
+import { workspacesApi } from './workspace-client.js'
+import './workspace-switch.js'
 
 const CONTENT = 'Umb.Section.Content'
 const ROW_HEIGHT = '--crombolo-content-strip-height'
@@ -27,6 +29,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
   }
 
   #user
+  /** Story 384: with workspaces on, the row shows for the switch whatever else it holds. */
+  #workspaces = false
   /** Approvals waits for the site's answer, and stays offered if it can't be had. */
   #approvals = false
   #unwatch
@@ -56,7 +60,7 @@ export default class CromboloContentStripElement extends UmbLitElement {
   }
 
   #shown() {
-    return this._items.length > 0 && this._active !== undefined
+    return (this._items.length > 0 || this.#workspaces) && this._active !== undefined
   }
 
   constructor() {
@@ -74,6 +78,13 @@ export default class CromboloContentStripElement extends UmbLitElement {
     super.connectedCallback()
     this.#follow()
     this.#checkApprovals()
+    workspacesApi.mine().then(
+      (mine) => {
+        this.#workspaces = mine.enabled === true
+        this.#offer()
+      },
+      () => {},
+    )
     this.#unwatch = watchApprovals(this.#checkApprovals)
     window.addEventListener('changestate', this.#follow)
     window.addEventListener('popstate', this.#follow)
@@ -102,6 +113,7 @@ export default class CromboloContentStripElement extends UmbLitElement {
             >${item.label}</a
           >`,
       )}
+      ${this.#workspaces ? html`<crombolo-workspace-switch></crombolo-workspace-switch>` : nothing}
     </nav>`
   }
 

@@ -107,12 +107,17 @@ const actionFor = (editors) => ({
   conditions: [{ alias: ENVIRONMENT_VALUES_CONDITION }],
 })
 
-export const onInit = (_host, extensionRegistry) => {
+export const onInit = async (_host, extensionRegistry) => {
+  // Only a site that names environments has values per environment to edit.
+  const environments = await readEnvironments()
+  if (!environments.names?.length) return
   extensionRegistry.register(ENVIRONMENT_CONDITION_MANIFEST)
-  extensionRegistry.byType('propertyEditorUi').subscribe((editors) => {
-    const aliases = editors.map((e) => e.alias)
-    if (extensionRegistry.isRegistered(ENVIRONMENT_VALUES_ACTION))
-      extensionRegistry.unregister(ENVIRONMENT_VALUES_ACTION)
-    extensionRegistry.register(actionFor(aliases))
+  let registered = false
+  const subscription = extensionRegistry.byType('propertyEditorUi').subscribe((editors) => {
+    // Once, with the editors there are when the back office has registered them.
+    if (registered || editors.length === 0) return
+    registered = true
+    extensionRegistry.register(actionFor(editors.map((e) => e.alias)))
+    queueMicrotask(() => subscription?.unsubscribe?.())
   })
 }
