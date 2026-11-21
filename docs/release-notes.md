@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.70.0 — 2026-11-21
+
 ### Features
 
 - **A hosted site's schema changes land in its code (374).** `crombolo types check
@@ -203,10 +205,12 @@ point at `docs/stories/`.
   said `production`, `CROMBOLO_CODE=editable` (or nothing) where it said `development`;
   `contentMode` in `crombolo.config.ts` becomes `code: 'locked'` or `'editable'`.
 
-- Migrations 082 and 084–087 run on upgrade; they only add. Workspaces stay off until
+- Migrations 082 and 084–090 run on upgrade; they only add. Workspaces stay off until
   `CROMBOLO_WORKSPACES=true`, and are required only with `CROMBOLO_WORKSPACES_REQUIRED=true`,
   which refuses to start without them.
 - Only administrators merge a workspace until a group is given `Crombolo.Workspace.Merge`.
+- Only administrators apply a change from another site until a group is given Apply
+  changes (383).
 - A workspace merge that deletes pages, or removes or renames anything, now needs it
   accepted: `accept: ["page-deleted"]`, or the item's id, on `POST /{key}/merge`.
 - **Group files need the new grants (385).** Migration 083 changes groups kept in the
