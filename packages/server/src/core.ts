@@ -411,6 +411,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   const publishedSource = createPublishedContentSource(db, {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
+    environment: config.environment,
   })
   // Media is cached apart from the pages (story 197), item by item within a
   // budget, and shared by the published and draft caches: media has no drafts.

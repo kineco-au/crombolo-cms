@@ -133,7 +133,16 @@ function parseValue(
   const references = Array.isArray(raw.references)
     ? raw.references.flatMap((r) => (typeof r === 'string' ? [r] : []))
     : undefined
-  return { property, culture, segment, editor, value: raw.value, references }
+  const environment = typeof raw.environment === 'string' ? raw.environment : undefined
+  return {
+    property,
+    culture,
+    segment,
+    ...(environment ? { environment } : {}),
+    editor,
+    value: raw.value,
+    references,
+  }
 }
 
 export function parseNode(
@@ -852,8 +861,12 @@ export function openBundle(
     const bytes = loaded.sealedValues?.get(path)
     if (!bytes) return node
     const opened = JSON.parse(openBytes(key, path, bytes).toString('utf8')) as SealedValues
-    const at = (v: { property: string; culture: string | null; segment: string | null }) =>
-      `${v.property}|${v.culture ?? ''}|${v.segment ?? ''}`
+    const at = (v: {
+      property: string
+      culture: string | null
+      segment: string | null
+      environment?: string
+    }) => `${v.property}|${v.culture ?? ''}|${v.segment ?? ''}|${v.environment ?? ''}`
     const payload = new Map(opened.values.map((v) => [at(v), v.value]))
     return {
       ...node,

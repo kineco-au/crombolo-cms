@@ -29,6 +29,7 @@ export interface ChildInit {
   workspace: WorkspaceScope
   nodeState: NodeSchemaState
   nodeId: string
+  environment?: string
   /** Where its views are written: `<componentsCacheDir>-workspaces`. */
   componentsCacheDir: string
   renderTimeoutMs: number
@@ -80,9 +81,17 @@ const send = (answer: ChildAnswer) => process.send?.(answer)
 async function init(message: ChildInit) {
   db = await connect({ dialect: message.dialect, file: message.sqliteFile, poolSize: 2 })
   workspace = message.workspace
-  schema = { nodeState: message.nodeState, nodeId: message.nodeId }
+  schema = {
+    nodeState: message.nodeState,
+    nodeId: message.nodeId,
+    ...(message.environment ? { environment: message.environment } : {}),
+  }
   cache = new PublishedCache(
-    createPublishedContentSource(db, { nodeState: message.nodeState, workspace: workspace.id }),
+    createPublishedContentSource(db, {
+      nodeState: message.nodeState,
+      workspace: workspace.id,
+      ...(message.environment ? { environment: message.environment } : {}),
+    }),
     {},
   )
   views = createWorkspaceViews({

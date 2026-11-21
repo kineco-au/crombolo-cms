@@ -113,6 +113,7 @@ function toBundleValue(value: DocumentValue, references: readonly string[]): Bun
     property: value.alias,
     culture: value.culture,
     segment: value.segment,
+    ...(value.environment ? { environment: value.environment } : {}),
     editor: value.editorAlias ?? '',
     value: value.value,
     references: references.length > 0 ? [...references] : undefined,

@@ -27,6 +27,8 @@ export interface ChangeValue {
   alias: string
   culture: string | null
   segment: string | null
+  /** The environment it is for, over the shared value (story 387). */
+  environment?: string | null
   value: unknown
 }
 

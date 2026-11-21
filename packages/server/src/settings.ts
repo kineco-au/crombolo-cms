@@ -459,6 +459,22 @@ const DECLARED = [
       'Locked, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository.',
   },
   {
+    env: 'CROMBOLO_ENVIRONMENT',
+    kind: 'string',
+    default: 'local in development, otherwise production',
+    section: 'Schema',
+    description:
+      'Which copy of the site this is. A property that varies by environment shows this environment’s own value where it has one, and the shared value otherwise.',
+  },
+  {
+    env: 'CROMBOLO_ENVIRONMENT_VALUES_READONLY',
+    kind: 'boolean',
+    default: 'false',
+    section: 'Schema',
+    description:
+      'Whether values set for one environment can only arrive here by a change, rather than being set in this copy of the site.',
+  },
+  {
     env: 'CROMBOLO_CONTENT',
     kind: 'enum',
     values: ['editable', 'locked'],
@@ -1063,7 +1079,7 @@ const DECLARED = [
   {
     env: 'CROMBOLO_REMOTE_ENVIRONMENT',
     kind: 'string',
-    default: 'production',
+    default: "the site's environment, CROMBOLO_ENVIRONMENT",
     section: 'Remote',
     description:
       'The name this site goes by for pull and push: lower case letters, digits and dashes.',

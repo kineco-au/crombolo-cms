@@ -79,8 +79,12 @@ export interface ChangeTransferOptions {
   merge: () => WorkspaceMerging | undefined
 }
 
-const fieldOf = (v: { alias: string; culture: string | null; segment: string | null }) =>
-  `${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}`
+const fieldOf = (v: {
+  alias: string
+  culture: string | null
+  segment: string | null
+  environment?: string | null
+}) => `${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}|${v.environment ?? ''}`
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 const MEDIA_URL = /\/media\/[^"'\s?#\\]+/g
 const UUID = /[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/gi
@@ -95,6 +99,7 @@ function stateOf(doc: DocumentAggregate): ChangePageState {
       alias: v.alias,
       culture: v.culture,
       segment: v.segment,
+      ...(v.environment ? { environment: v.environment } : {}),
       value: v.value,
     })),
     ...(Object.keys(names).length > 0 ? { names } : {}),

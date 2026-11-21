@@ -13,6 +13,7 @@
 import {
   type ContentTypeAggregate,
   ContentVariation,
+  ENVIRONMENT_VARIATION,
   normaliseUuid,
   ObjectTypes,
   type PropertyGroupModel,
@@ -23,6 +24,7 @@ import {
   SystemNodes,
   variationFlags,
   variesByCulture,
+  variesByEnvironment,
   variesBySegment,
 } from '@crombolo/core'
 import type { Db } from '../database.ts'
@@ -876,14 +878,19 @@ export class ContentTypeRepository {
           validation_reg_exp: property.regEx ?? null,
           validation_reg_exp_message: property.regExMessage ?? null,
           label_on_top: bool(property.labelOnTop),
-          variations: variationFlags(property.variesByCulture, property.variesBySegment),
+          variations:
+            variationFlags(property.variesByCulture, property.variesBySegment) |
+            (property.variesByEnvironment ? ENVIRONMENT_VARIATION : 0),
           since_version: property.sinceVersion ?? null,
         }
         const found = await tx.q
           .selectFrom('property_type')
-          .select('id')
+          .select(['id', 'variations'])
           .where('unique_id', '=', key)
           .execute()
+        // Only a schema sync says whether it varies by environment; a backoffice save keeps it.
+        if (property.variesByEnvironment === undefined && found[0])
+          columns.variations |= Number(found[0].variations) & ENVIRONMENT_VARIATION
         if (found[0]) {
           const id = Number(found[0].id)
           await tx.q
@@ -891,6 +898,16 @@ export class ContentTypeRepository {
             .set({ ...columns, retired_at: null })
             .where('id', '=', id)
             .execute()
+          // Story 387: turned off, each environment's own value goes; the shared one stays.
+          if (
+            property.variesByEnvironment === false &&
+            (Number(found[0].variations) & ENVIRONMENT_VARIATION) !== 0
+          )
+            await tx.q
+              .deleteFrom('property_value')
+              .where('property_type_id', '=', id)
+              .where('environment', 'is not', null)
+              .execute()
           // Only a schema sync says; a backoffice save leaves it as it was.
           if (property.searchable !== undefined)
             await tx.q
@@ -1473,6 +1490,7 @@ export class ContentTypeRepository {
       sortOrder: Number(row.sort_order),
       variesByCulture: variesByCulture(Number(row.variations)),
       variesBySegment: variesBySegment(Number(row.variations)),
+      ...(variesByEnvironment(Number(row.variations)) ? { variesByEnvironment: true } : {}),
       mandatory: fromDbBool(row.mandatory),
       mandatoryMessage: (row.mandatory_message as string | null) ?? null,
       regEx: (row.validation_reg_exp as string | null) ?? null,

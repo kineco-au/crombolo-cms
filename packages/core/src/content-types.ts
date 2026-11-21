@@ -16,6 +16,8 @@ export interface PropertyTypeModel {
   sortOrder: number
   variesByCulture: boolean
   variesBySegment: boolean
+  /** A value per environment, and a shared one (story 387). */
+  variesByEnvironment?: boolean
   mandatory: boolean
   mandatoryMessage: string | null
   regEx: string | null

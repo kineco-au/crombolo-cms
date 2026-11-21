@@ -103,6 +103,10 @@ export function variationFlags(variesByCulture: boolean, variesBySegment: boolea
 export const variesByCulture = (flags: number): boolean => (flags & 1) !== 0
 export const variesBySegment = (flags: number): boolean => (flags & 2) !== 0
 
+/** A property's own flag (story 387): a value per environment, beside language and segment. */
+export const ENVIRONMENT_VARIATION = 4
+export const variesByEnvironment = (flags: number): boolean => (flags & ENVIRONMENT_VARIATION) !== 0
+
 /**
  * Effective variance is the intersection of the content type's and the property
  * type's: a property varies by culture only if its type does too.

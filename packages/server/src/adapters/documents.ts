@@ -8,6 +8,7 @@ import type {
   SkipTake,
 } from '@crombolo/api-management/domain'
 import {
+  forEnvironment,
   normaliseUuid,
   ObjectTypes,
   type Page,
@@ -574,7 +575,7 @@ export function createPublishedContentSource(
         updateDate: row.updateDate,
         cultures: row.cultures,
         names: row.names,
-        properties: row.values.map((value) => ({
+        properties: forEnvironment(row.values, options.environment).map((value) => ({
           alias: value.alias,
           editorAlias: value.editorAlias ?? '',
           culture: value.culture,
@@ -625,7 +626,7 @@ export function createPublishedContentSource(
           cultures: row.cultures,
           name: row.name,
           names: row.names,
-          properties: row.values.map((value) => ({
+          properties: forEnvironment(row.values, options.environment).map((value) => ({
             alias: value.alias,
             editorAlias: value.editorAlias ?? '',
             culture: value.culture,
@@ -747,7 +748,7 @@ export async function loadDraftNode(
     names: Object.fromEntries(
       draft.variants.flatMap((v) => (v.culture ? [[v.culture, v.name]] : [])),
     ),
-    properties: draft.values.map((value) => ({
+    properties: forEnvironment(draft.values, options.environment).map((value) => ({
       alias: value.alias,
       editorAlias: value.editorAlias ?? '',
       culture: value.culture,

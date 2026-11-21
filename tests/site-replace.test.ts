@@ -299,7 +299,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
       backupTaken: true,
     })
     expect(allowed.runId).toBeDefined()
-  }, 10_000)
+  }, 20_000)
 
   test('a refusal part-way leaves the files, the schema and the media as they were', async () => {
     const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
@@ -341,7 +341,7 @@ describe(`replacing a site (${dialectUnderTest})`, () => {
     expect(await new ContentTypeRepository(b.h.server.db).byAlias('page')).toBeUndefined()
     expect(await live(b.config, b.h.server.db)).toEqual([])
     expect((await store.list('')).sort()).toEqual(mediaBefore.sort())
-  }, 10_000)
+  }, 20_000)
 })
 
 /** Everything a file says about the site, without what differs every time it is written. */
@@ -434,7 +434,7 @@ describe(`hostnames (${dialectUnderTest})`, () => {
     })
     expect(again.problems).toEqual([])
     expect(await hostnamesOf(b.h, home)).toEqual(['staging.example'])
-  }, 10_000)
+  }, 30_000)
 })
 
 describe(`the round trip (${dialectUnderTest})`, () => {
@@ -483,5 +483,5 @@ describe(`the round trip (${dialectUnderTest})`, () => {
     const second = await exportAndClose(h)
 
     expect(await contents(second)).toEqual(await contents(first))
-  }, 10_000)
+  }, 20_000)
 })

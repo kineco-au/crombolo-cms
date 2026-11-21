@@ -36,6 +36,8 @@ const fail = (message: string): Converted => ({ ok: false, message })
 export interface PropertyEditor {
   editor: string
   variesByCulture: boolean
+  /** A value per environment as well as a shared one (story 387). */
+  variesByEnvironment?: boolean
   /** The data type's settings, by alias: a block list's `blocks`, say. */
   config: Record<string, unknown>
 }
@@ -79,6 +81,7 @@ export function schemaLookup(db: Db) {
           out.set(property.alias, {
             editor: dataType.editorAlias,
             variesByCulture: property.variesByCulture,
+            ...(property.variesByEnvironment ? { variesByEnvironment: true } : {}),
             config: Object.fromEntries(dataType.values.map((v) => [v.alias, v.value])),
           })
       }

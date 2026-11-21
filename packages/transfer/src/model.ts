@@ -98,6 +98,8 @@ export interface BundleValue {
   property: string
   culture: string | null
   segment: string | null
+  /** The environment it is for, over the shared value (story 387); absent for the shared one. */
+  environment?: string
   /** The editor that wrote it, so the destination can refuse a property whose editor changed. */
   editor: string
   /** Undefined while the bundle's content is sealed. */

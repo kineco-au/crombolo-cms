@@ -170,7 +170,10 @@ export async function raiseVersionIfChanged(
   )
   if (!first?.hash || first.hash === hashSchemaSet(loaded.set)) return undefined
   const next = nextMinor(version)
-  await writeFile(join(config.schemaDir, 'schema.toml'), writeSchemaVersion(next, loaded.set.urls))
+  await writeFile(
+    join(config.schemaDir, 'schema.toml'),
+    writeSchemaVersion(next, loaded.set.urls, loaded.set.environments),
+  )
   io.say(`  version  ${version} → ${next}: the definitions changed since ${version}`)
   await applySchema(io, config)
   return next

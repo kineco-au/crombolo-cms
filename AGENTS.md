@@ -63,7 +63,7 @@
 - CI runs the browser suite and the Postgres unit suite on `main` only when the last commit's
   message says `--browser-tests` and `--postgres-tests`. A release always runs both, so a
   failure found there costs a version number
-- So a release is cut in two pushes: first `main` alone, with both flags in the last commit's
+- A release is cut in two pushes: first `main` alone, with both flags in the last commit's
   message, and the tag only once that CI run has passed
 - Locally before that, run `check` and the SQLite suite, plus the Postgres suite when the data
   layer changed and the browser tests a change touches; CI runs the rest, across runners

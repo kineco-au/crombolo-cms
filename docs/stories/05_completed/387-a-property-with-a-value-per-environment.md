@@ -68,19 +68,56 @@ left the live value editable only on the live site.
   shown in the editor as belonging to an environment the site no longer has until they
   are removed. Taking it out is listed as a change and loses nothing.
 
+- **Edited from a button by the field** (2026-11-21): a property action beside it,
+  marked when overrides exist, opens a dialog with the shared value, one row per
+  environment, the current one marked, and the warning that none of it is secret. The
+  editor's own layout is untouched.
+
 ## Acceptance criteria
 
-- [ ] **A site reports its environment,** and the ones that exist.
-- [ ] **A property varying by environment** serves each environment's own value, and the
+- [x] **A site reports its environment,** and the ones that exist.
+- [x] **A property varying by environment** serves each environment's own value, and the
       shared value where there is none.
-- [ ] **Production's value set on another environment** is what Production serves once
+- [x] **Production's value set on another environment** is what Production serves once
       the change is applied there.
-- [ ] **A change and a diff** show each environment's value.
-- [ ] **The editor** shows the shared value and each override, with the current
+- [x] **A change and a diff** show each environment's value.
+- [x] **The editor** shows the shared value and each override, with the current
       environment's marked, and warns that the values are not secret.
-- [ ] **Read-only on an environment,** the values there are refused in the editor and
+- [x] **Read-only on an environment,** the values there are refused in the editor and
       the API, and still arrive by a change.
-- [ ] **The command line and content files** set a value for an environment.
-- [ ] **Turning it off** lists the overrides dropped, and needs them accepted.
-- [ ] **An environment taken out of the list** keeps its overrides, shown as unused.
-- [ ] **Tests** on both dialects; `docs/` describes it beside language and segment.
+- [x] **The command line and content files** set a value for an environment.
+- [x] **Turning it off** lists the overrides dropped, and needs them accepted.
+- [x] **An environment taken out of the list** keeps its overrides, shown as unused.
+- [x] **Tests** on both dialects; `docs/` describes it beside language and segment.
+
+## Built (2026-11-21)
+
+- **The name and the list:** `CROMBOLO_ENVIRONMENT` (`environment`, `local` in development,
+  `production` otherwise; `remote.environment` defaults to it) and `[environments] names`
+  in `schema.toml` (`SchemaSet.environments`, kept in `key_value` `crombolo:environments`
+  by the sync, `readEnvironments`).
+- **The flag:** `varies-by-environment` on a property, bit 4 of `variations`
+  (`ENVIRONMENT_VARIATION`); a back office type save keeps it, a sync sets it, and off
+  drops the environment rows. `property-environments-dropped` is a breaking change kind.
+- **The column:** migration 089, `property_value.environment`; the document store keys
+  values by property, language, segment and environment, and a save keeps a property's
+  environment values unless it sends some for that property.
+- **Reading:** `forEnvironment` in `@crombolo/core` picks the current environment's values
+  in the published source, drafts, previews and workspace sites; the Management API gives
+  the editor only shared values.
+- **Editing:** `<plugin>/api/environment-values` (`environment-values-api.ts`) reports the
+  environments and reads and sets a page's values per environment, saved through the
+  document operations; `CROMBOLO_ENVIRONMENT_VALUES_READONLY` or locked content refuses it.
+  The plugin's `environment-values.js` adds "Values per environment" to the actions of a
+  property that varies by environment (`Crombolo.Condition.VariesByEnvironment`).
+- **Travelling:** change bundles and content bundles carry each value's `environment`;
+  `--set`/`--unset <property>@<environment>` and `"<property>@<environment>"` in a content
+  file set one.
+- **Tests:** `tests/environment-values.test.ts`, `tests/environment-values-cli.test.ts`.
+
+## Left for later
+
+- **Media and Library items** keep their environment values but are edited only through
+  the API, not the dialog, which is on pages.
+- **A mandatory property** is checked against its shared value only.
+

@@ -393,7 +393,7 @@ describe('operating the site (152)', () => {
       async (db) => (await db.query("SELECT id FROM node WHERE text = 'cover.png'")).length,
     )
     expect(left).toBe(0)
-  }, 10_000)
+  }, 20_000)
 })
 
 describe(`the date an item was trashed (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {

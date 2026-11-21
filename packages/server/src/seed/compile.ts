@@ -411,8 +411,19 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
       culture: string | null,
       path: string[],
     ) => {
-      for (const [alias, raw] of Object.entries(table)) {
+      for (const [named, raw] of Object.entries(table)) {
+        // Story 387: `title@production` is the value for one environment.
+        const [alias, environment] = named.split('@') as [string, string | undefined]
         const property = editors.get(alias)
+        if (property && environment !== undefined && !property.variesByEnvironment) {
+          find(
+            item,
+            [...path, named],
+            'not-by-environment',
+            `"${alias}" is the same in every environment, so it takes no @${environment}`,
+          )
+          continue
+        }
         if (!property) {
           const iso =
             culture === null && isRecord(raw) ? languages.get(alias.toLowerCase()) : undefined
@@ -443,6 +454,7 @@ export async function compileSeed(db: Db, config: CromboloConfig): Promise<SeedB
           property: alias,
           culture,
           segment: null,
+          ...(environment ? { environment } : {}),
           editor: property.editor,
           value: converted.value,
           ...(references.length > 0 ? { references } : {}),

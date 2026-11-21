@@ -38,6 +38,8 @@ export interface WorkspaceProcessOptions {
   sqliteFile: string
   nodeState: NodeSchemaState
   nodeId: string
+  /** The environment whose own values its pages show (story 387). */
+  environment?: string
   componentsCacheDir: string
   /** How many run at once on this node. */
   limit: number
@@ -113,6 +115,7 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
       workspace: { id: workspace.id, key: workspace.key },
       nodeState: options.nodeState,
       nodeId: options.nodeId,
+      ...(options.environment ? { environment: options.environment } : {}),
       componentsCacheDir: options.componentsCacheDir,
       renderTimeoutMs: options.renderMs,
     }

@@ -9,6 +9,8 @@ export interface DocumentValue {
   alias: string
   culture: string | null
   segment: string | null
+  /** The environment this value is for, over the shared value; absent for the shared one (story 387). */
+  environment?: string | null
   value: unknown
   /** Present on responses so the editor knows which editor rendered the value. */
   editorAlias?: string
@@ -142,4 +144,31 @@ export function mediaFileOf(media: Pick<DocumentAggregate, 'values'>): string | 
   if (typeof value === 'string') return value || null
   const src = (value as { src?: unknown } | null | undefined)?.src
   return typeof src === 'string' && src ? src : null
+}
+
+/**
+ * The values an environment shows (story 387): each shared value, unless this
+ * environment has its own for the same property, language and segment; the other
+ * environments' values left out. Pure.
+ */
+export function forEnvironment<
+  V extends {
+    alias: string
+    culture: string | null
+    segment: string | null
+    environment?: string | null
+  },
+>(values: readonly V[], environment: string | undefined): V[] {
+  const slot = (v: V) => `${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}`
+  const own = new Map<string, V>()
+  for (const v of values) if (v.environment && v.environment === environment) own.set(slot(v), v)
+  const out: V[] = []
+  for (const v of values) {
+    if (v.environment) {
+      if (v.environment === environment) out.push(v)
+      continue
+    }
+    if (!own.has(slot(v))) out.push(v)
+  }
+  return out
 }

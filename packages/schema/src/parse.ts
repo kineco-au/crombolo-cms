@@ -44,6 +44,7 @@ const PROPERTY_KEYS = [
   'regex-message',
   'varies-by-culture',
   'varies-by-segment',
+  'varies-by-environment',
   'label-on-top',
   'default',
   'since',
@@ -202,6 +203,7 @@ function property(r: Reader, t: Toml, path: string): SchemaProperty {
     regexMessage: r.str(t, 'regex-message', path),
     variesByCulture: r.bool(t, 'varies-by-culture', path, false),
     variesBySegment: r.bool(t, 'varies-by-segment', path, false),
+    ...(r.bool(t, 'varies-by-environment', path, false) ? { variesByEnvironment: true } : {}),
     labelOnTop: r.bool(t, 'label-on-top', path, false),
     ...(t['member-can-view'] !== undefined
       ? { memberCanView: r.bool(t, 'member-can-view', path, false) }
@@ -409,6 +411,9 @@ export function parseLanguages(file: string, source: string): ParseResult<Schema
   return { value: r.problems.length === 0 ? value : undefined, problems: r.problems }
 }
 
+/** An environment's name: `production`, `staging`, `local`. */
+export const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]{0,63}$/
+
 export function parseSchemaVersion(file: string, source: string): ParseResult<string> {
   const parsed = parseSchemaSettings(file, source)
   return { value: parsed.value?.version, problems: parsed.problems }
@@ -418,11 +423,11 @@ export function parseSchemaVersion(file: string, source: string): ParseResult<st
 export function parseSchemaSettings(
   file: string,
   source: string,
-): ParseResult<{ version: string; urls?: SchemaUrls }> {
+): ParseResult<{ version: string; urls?: SchemaUrls; environments?: string[] }> {
   const r = new Reader(file)
   const root = toml(source, r)
   if (!root) return { value: undefined, problems: r.problems }
-  r.unknown(root, ['schema', 'urls'], '')
+  r.unknown(root, ['schema', 'urls', 'environments'], '')
   const t = r.table(root.schema, 'schema')
   const version = t ? r.str(t, 'version', 'schema', true) : undefined
   if (t) r.unknown(t, ['version'], 'schema')
@@ -434,10 +439,29 @@ export function parseSchemaSettings(
       urls = { hideTopLevel: r.bool(u, 'hide-top-level', 'urls', true) }
     }
   }
+  let environments: string[] | undefined
+  if (root.environments !== undefined) {
+    const e = r.table(root.environments, 'environments')
+    if (e) {
+      r.unknown(e, ['names'], 'environments')
+      environments = r.strs(e, 'names', 'environments')
+      for (const name of environments)
+        if (!ENVIRONMENT_NAME.test(name))
+          r.problems.push({
+            file,
+            path: 'environments.names',
+            message: `"${name}" is not an environment's name: lower-case letters, digits and hyphens.`,
+          })
+    }
+  }
   return {
     value:
       r.problems.length === 0 && version !== undefined
-        ? { version, ...(urls ? { urls } : {}) }
+        ? {
+            version,
+            ...(urls ? { urls } : {}),
+            ...(environments && environments.length > 0 ? { environments } : {}),
+          }
         : undefined,
     problems: r.problems,
   }

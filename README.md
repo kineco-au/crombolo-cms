@@ -328,6 +328,7 @@ Design documents, in reading order; planned work is in the stories:
 | [schema-as-code](docs/schema-as-code.md) | the TOML format, sync, retirement, coherence across nodes |
 | [workspaces](docs/workspaces.md) | work apart from Shared: pages, types, components, stylesheets and scripts in a workspace, how it is stored, merged and brought up to Shared |
 | [changes](docs/changes.md) | every change recorded: merges, direct edits and reverts, each file's versions, and putting one back |
+| [environments](docs/environments.md) | a property's value per environment: which copy a site is, the schema's list, editing, and moving them |
 | [packaging-and-upgrades](docs/packaging-and-upgrades.md) | environments, the upgrade process, releasing to npm; what each release changed, and what to do on upgrading, in [release-notes](docs/release-notes.md) |
 | [schema-at-runtime](docs/schema-at-runtime.md) | the shared schema store, and importing at runtime |
 | [content-transfer](docs/content-transfer.md) | the bundle format, and moving content between environments; imports compare three ways against what was last applied |

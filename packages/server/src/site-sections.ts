@@ -82,7 +82,7 @@ function schemaEntries(set: SchemaSet, from: SectionPicks): BundleFile[] {
   )
     return entries
 
-  put('schema.toml', writeSchemaVersion(set.version))
+  put('schema.toml', writeSchemaVersion(set.version, undefined, set.environments))
   for (const type of contentTypes)
     put(join('content-types', fileNameFor(type.alias)), writeContentType(type))
   for (const type of mediaTypes)

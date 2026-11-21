@@ -127,8 +127,10 @@ function inTreeOrder(nodes: readonly BundleNode[]): BundleNode[] {
 
 /** The bundle's values laid over what is here, keyed as the database keys them. */
 function overlay(current: readonly DocumentValue[], node: BundleNode): DocumentValue[] {
-  const at = (v: { culture: string | null; segment: string | null }, alias: string) =>
-    `${alias}|${v.culture ?? ''}|${v.segment ?? ''}`
+  const at = (
+    v: { culture: string | null; segment: string | null; environment?: string | null },
+    alias: string,
+  ) => `${alias}|${v.culture ?? ''}|${v.segment ?? ''}|${v.environment ?? ''}`
   const merged = new Map<string, DocumentValue>()
   for (const value of current) merged.set(at(value, value.alias), value)
   for (const value of node.values)
@@ -136,6 +138,7 @@ function overlay(current: readonly DocumentValue[], node: BundleNode): DocumentV
       alias: value.property,
       culture: value.culture,
       segment: value.segment,
+      ...(value.environment ? { environment: value.environment } : {}),
       value: value.value,
     })
   return [...merged.values()]

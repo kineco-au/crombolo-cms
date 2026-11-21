@@ -142,6 +142,24 @@ function typeItems(
       )
     if (!old.variesByCulture && p.variesByCulture)
       out.push(item('property-made-varying', subject, `"${p.name}" varies by language.`, at))
+    if (old.variesByEnvironment && !p.variesByEnvironment)
+      out.push(
+        item(
+          'property-environments-dropped',
+          subject,
+          `"${p.name}" no longer varies by environment; its shared value is kept and each environment's own value is dropped.`,
+          at,
+        ),
+      )
+    if (!old.variesByEnvironment && p.variesByEnvironment)
+      out.push(
+        item(
+          'property-varies-by-environment',
+          subject,
+          `"${p.name}" varies by environment, its values kept as the shared value.`,
+          at,
+        ),
+      )
     if (old.name !== p.name || (old.description ?? '') !== (p.description ?? ''))
       out.push(item('property-described', subject, `"${p.name}" is described differently.`, at))
   }

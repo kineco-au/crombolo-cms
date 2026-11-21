@@ -77,7 +77,7 @@ export interface SchemaDifference {
 const settingsOf = (text: string | undefined): string | undefined => {
   if (text === undefined) return undefined
   const parsed = parseSchemaSettings('schema.toml', text).value
-  return parsed ? writeSchemaVersion('0', parsed.urls) : text
+  return parsed ? writeSchemaVersion('0', parsed.urls, parsed.environments) : text
 }
 
 /** The version a schema's `schema.toml` names; `1.0.0` without one. */
@@ -311,8 +311,8 @@ async function bringVersion(
   const current = versionIn(mine)
   if (!laterVersion(version, current)) return false
   const text = mine.get('schema.toml')
-  const urls = text ? parseSchemaSettings('schema.toml', text).value?.urls : undefined
-  writeFileSync(file, writeSchemaVersion(version, urls))
+  const settings = text ? parseSchemaSettings('schema.toml', text).value : undefined
+  writeFileSync(file, writeSchemaVersion(version, settings?.urls, settings?.environments))
   io.say(`  version  ${current} → ${version}: the site's, so the files are never older`)
   return true
 }

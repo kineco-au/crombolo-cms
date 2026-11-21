@@ -20,6 +20,8 @@ export interface SchemaProperty {
   regexMessage?: string
   variesByCulture: boolean
   variesBySegment: boolean
+  /** A value per environment, beside a shared one (story 387). */
+  variesByEnvironment?: boolean
   labelOnTop: boolean
   /** Member types only: shown to the member on their profile. */
   memberCanView?: boolean
@@ -166,6 +168,8 @@ export interface SchemaSet {
   forms?: SchemaForm[]
   /** `[urls]` in schema/schema.toml; Umbraco's defaults when absent. */
   urls?: SchemaUrls
+  /** `[environments] names` in `schema.toml`: the copies of the site a value may vary for (story 387). */
+  environments?: string[]
   /** `schema/workflows/*.toml` — approval workflows; see `docs/workflows.md`. */
   workflows?: SchemaWorkflow[]
   /** `schema/user-groups/*.toml` — the user groups the site declares (story 228). */

@@ -81,6 +81,8 @@ export interface CurrentValue {
   alias: string
   culture: string | null
   segment: string | null
+  /** The environment it overrides the shared value for (story 387). */
+  environment?: string | null
   value: unknown
 }
 
@@ -88,6 +90,7 @@ export interface MigratedValue {
   alias: string
   culture: string | null
   segment: string | null
+  environment?: string | null
   value: unknown
   /** The event to file the value under; defaults to the row it supersedes. */
   eventId?: number
@@ -108,6 +111,8 @@ interface ValueRow {
   propertyTypeId: number
   languageId: number | null
   segment: string | null
+  /** The environment it overrides the shared value for, or null for the shared value (story 387). */
+  environment: string | null
   raw: unknown
 }
 
@@ -209,6 +214,8 @@ export type ValueIntake = (
 ) => Promise<DocumentValue[]>
 
 export interface DocumentRepositoryOptions {
+  /** The environment whose own values rendering shows (story 387); the repository keeps every one. */
+  environment?: string
   /** The schema state this process runs at; writes are refused if the database is ahead. */
   nodeState?: NodeSchemaState
   /** Stamped on the cache instructions this repository appends. */
@@ -258,7 +265,12 @@ export interface MergeField {
   mine: unknown
   theirs: unknown
   /** Which value it is, when the field is a value. */
-  value?: { alias: string; culture: string | null; segment: string | null }
+  value?: {
+    alias: string
+    culture: string | null
+    segment: string | null
+    environment?: string | null
+  }
 }
 
 /** A page a workspace changed or made, as its merge reads it. */
@@ -361,8 +373,12 @@ function validateValues(
   return errors
 }
 
-const keyOf = (propertyTypeId: number, languageId: number | null, segment: string | null) =>
-  `${propertyTypeId}|${languageId ?? ''}|${segment ?? ''}`
+const keyOf = (
+  propertyTypeId: number,
+  languageId: number | null,
+  segment: string | null,
+  environment: string | null = null,
+) => `${propertyTypeId}|${languageId ?? ''}|${segment ?? ''}|${environment ?? ''}`
 
 /**
  * The value rows a published node shows, from its history in id order:
@@ -375,6 +391,7 @@ export function publishedValueRows<
     propertyTypeId: number
     languageId: number | null
     segment: string | null
+    environment?: string | null
   },
 >(
   history: readonly R[],
@@ -386,7 +403,7 @@ export function publishedValueRows<
   for (const row of history) {
     const limit = row.languageId === null ? invariantEventId : cutoff.get(row.languageId)
     if (limit === undefined || row.eventId > limit) continue
-    chosen.set(keyOf(row.propertyTypeId, row.languageId, row.segment), row)
+    chosen.set(keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment ?? null), row)
   }
   return [...chosen.values()]
 }
@@ -717,6 +734,7 @@ export class DocumentRepository {
         'property_type_id',
         'language_id',
         'segment',
+        'environment',
         'int_value',
         'decimal_value',
         'date_value',
@@ -740,7 +758,7 @@ export class DocumentRepository {
     for (const row of rows) {
       const value = this.#toValueRow(row)
       if (upTo !== undefined && row.workspace_id !== null && value.eventId > upTo) continue
-      const key = keyOf(value.propertyTypeId, value.languageId, value.segment)
+      const key = keyOf(value.propertyTypeId, value.languageId, value.segment, value.environment)
       ;(row.workspace_id === null ? shared : mine).set(key, value)
     }
     return [...new Map([...shared, ...mine]).values()]
@@ -1058,16 +1076,27 @@ export class DocumentRepository {
     const propertyTypes = await this.#propertyTypes(contentTypeNodeId)
     const languages = await this.#languages()
     const isoById = new Map(languages.map((l) => [l.id, l.isoCode]))
-    type Held = { value: unknown; alias: string; culture: string | null; segment: string | null }
+    type Held = {
+      value: unknown
+      alias: string
+      culture: string | null
+      segment: string | null
+      environment?: string | null
+    }
     const asValues = (rows: readonly ValueRow[]) => {
       const map = new Map<string, Held>()
+      // A field's id names its environment only when it has one: shared ids are as before.
       for (const v of this.#valuesFromRows(rows, propertyTypes, languages))
-        map.set(`${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}`, {
-          value: v.value,
-          alias: v.alias,
-          culture: v.culture,
-          segment: v.segment,
-        })
+        map.set(
+          `${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}${v.environment ? `|${v.environment}` : ''}`,
+          {
+            value: v.value,
+            alias: v.alias,
+            culture: v.culture,
+            segment: v.segment,
+            ...(v.environment ? { environment: v.environment } : {}),
+          },
+        )
       return map
     }
     const base =
@@ -1087,7 +1116,14 @@ export class DocumentRepository {
         mine: mine.get(field)?.value ?? null,
         theirs: wd.created ? undefined : (theirs.get(field)?.value ?? null),
         ...(known
-          ? { value: { alias: known.alias, culture: known.culture, segment: known.segment } }
+          ? {
+              value: {
+                alias: known.alias,
+                culture: known.culture,
+                segment: known.segment,
+                ...(known.environment ? { environment: known.environment } : {}),
+              },
+            }
           : {}),
       })
     }
@@ -1277,6 +1313,11 @@ export class DocumentRepository {
             .where('property_type_id', '=', type.id)
             .where('language_id', languageId === null ? 'is' : '=', languageId)
             .where('segment', value.segment === null ? 'is' : '=', value.segment)
+            .where(
+              'environment',
+              value.environment ? '=' : 'is',
+              (value.environment ?? null) as string,
+            )
             .execute()
         }
         // A language's name taken from Shared is the workspace's for that language now.
@@ -1801,6 +1842,7 @@ export class DocumentRepository {
             'property_type_id',
             'language_id',
             'segment',
+            'environment',
             'int_value',
             'decimal_value',
             'date_value',
@@ -1819,7 +1861,7 @@ export class DocumentRepository {
         for (const [id, history] of await this.#valueHistoryFor(slice, stateId)) {
           const latest = new Map<string, ValueRow>()
           for (const row of history)
-            latest.set(keyOf(row.propertyTypeId, row.languageId, row.segment), row)
+            latest.set(keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment), row)
           rowsById.set(id, [...latest.values()])
         }
       }
@@ -2072,6 +2114,7 @@ export class DocumentRepository {
         'pv.schema_state_id',
         'pv.language_id',
         'pv.segment',
+        'pv.environment',
         'pv.int_value',
         'pv.decimal_value',
         'pv.date_value',
@@ -2098,6 +2141,7 @@ export class DocumentRepository {
         alias: String(row.alias),
         culture: row.language_id === null ? null : (isoById.get(Number(row.language_id)) ?? null),
         segment: (row.segment as string | null) ?? null,
+        environment: (row.environment as string | null) ?? null,
         value,
       })
     }
@@ -2135,7 +2179,7 @@ export class DocumentRepository {
       const idByIso = new Map(languages.map((l) => [l.isoCode.toLowerCase(), l.id]))
       const current = new Map(
         (await repo.#currentValueRows(node.id)).map((row) => [
-          keyOf(row.propertyTypeId, row.languageId, row.segment),
+          keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment),
           row,
         ]),
       )
@@ -2159,7 +2203,9 @@ export class DocumentRepository {
         if (!propertyType) continue
         const culture = propertyType.variesByCulture ? value.culture : null
         const languageId = culture ? (idByIso.get(culture.toLowerCase()) ?? null) : null
-        const existing = current.get(keyOf(propertyType.id, languageId, value.segment ?? null))
+        const existing = current.get(
+          keyOf(propertyType.id, languageId, value.segment ?? null, value.environment ?? null),
+        )
         const eventId = value.eventId ?? existing?.eventId ?? fallbackEvent
         await repo.#insertValue(
           node.id,
@@ -2168,6 +2214,7 @@ export class DocumentRepository {
           value.storage ? { ...propertyType, storage: value.storage } : propertyType,
           languageId,
           value.segment ?? null,
+          value.environment ?? null,
           value.value,
           existing?.id,
         )
@@ -3255,7 +3302,7 @@ export class DocumentRepository {
 
     const rows = await this.#db.q
       .selectFrom('property_value')
-      .select(['id', 'property_type_id', 'language_id', 'segment', 'event_id'])
+      .select(['id', 'property_type_id', 'language_id', 'segment', 'environment', 'event_id'])
       .where('node_id', '=', nodeId)
       .where('workspace_id', 'is', null)
       .orderBy('event_id')
@@ -3268,6 +3315,7 @@ export class DocumentRepository {
         Number(row.property_type_id),
         row.language_id === null ? null : Number(row.language_id),
         row.segment,
+        row.environment,
       )
       const list = eventsByKey.get(key) ?? []
       if (list.at(-1) !== Number(row.event_id)) list.push(Number(row.event_id))
@@ -3280,6 +3328,7 @@ export class DocumentRepository {
         Number(row.property_type_id),
         row.language_id === null ? null : Number(row.language_id),
         row.segment,
+        row.environment,
       )
       const written = eventsByKey.get(key) as number[]
       const next = written[written.indexOf(eventId) + 1] ?? Number.POSITIVE_INFINITY
@@ -3613,6 +3662,7 @@ export class DocumentRepository {
         'property_type_id',
         'language_id',
         'segment',
+        'environment',
         'int_value',
         'decimal_value',
         'date_value',
@@ -3637,14 +3687,20 @@ export class DocumentRepository {
         (eb) =>
           eb
             .selectFrom('property_value')
-            .select((e) => ['property_type_id', 'language_id', 'segment', e.fn.max('id').as('id')])
+            .select((e) => [
+              'property_type_id',
+              'language_id',
+              'segment',
+              'environment',
+              e.fn.max('id').as('id'),
+            ])
             .where('node_id', '=', nodeId)
             .where('workspace_id', 'is', null)
             .$if(eventId !== undefined, (q) => q.where('event_id', '<=', eventId as number))
             .$if(schemaStateId !== undefined, (q) =>
               q.where('schema_state_id', '<=', schemaStateId as number),
             )
-            .groupBy(['property_type_id', 'language_id', 'segment'])
+            .groupBy(['property_type_id', 'language_id', 'segment', 'environment'])
             .as('latest'),
         (join) => join.onRef('latest.id', '=', 'pv.id'),
       )
@@ -3654,6 +3710,7 @@ export class DocumentRepository {
         'pv.property_type_id',
         'pv.language_id',
         'pv.segment',
+        'pv.environment',
         'pv.int_value',
         'pv.decimal_value',
         'pv.date_value',
@@ -3671,6 +3728,7 @@ export class DocumentRepository {
       languageId:
         row.language_id === null || row.language_id === undefined ? null : Number(row.language_id),
       segment: (row.segment as string | null) ?? null,
+      environment: (row.environment as string | null) ?? null,
       eventId: Number(row.event_id),
       raw: row,
     }
@@ -3708,6 +3766,7 @@ export class DocumentRepository {
         alias: propertyType.alias,
         culture: row.languageId === null ? null : (isoById.get(row.languageId) ?? null),
         segment: row.segment,
+        ...(row.environment ? { environment: row.environment } : {}),
         value: toEditorValue(propertyType.editorAlias, value),
         editorAlias: propertyType.editorAlias,
         config: propertyType.config,
@@ -3778,7 +3837,7 @@ export class DocumentRepository {
     // row superseded is the true current one.
     const current = new Map(
       (await this.#visibleValueRows(nodeId)).map((row) => [
-        keyOf(row.propertyTypeId, row.languageId, row.segment),
+        keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment),
         row,
       ]),
     )
@@ -3786,7 +3845,10 @@ export class DocumentRepository {
       (this.#workspace !== undefined
         ? [...current.values()]
         : await this.#currentValueRows(nodeId)
-      ).map((row) => [keyOf(row.propertyTypeId, row.languageId, row.segment), row]),
+      ).map((row) => [
+        keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment),
+        row,
+      ]),
     )
 
     const seen = new Set<string>()
@@ -3795,7 +3857,12 @@ export class DocumentRepository {
       if (!propertyType) continue
       const culture = propertyType.variesByCulture ? value.culture : null
       const languageId = culture ? (idByIso.get(culture.toLowerCase()) ?? null) : null
-      const key = keyOf(propertyType.id, languageId, value.segment ?? null)
+      const key = keyOf(
+        propertyType.id,
+        languageId,
+        value.segment ?? null,
+        value.environment ?? null,
+      )
       if (seen.has(key)) continue
       seen.add(key)
       const existing = current.get(key)
@@ -3811,15 +3878,20 @@ export class DocumentRepository {
         propertyType,
         languageId,
         value.segment ?? null,
+        value.environment ?? null,
         value.value,
         trueCurrent.get(key)?.id ?? existing?.id,
       )
     }
-    // A value that was current but is no longer sent is cleared, as a version.
+    // A value that was current but is no longer sent is cleared, as a version. A
+    // property's environment values stay unless the save sends some for it: the
+    // editor sends only the shared value (story 387).
+    const sendsEnvironment = new Set(values.filter((v) => v.environment).map((v) => v.alias))
     for (const [key, row] of current) {
       if (seen.has(key)) continue
       const propertyType = byId.get(row.propertyTypeId)
       if (!propertyType) continue
+      if (row.environment && !sendsEnvironment.has(propertyType.alias)) continue
       const raw = (row.raw as Record<string, unknown>)[STORAGE_COLUMN[propertyType.storage]]
       if (raw === null || raw === undefined) continue
       await this.#insertValue(
@@ -3829,6 +3901,7 @@ export class DocumentRepository {
         propertyType,
         row.languageId,
         row.segment,
+        row.environment,
         null,
         trueCurrent.get(key)?.id ?? row.id,
       )
@@ -3871,13 +3944,16 @@ export class DocumentRepository {
         })
     }
     const currentByKey = new Map(
-      current.map((row) => [keyOf(row.propertyTypeId, row.languageId, row.segment), row]),
+      current.map((row) => [
+        keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment),
+        row,
+      ]),
     )
     const seen = new Set<string>()
     for (const row of target) {
       const propertyType = types.get(row.propertyTypeId)
       if (!propertyType) continue
-      const key = keyOf(row.propertyTypeId, row.languageId, row.segment)
+      const key = keyOf(row.propertyTypeId, row.languageId, row.segment, row.environment)
       seen.add(key)
       const column = STORAGE_COLUMN[propertyType.storage]
       const wanted = this.#fromStorage(
@@ -3901,6 +3977,7 @@ export class DocumentRepository {
         propertyType,
         row.languageId,
         row.segment,
+        row.environment,
         wanted,
         existing?.id,
       )
@@ -3916,6 +3993,7 @@ export class DocumentRepository {
         propertyType,
         row.languageId,
         row.segment,
+        row.environment,
         null,
         row.id,
       )
@@ -3929,6 +4007,7 @@ export class DocumentRepository {
     propertyType: PropertyTypeRow,
     languageId: number | null,
     segment: string | null,
+    environment: string | null,
     value: unknown,
     supersedes: number | undefined,
   ): Promise<void> {
@@ -3949,6 +4028,7 @@ export class DocumentRepository {
         property_type_id: propertyType.id,
         language_id: languageId,
         segment,
+        environment,
         event_id: eventId,
         schema_state_id: schemaStateId,
         is_current: this.#db.dialect.boolValue(!inWorkspace) as boolean,
@@ -4683,6 +4763,7 @@ export class DocumentRepository {
         'property_type_id',
         'language_id',
         'segment',
+        'environment',
         'int_value',
         'decimal_value',
         'date_value',
@@ -4760,6 +4841,7 @@ export class DocumentRepository {
           'property_type_id',
           'language_id',
           'segment',
+          'environment',
           'int_value',
           'decimal_value',
           'date_value',

@@ -418,7 +418,10 @@ export function createWorkspaceSchema(
         }
         const version = loaded(files).set.version
         const next = nextSchemaVersion(version, plan.change === 'none' ? 'additive' : plan.change)
-        files.set('schema.toml', writeSchemaVersion(next, loaded(files).set.urls))
+        files.set(
+          'schema.toml',
+          writeSchemaVersion(next, loaded(files).set.urls, loaded(files).set.environments),
+        )
         const report = await syncSchema(
           tx,
           loaded(files),

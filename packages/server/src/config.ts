@@ -162,6 +162,18 @@ function cliAccessSetting(): CliAccess | undefined {
   return value
 }
 
+/** `CROMBOLO_ENVIRONMENT`, or `local` in development and `production` otherwise (story 387). */
+function environmentName(): string {
+  const value =
+    setting('CROMBOLO_ENVIRONMENT')?.trim().toLowerCase() ||
+    (setting('NODE_ENV') === 'production' ? 'production' : 'local')
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(value))
+    throw new Error(
+      `CROMBOLO_ENVIRONMENT is "${value}": an environment's name is lower-case letters, digits and hyphens.`,
+    )
+  return value
+}
+
 /** Whether pages, media, types and code arrive only by a change (story 388). */
 export type ContentSetting = 'editable' | 'locked'
 
@@ -268,6 +280,17 @@ export interface CromboloConfig {
    */
   signalRSkipNegotiation: boolean
   development: boolean
+  /**
+   * Which copy of the site this is (story 387): the environment whose own value a
+   * property varying by environment serves. `CROMBOLO_ENVIRONMENT`; `local` in
+   * development, `production` otherwise. The remote environment defaults to it.
+   */
+  environment: string
+  /**
+   * This environment's own values arrive only by a change (story 387): the editor and
+   * the API refuse to set them here. `CROMBOLO_ENVIRONMENT_VALUES_READONLY`, off.
+   */
+  environmentValuesReadOnly: boolean
   /**
    * Open pages reload when the views, the schema or the content change, and
    * show the background type check's findings (story 214). On in development,
@@ -1015,6 +1038,8 @@ export function loadConfig(
     umbracoCssPath: DEFAULTS.umbracoCssPath,
     signalRSkipNegotiation: DEFAULTS.signalRSkipNegotiation,
     development: setting('NODE_ENV') !== 'production',
+    environment: environmentName(),
+    environmentValuesReadOnly: envFlag(setting('CROMBOLO_ENVIRONMENT_VALUES_READONLY')) === true,
     sqliteFile: setting('CROMBOLO_SQLITE_FILE') ?? DEFAULTS.sqliteFile,
     adminLogin: setting('CROMBOLO_ADMIN_LOGIN') ?? DEFAULTS.adminLogin,
     adminPassword: setting('CROMBOLO_ADMIN_PASSWORD'),
@@ -1161,7 +1186,7 @@ export function loadConfig(
     remote: {
       enabled: remoteAccessSetting() !== 'off',
       access: remoteAccessSetting(),
-      environment: setting('CROMBOLO_REMOTE_ENVIRONMENT') || 'production',
+      environment: setting('CROMBOLO_REMOTE_ENVIRONMENT') || environmentName(),
       protected: setting('CROMBOLO_REMOTE_PROTECTED') !== 'false',
       approvals: setting('CROMBOLO_REMOTE_APPROVALS') === 'true',
       maxUploadBytes: Number(setting('CROMBOLO_REMOTE_MAX_UPLOAD_GB') ?? 50) * 1024 ** 3,

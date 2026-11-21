@@ -22,6 +22,9 @@ export const CHANGE_CLASSES = {
   'property-editor-changed': 'breaking',
   'property-made-invariant': 'breaking',
   'property-made-varying': 'additive',
+  // Story 387: off drops each environment's own value, keeping the shared one.
+  'property-environments-dropped': 'breaking',
+  'property-varies-by-environment': 'additive',
   'property-retired': 'additive',
   'property-purged': 'breaking',
   'data-type-added': 'additive',

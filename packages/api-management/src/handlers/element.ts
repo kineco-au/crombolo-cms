@@ -42,13 +42,15 @@ export function toElementResponse(element: DocumentAggregate) {
       element.contentTypeIcon,
       element.contentTypeCollectionKey,
     ),
-    values: element.values.map((v) => ({
-      alias: v.alias,
-      culture: v.culture,
-      segment: v.segment,
-      value: v.value,
-      editorAlias: v.editorAlias ?? '',
-    })),
+    values: element.values
+      .filter((v) => !v.environment)
+      .map((v) => ({
+        alias: v.alias,
+        culture: v.culture,
+        segment: v.segment,
+        value: v.value,
+        editorAlias: v.editorAlias ?? '',
+      })),
     variants: element.variants.map((v) => ({
       id: element.key,
       culture: v.culture,

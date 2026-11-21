@@ -138,6 +138,8 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SCHEMA_CACHE_DIR` | string | `<temp>/crombolo-schema` | Where a schema kept in cloud storage is copied to when the server starts. |
 | `CROMBOLO_SCHEMA_WRITABLE` | `true` / `false` | true unless production or with a schema store | Whether the back office may change the schema files. |
 | `CROMBOLO_CODE` | `editable`, `locked` | `editable` | Locked, the back office cannot change templates, stylesheets and scripts, for a site whose files come from its repository. |
+| `CROMBOLO_ENVIRONMENT` | string | local in development, otherwise production | Which copy of the site this is. A property that varies by environment shows this environment’s own value where it has one, and the shared value otherwise. |
+| `CROMBOLO_ENVIRONMENT_VALUES_READONLY` | `true` / `false` | `false` | Whether values set for one environment can only arrive here by a change, rather than being set in this copy of the site. |
 | `CROMBOLO_CONTENT` | `editable`, `locked` | `editable` | Locked, pages, media, the Library, types, data types and code cannot be changed here: they arrive only by a change applied from the site where they are made. Members, form entries and what visitors send are written as before. |
 | `CROMBOLO_CONTENT_EDITED_AT` | string | `` | Where a locked site's content is edited: the address of the other site's back office, which an item opened here links to. |
 | `CROMBOLO_WORKSPACES` | `true` / `false` | `false` | Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. Off, every workspace route is refused, and nothing else changes. |
@@ -249,7 +251,7 @@ rather than the running server. Secret ones are never printed or logged.
 | Setting | Takes | Default | Description |
 | --- | --- | --- | --- |
 | `CROMBOLO_REMOTE_ACCESS` | string | `off` | What `crombolo` may do to this site from elsewhere: `off`, `read` (pull), `content` (apply bundles of content) or `all` (whole-site pushes, and bundles that change content types, views or code). Who may do it is still up to their permissions. |
-| `CROMBOLO_REMOTE_ENVIRONMENT` | string | `production` | The name this site goes by for pull and push: lower case letters, digits and dashes. |
+| `CROMBOLO_REMOTE_ENVIRONMENT` | string | the site's environment, CROMBOLO_ENVIRONMENT | The name this site goes by for pull and push: lower case letters, digits and dashes. |
 | `CROMBOLO_REMOTE_PROTECTED` | `true` / `false` | `true` | A push here needs the protected-push permission. |
 | `CROMBOLO_REMOTE_APPROVALS` | `true` / `false` | `false` | A push to a protected site waits for someone else to approve it. Needs `CROMBOLO_SECRET_KEY`. |
 | `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | number | `50` | The largest push or media file a client may upload, in gigabytes. Every other request keeps the usual body limit. |

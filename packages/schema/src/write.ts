@@ -91,6 +91,7 @@ function writeProperty(
   line(out, 'regex-message', p.regexMessage)
   line(out, 'varies-by-culture', true, p.variesByCulture)
   line(out, 'varies-by-segment', true, p.variesBySegment)
+  line(out, 'varies-by-environment', true, p.variesByEnvironment === true)
   line(out, 'label-on-top', true, p.labelOnTop)
   line(out, 'member-can-view', true, p.memberCanView === true)
   line(out, 'member-can-edit', true, p.memberCanEdit === true)
@@ -238,10 +239,20 @@ export function writeLanguages(languages: readonly SchemaLanguage[]): string {
   return `${out.join('\n')}\n`
 }
 
-/** `schema/schema.toml`. `[urls]` is written only when it differs from Umbraco's defaults. */
-export function writeSchemaVersion(version: string, urls?: SchemaUrls): string {
-  const out = `[schema]\nversion = ${str(version)}\n`
-  return urls && !urls.hideTopLevel ? `${out}\n[urls]\nhide-top-level = false\n` : out
+/**
+ * `schema/schema.toml`. `[urls]` is written only when it differs from Umbraco's
+ * defaults; `[environments]` only when the site names some (story 387).
+ */
+export function writeSchemaVersion(
+  version: string,
+  urls?: SchemaUrls,
+  environments?: readonly string[],
+): string {
+  let out = `[schema]\nversion = ${str(version)}\n`
+  if (urls && !urls.hideTopLevel) out += `\n[urls]\nhide-top-level = false\n`
+  if (environments && environments.length > 0)
+    out += `\n[environments]\nnames = [${environments.map(str).join(', ')}]\n`
+  return out
 }
 
 /** The canonical filename for an alias: kebab-case. */

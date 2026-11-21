@@ -254,7 +254,12 @@ export function createSchemaTransfer(
     const file = join(config.schemaDir, 'schema.toml')
     const text = existsSync(file) ? readFileSync(file, 'utf8') : undefined
     const parsed = text ? parseSchemaSettings('schema.toml', text).value : undefined
-    return { text, version: parsed?.version ?? '1.0.0', urls: parsed?.urls }
+    return {
+      text,
+      version: parsed?.version ?? '1.0.0',
+      urls: parsed?.urls,
+      environments: parsed?.environments,
+    }
   }
 
   /**
@@ -265,8 +270,14 @@ export function createSchemaTransfer(
     const current = currentSettings()
     const parsed = parseSchemaSettings('schema.toml', text)
     if (!parsed.value) return text
-    const written = writeSchemaVersion(current.version, parsed.value.urls)
-    return written === writeSchemaVersion(current.version, current.urls) ? undefined : written
+    const written = writeSchemaVersion(
+      current.version,
+      parsed.value.urls,
+      parsed.value.environments,
+    )
+    return written === writeSchemaVersion(current.version, current.urls, current.environments)
+      ? undefined
+      : written
   }
 
   /**

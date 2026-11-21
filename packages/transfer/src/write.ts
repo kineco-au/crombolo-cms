@@ -51,6 +51,7 @@ function value(v: BundleValue, open: boolean): Record<string, unknown> {
     property: v.property,
     culture: v.culture,
     segment: v.segment,
+    ...(v.environment ? { environment: v.environment } : {}),
     editor: v.editor,
     ...(open ? { value: v.value } : {}),
   }
@@ -62,7 +63,8 @@ function value(v: BundleValue, open: boolean): Record<string, unknown> {
 const byHandle = (a: BundleValue, b: BundleValue) =>
   a.property.localeCompare(b.property) ||
   (a.culture ?? '').localeCompare(b.culture ?? '') ||
-  (a.segment ?? '').localeCompare(b.segment ?? '')
+  (a.segment ?? '').localeCompare(b.segment ?? '') ||
+  (a.environment ?? '').localeCompare(b.environment ?? '')
 
 /**
  * A node, with its variants and values in a stable order so a diff means
@@ -141,6 +143,7 @@ export interface SealedValues {
     property: string
     culture: string | null
     segment: string | null
+    environment?: string
     value: unknown
   }>
   memberUserNames?: string[]
@@ -152,6 +155,7 @@ export function sealedValues(node: BundleNode): SealedValues {
       property: v.property,
       culture: v.culture,
       segment: v.segment,
+      ...(v.environment ? { environment: v.environment } : {}),
       value: v.value,
     })),
     ...(node.access?.memberUserNames

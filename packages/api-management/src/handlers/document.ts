@@ -67,13 +67,16 @@ export function toDocumentResponse(aggregate: DocumentAggregate) {
     },
     template: aggregate.componentKey ? { id: aggregate.componentKey } : null,
     flags: itemFlags(aggregate.variants),
-    values: aggregate.values.map((value) => ({
-      editorAlias: value.editorAlias ?? '',
-      culture: value.culture,
-      segment: value.segment,
-      alias: value.alias,
-      value: value.value,
-    })),
+    // The editor edits the shared value; each environment's is edited beside it (story 387).
+    values: aggregate.values
+      .filter((value) => !value.environment)
+      .map((value) => ({
+        editorAlias: value.editorAlias ?? '',
+        culture: value.culture,
+        segment: value.segment,
+        alias: value.alias,
+        value: value.value,
+      })),
     variants: toVariantResponse(aggregate),
   }
 }
@@ -577,12 +580,14 @@ export function registerDocumentHandlers(
       return invalid('A patch needs at least one operation.')
     const current = {
       template: existing.componentKey ? { id: existing.componentKey } : null,
-      values: existing.values.map(({ alias, culture, segment, value }) => ({
-        alias,
-        culture,
-        segment,
-        value,
-      })),
+      values: existing.values
+        .filter((v) => !v.environment)
+        .map(({ alias, culture, segment, value }) => ({
+          alias,
+          culture,
+          segment,
+          value,
+        })),
       variants: existing.variants.map(({ culture, segment, name }) => ({ culture, segment, name })),
     }
     const patched = applyJsonPatch(current, operations as PatchOperation[])

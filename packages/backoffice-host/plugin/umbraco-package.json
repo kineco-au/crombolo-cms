@@ -175,6 +175,12 @@
     },
     {
       "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.EnvironmentValues",
+      "name": "Crombolo Environment Values",
+      "js": "/crombolo-plugin/environment-values.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.EditConflicts",
       "name": "Crombolo Edit Conflicts",
       "js": "/crombolo-plugin/edit-conflicts.js"

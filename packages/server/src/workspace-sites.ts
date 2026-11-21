@@ -56,6 +56,8 @@ export async function workspaceRevision(db: Db, workspaceId: number): Promise<st
 export function createWorkspaceSites(options: {
   db: Db
   nodeState?: NodeSchemaState
+  /** The environment whose own values its pages show (story 387). */
+  environment?: string
   cacheOptions: Omit<PublishedCacheOptions, 'onInvalidate' | 'onRead'>
   /**
    * Where a workspace that changed its views renders. Without them (a database in
@@ -110,6 +112,7 @@ export function createWorkspaceSites(options: {
           createPublishedContentSource(options.db, {
             nodeState: options.nodeState,
             workspace: workspace.id,
+            ...(options.environment ? { environment: options.environment } : {}),
           }),
           options.cacheOptions,
         )

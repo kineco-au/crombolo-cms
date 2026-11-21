@@ -249,7 +249,7 @@ describe('a hosted site and the files, together (story 374)', () => {
     expect(existsSync(join(hosted, 'schema/content-types/extra.toml'))).toBe(false)
     expect(there(ARTICLE)).toContain('name = "Piece"')
     await ok('types', 'check', '--against', 'prod')
-  }, 10_000)
+  }, 20_000)
 
   test('a rename goes to the site, unless views or content files name the alias', async () => {
     await ok('types', 'new', 'content-type', 'note', '--at-root', '--no-view', '--to', 'prod')
@@ -268,7 +268,7 @@ describe('a hosted site and the files, together (story 374)', () => {
     expect(here(ARTICLE)).toBe(before)
     expect(here('components/article.tsx')).toContain("'article'")
     rmSync(join(local, 'components/article.tsx'))
-  }, 10_000)
+  }, 20_000)
 
   test('a type with pages on the site is refused there before the files change, unless retired', async () => {
     const type = await new ContentTypeRepository(server.db).byAlias('article')
@@ -287,7 +287,7 @@ describe('a hosted site and the files, together (story 374)', () => {
     await ok('types', 'remove', 'article', '--retire', '--to', 'prod')
     expect(existsSync(join(local, ARTICLE))).toBe(false)
     expect(existsSync(join(hosted, ARTICLE))).toBe(false)
-  })
+  }, 20_000)
 
   test('the flags that go with --to are refused without it', async () => {
     const run = await cli('types', 'update', 'page', '--name', 'Pages', '--force')

@@ -25,6 +25,8 @@ export default defineConfig({
   siteName: 'Riverside Bakery', // CROMBOLO_SITE_NAME
   applicationUrl: 'https://www.riverside-bakery.example', // CROMBOLO_APPLICATION_URL
   code: 'locked', // CROMBOLO_CODE: templates, styles and scripts read-only
+  environment: 'production', // CROMBOLO_ENVIRONMENT: which copy of the site this is
+  environmentValuesReadOnly: false, // CROMBOLO_ENVIRONMENT_VALUES_READONLY: its own values only by a change
   contentEditing: 'editable', // CROMBOLO_CONTENT: locked takes pages, media, types and code only by a change
   contentEditedAt: 'https://edit.example.com/crombolo', // CROMBOLO_CONTENT_EDITED_AT: where a locked site's content is edited
   cliAccess: 'sign-in', // CROMBOLO_CLI_ACCESS: commands act as the person signed in

@@ -120,6 +120,13 @@ point at `docs/stories/`.
   pages is recorded as replacing everything. Administrators list every pending workspace
   and clear those idle too long (`docs/changes.md`).
 
+- **A property with a value per environment (387).** `CROMBOLO_ENVIRONMENT` names which
+  copy a site is, `[environments] names` in `schema.toml` the ones that exist, and a
+  property with `varies-by-environment = true` has a value per environment beside its
+  shared one: each copy serves its own where it has one. They are edited from "Values per
+  environment" in the field's actions, travel in changes and bundles, and are set from the
+  command line (`--set title@production=…`) and content files (`"title@production"`).
+  `CROMBOLO_ENVIRONMENT_VALUES_READONLY` takes them only by a change (`docs/environments.md`).
 - **A site that takes its content by change (388).** `CROMBOLO_CONTENT=locked`
   (`contentEditing` in `crombolo.config.ts`) refuses every write of pages, media, the
   Library, types, data types and code in the back office and the API, saying so; a change
@@ -159,6 +166,8 @@ point at `docs/stories/`.
 - **088 `AddChangeTransfer`** (expand): `applied_change`, each change from another site
   applied here by the key it carried, and `workspace.staged_changes`, the changes a staged
   workspace holds.
+- **089 `AddEnvironmentValues`** (expand): `property_value.environment`, the environment a
+  value is for, null for the shared value.
 
 ### Upgrade notes
 

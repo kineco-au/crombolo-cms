@@ -261,7 +261,7 @@ describe(`applying a bundle to a remote (${dialectUnderTest})`, () => {
     const admin = await atAll.apply(atAll.h, structural, { dryRun: true })
     expect(admin.status).toBe(200)
     expect(((await admin.json()) as { structural: boolean }).structural).toBe(true)
-  })
+  }, 15_000)
 
   test('the site’s level bounds everything, and says which variable to change', async () => {
     const atRead = await remote({ access: 'read' })

@@ -40,6 +40,7 @@ import {
   updateSchemaStateHash,
   type WorkflowSyncReport,
   type WorkspaceScope,
+  writeEnvironments,
   writeUrlOptions,
 } from '@crombolo/data'
 import { compileBlocks } from './blocks.ts'
@@ -395,6 +396,8 @@ export async function syncSchema(
           const urls = { hideTopLevel: set.urls?.hideTopLevel ?? DEFAULT_URL_OPTIONS.hideTopLevel }
           const before = await writeUrlOptions(tx, urls)
           if (!sameUrlOptions(before, urls)) report.urls = { before, after: urls }
+          // Story 387: the environments its values may vary for.
+          await writeEnvironments(tx, set.environments ?? [])
           // Approval workflows likewise: only a current sync changes the rules
           // that pages are published under.
           const workflows = await syncWorkflows(
@@ -518,6 +521,7 @@ export async function syncSchema(
                 sortOrder: sortOrder++,
                 variesByCulture: p.variesByCulture,
                 variesBySegment: p.variesBySegment,
+                variesByEnvironment: p.variesByEnvironment === true,
                 mandatory,
                 mandatoryMessage: p.mandatoryMessage ?? null,
                 regEx: p.regex ?? null,

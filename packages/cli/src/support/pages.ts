@@ -150,12 +150,29 @@ export async function withValuesSet(
   unset: readonly string[],
   culture: string | null,
 ): Promise<DocumentValue[]> {
-  const out = values.map(({ alias, culture, segment, value }) => ({
+  const out: DocumentValue[] = values.map(({ alias, culture, segment, environment, value }) => ({
     alias,
     culture,
     segment,
+    ...(environment ? { environment } : {}),
     value,
   }))
+  /** `title@production`: a property, and the environment it is set for (story 387). */
+  const target = (named: string) => {
+    const [alias, environment] = named.split('@') as [string, string | undefined]
+    const property = propertyOf(alias)
+    if (environment !== undefined && !property.variesByEnvironment)
+      throw new CliError(
+        'refused',
+        `Nothing was changed: "${alias}" is the same in every environment, so it takes no @${environment}.`,
+      )
+    return { alias, property, environment: environment ?? null }
+  }
+  const same = (v: DocumentValue, alias: string, at: string | null, environment: string | null) =>
+    v.alias === alias &&
+    v.culture === at &&
+    v.segment === null &&
+    (v.environment ?? null) === environment
   const propertyOf = (alias: string) => {
     const property = page.editors.get(alias)
     if (!property)
@@ -176,8 +193,8 @@ export async function withValuesSet(
   // A value in a language with none named is in the site's default one, as a new page's is.
   const cultureOf = (property: PropertyEditor) =>
     property.variesByCulture ? (culture ?? site.languages[0] ?? null) : null
-  for (const [alias, text] of sets) {
-    const property = propertyOf(alias)
+  for (const [named, text] of sets) {
+    const { alias, property, environment } = target(named)
     const converted = await site.writer.convert(
       property.editor,
       typedValue(property.editor, text),
@@ -187,17 +204,24 @@ export async function withValuesSet(
     if (!converted.ok)
       throw new CliError('refused', `Nothing was changed: ${alias}: ${converted.message}.`)
     const at = cultureOf(property)
-    const existing = out.findIndex(
-      (v) => v.alias === alias && v.culture === at && v.segment === null,
-    )
-    const value = { alias, culture: at, segment: null, value: converted.value }
+    const existing = out.findIndex((v) => same(v, alias, at, environment))
+    const value = {
+      alias,
+      culture: at,
+      segment: null,
+      ...(environment ? { environment } : {}),
+      value: converted.value,
+    }
     if (existing >= 0) out[existing] = value
     else out.push(value)
   }
-  for (const alias of unset) {
-    const at = cultureOf(propertyOf(alias))
-    const index = out.findIndex((v) => v.alias === alias && v.culture === at && v.segment === null)
-    if (index >= 0) out.splice(index, 1)
+  for (const named of unset) {
+    const { alias, property, environment } = target(named)
+    const at = cultureOf(property)
+    const index = out.findIndex((v) => same(v, alias, at, environment))
+    // An environment's value is cleared by sending it empty: one left out is kept (story 387).
+    if (index >= 0 && environment) out[index] = { ...(out[index] as DocumentValue), value: null }
+    else if (index >= 0) out.splice(index, 1)
   }
   return out
 }

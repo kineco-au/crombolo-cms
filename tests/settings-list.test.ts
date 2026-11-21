@@ -180,7 +180,6 @@ describe('the settings list', () => {
       CROMBOLO_DELIVERY_API_MEDIA: (c) => c.deliveryApi.media?.enabled ?? false,
       CROMBOLO_DELIVERY_API_PREVIEW_TOKEN_MINUTES: (c) => c.deliveryApi.preview?.tokenMinutes ?? 60,
       CROMBOLO_REMOTE_ACCESS: (c) => c.remote.access,
-      CROMBOLO_REMOTE_ENVIRONMENT: (c) => c.remote.environment,
       CROMBOLO_REMOTE_PROTECTED: (c) => c.remote.protected,
       CROMBOLO_REMOTE_APPROVALS: (c) => c.remote.approvals,
       CROMBOLO_REMOTE_MAX_UPLOAD_GB: (c) => c.remote.maxUploadBytes / 1024 ** 3,

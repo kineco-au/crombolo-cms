@@ -72,7 +72,7 @@ describe('loadConfig reads the environment', () => {
       maxFailedPasswordAttempts: 5,
       remote: {
         enabled: false,
-        environment: 'production',
+        environment: 'local',
         protected: true,
         approvals: false,
         maxUploadBytes: 50 * 1024 ** 3,
@@ -291,7 +291,8 @@ describe('loadConfig reads the environment', () => {
     })
     const config = loadConfig({}, site)
     expect(config.maxRequestBodyBytes).toBe(32 * 1024 * 1024)
-    expect(config.remote.environment).toBe('production')
+    // Story 387: the site's own environment, local in development.
+    expect(config.remote.environment).toBe('local')
     expect(config.deliveryApi.apiKey).toBeUndefined()
     expect(config.deliveryApi.enabled).toBe(true)
     expect(config.auditRetentionDays).toBe(365)

@@ -42,8 +42,12 @@ export default class SiteUrls extends BaseCommand {
         config,
         alias: 'URLs',
         file: join(config.schemaDir, 'schema.toml'),
-        current: writeSchemaVersion(loaded.set.version, loaded.set.urls),
-        next: writeSchemaVersion(loaded.set.version, updateUrls(loaded.set.urls, hide)),
+        current: writeSchemaVersion(loaded.set.version, loaded.set.urls, loaded.set.environments),
+        next: writeSchemaVersion(
+          loaded.set.version,
+          updateUrls(loaded.set.urls, hide),
+          loaded.set.environments,
+        ),
       },
       [
         hide

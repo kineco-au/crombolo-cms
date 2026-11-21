@@ -36,13 +36,15 @@ export function toMediaResponse(media: DocumentAggregate) {
       media.contentTypeIcon,
       media.contentTypeCollectionKey,
     ),
-    values: media.values.map((v) => ({
-      alias: v.alias,
-      culture: v.culture,
-      segment: v.segment,
-      value: v.value,
-      editorAlias: v.editorAlias ?? '',
-    })),
+    values: media.values
+      .filter((v) => !v.environment)
+      .map((v) => ({
+        alias: v.alias,
+        culture: v.culture,
+        segment: v.segment,
+        value: v.value,
+        editorAlias: v.editorAlias ?? '',
+      })),
     variants: media.variants.map((v) => ({
       culture: v.culture,
       segment: v.segment,

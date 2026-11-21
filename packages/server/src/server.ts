@@ -303,6 +303,7 @@ import { backofficeAudience } from './backoffice-external.ts'
 import { createChangeTransfer } from './change-transfer.ts'
 import { createChangesApi } from './changes-api.ts'
 import { createCliTokensApi, tokenRefusal } from './cli-tokens-api.ts'
+import { createEnvironmentValuesApi } from './environment-values-api.ts'
 import { createExternalSignIn } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
 import { exchangingProviders } from './identity-providers.ts'
@@ -831,6 +832,7 @@ export async function createServer(
   const draftSource = createPublishedContentSource(db, {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
+    environment: config.environment,
     drafts: true,
   })
   const draftCache = async (): Promise<PublishedCache> => {
@@ -1446,6 +1448,7 @@ export async function createServer(
     const draft = await loadDraftNode(db, key, {
       nodeState: schema.nodeState,
       nodeId: schema.nodeId,
+      environment: config.environment,
     })
     if (!draft) return undefined
     const snapshot = await cache.snapshot()
@@ -1785,6 +1788,7 @@ export async function createServer(
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
   const workspacesPath = `${paths.pluginPath}/api/workspaces`
   const changesPath = `${paths.pluginPath}/api/changes`
+  const environmentValuesPath = `${paths.pluginPath}/api/environment-values`
   // Story 376: a workspace's copy of the schema files.
   const workspaceSchema = createWorkspaceSchema(db, config, core.schema)
   // Story 378: a workspace that changed its views renders in a process of its own.
@@ -1797,6 +1801,7 @@ export async function createServer(
         nodeState: core.schema.nodeState,
         nodeId: core.schema.nodeId,
         componentsCacheDir: config.componentsCacheDir,
+        environment: config.environment,
         limit: config.workspaceProcesses,
         idleMs: config.workspaceProcessIdleMinutes * 60_000,
         memoryMb: config.workspaceProcessMemoryMb,
@@ -1846,6 +1851,7 @@ export async function createServer(
   // Story 379: each workspace's site, kept on this node while it is looked at.
   const workspaceSites = createWorkspaceSites({
     db,
+    environment: config.environment,
     nodeState: core.schema.nodeState,
     cacheOptions,
     processes: workspaceProcesses,
@@ -1855,6 +1861,13 @@ export async function createServer(
     renderTimeoutMs: config.renderTimeoutMs,
     limit: config.workspaceSites,
     idleMs: config.workspaceSiteIdleMinutes * 60_000,
+  })
+  // Story 387: a property's value per environment.
+  const environmentValuesApi = createEnvironmentValuesApi(db, {
+    environment: () => config.environment,
+    repository: { nodeState: core.schema.nodeState, nodeId: core.schema.nodeId },
+    documents: () => core.operations.documents,
+    readOnly: () => config.environmentValuesReadOnly || contentLocked(config),
   })
   // Story 381: every change to the site, and its revert.
   const changesApi = createChangesApi(db, {
@@ -3321,6 +3334,22 @@ export async function createServer(
         principal,
         pathname.slice(changesPath.length),
         clientAddress(request),
+      )
+    }
+
+    // Story 387: a property's value per environment, edited beside its field.
+    if (pathname === environmentValuesPath || pathname.startsWith(`${environmentValuesPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'content'))
+        return Response.json(
+          { message: 'Values per environment are for people who look after content.' },
+          { status: 403 },
+        )
+      return environmentValuesApi.handle(
+        request,
+        principal,
+        pathname.slice(environmentValuesPath.length),
       )
     }
 

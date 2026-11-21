@@ -83,6 +83,7 @@ export function loadSchemaDirectory(
   let languages: SchemaLanguage[] = []
   let version = '0'
   let urls: SchemaUrls | undefined
+  let environments: string[] | undefined
 
   const rel = (file: string) =>
     file.startsWith(schemaDir) ? `schema${file.slice(schemaDir.length)}` : file
@@ -94,6 +95,7 @@ export function loadSchemaDirectory(
     if (parsed.value) {
       version = parsed.value.version
       urls = parsed.value.urls
+      environments = parsed.value.environments
     }
   }
   for (const file of tomlFiles(join(schemaDir, TYPE_KIND_FILES.document.dir))) {
@@ -186,6 +188,7 @@ export function loadSchemaDirectory(
       ...(workflows.length > 0 ? { workflows } : {}),
       ...(userGroups.length > 0 ? { userGroups } : {}),
       ...(urls ? { urls } : {}),
+      ...(environments ? { environments } : {}),
     },
     problems,
     files,

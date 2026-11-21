@@ -663,6 +663,7 @@ export interface CoreTables {
   property_value: {
     date_value: Timestamp | null
     decimal_value: Decimal | null
+    environment: string | null
     event_id: number
     id: Generated<number>
     int_value: number | null

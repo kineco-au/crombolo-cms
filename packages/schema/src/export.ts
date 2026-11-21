@@ -18,6 +18,7 @@ import {
   type Db,
   FolderRepository,
   LanguageRepository,
+  readEnvironments,
   readUrlOptions,
   SYSTEM_CONTENT_TYPES,
   SYSTEM_MEDIA_TYPES,
@@ -62,6 +63,7 @@ function toSchemaProperty(p: PropertyTypeModel, ctx: ExportContext): SchemaPrope
     mandatory: p.mandatory,
     variesByCulture: p.variesByCulture,
     variesBySegment: p.variesBySegment,
+    ...(p.variesByEnvironment ? { variesByEnvironment: true } : {}),
     labelOnTop: p.labelOnTop,
   }
   if (p.description) property.description = p.description
@@ -224,6 +226,7 @@ export async function exportSchemaSet(
   const workspace = options.workspace
   const scope = workspace ? { workspace } : {}
   const urls = await readUrlOptions(db)
+  const environments = await readEnvironments(db)
   const types = new ContentTypeRepository(db, scope)
   const dataTypes = new DataTypeRepository(db, scope)
   const templates = new ComponentRepository(db)
@@ -390,13 +393,14 @@ export async function exportSchemaSet(
     dataTypes: exportedDataTypes,
     languages,
     ...(urls.hideTopLevel ? {} : { urls }),
+    ...(environments.length > 0 ? { environments } : {}),
   }
 }
 
 /** A set as canonical files, by their `/`-separated path in the schema folder. */
 export function schemaSetFiles(set: SchemaSet): Map<string, string> {
   const files = new Map<string, string>()
-  files.set('schema.toml', writeSchemaVersion(set.version, set.urls))
+  files.set('schema.toml', writeSchemaVersion(set.version, set.urls, set.environments))
   for (const t of set.contentTypes)
     files.set(`${TYPE_KIND_FILES.document.dir}/${fileNameFor(t.alias)}`, writeContentType(t))
   for (const t of set.mediaTypes ?? [])

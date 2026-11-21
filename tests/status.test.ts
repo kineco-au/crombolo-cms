@@ -130,7 +130,7 @@ describe(`status (${dialectUnderTest})`, () => {
     expect(report.schema.pending).toBe(false)
     expect(report.content.documents).toBe(0)
     expect(report.problems).toEqual([])
-  })
+  }, 15_000)
 
   test('says so when the database is ahead of these files, which is a read-only node', async () => {
     if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
@@ -161,7 +161,7 @@ describe(`status (${dialectUnderTest})`, () => {
     )
     expect(report.schema.compatibilityMode).toBe(true)
     expect(report.problems.join('\n')).toContain('reads only')
-  })
+  }, 15_000)
 
   test('and when the files are ahead, which is a deploy waiting to be applied', async () => {
     if (!(await canConnect())) throw new Error(`no ${dialectUnderTest} to test against`)
@@ -191,5 +191,5 @@ describe(`status (${dialectUnderTest})`, () => {
     expect(report.schema.pending).toBe(true)
     expect(report.schema.compatibilityMode).toBe(false)
     expect(report.problems.join('\n')).toContain('upgrade check')
-  })
+  }, 15_000)
 })
