@@ -101,6 +101,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.OwnWorkspace',
       'backofficeEntryPoint:Crombolo.EntryPoint.Workspaces',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentLocked',
+      'backofficeEntryPoint:Crombolo.EntryPoint.UsersManaged',
       'backofficeEntryPoint:Crombolo.EntryPoint.EnvironmentValues',
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',

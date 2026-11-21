@@ -27,6 +27,7 @@ import {
   UserRepository,
   userState,
 } from '@crombolo/data'
+import { MANAGED_OUTSIDE } from './managed-users.ts'
 
 export type UserAdminKind = 'not_found' | 'refused' | 'usage' | 'conflict'
 
@@ -61,6 +62,7 @@ export interface UserSummary {
 
 const REFUSALS: Partial<Record<UserStatus | UserGroupStatus, [UserAdminKind, string]>> = {
   UserNotFound: ['not_found', 'There is no such user.'],
+  ManagedOutside: ['refused', MANAGED_OUTSIDE],
   NotFound: ['not_found', 'There is no such user group.'],
   MissingUserGroup: ['not_found', 'There is no group with that alias.'],
   DuplicateUserName: ['conflict', 'Another user has that username.'],

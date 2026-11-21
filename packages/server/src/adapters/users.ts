@@ -53,7 +53,8 @@ import {
 } from '@crombolo/data'
 import type { SchemaUserGroup } from '@crombolo/schema'
 import { loadAccess } from '../access.ts'
-import type { CromboloConfig } from '../config.ts'
+import type { CromboloConfig, UsersSetting } from '../config.ts'
+import { managedUserPorts } from '../managed-users.ts'
 import type { MediaFileStore } from '../media-files.ts'
 
 const INVITE_HOURS = 72
@@ -113,7 +114,7 @@ export interface UserPortOptions {
     | 'allowPasswordReset'
     | 'backOfficePath'
     | 'backofficeIdentityProviders'
-  >
+  > & { users?: UsersSetting }
   mediaFiles: MediaFileStore
   nodes: NodeLookup
   /** The groups the site's files declare (story 228). */
@@ -645,16 +646,20 @@ export function createUserPorts(
     },
   }
 
-  return {
-    users: userPort,
-    groups: createUserGroupPort(db, {
-      adminKey,
-      nodes,
-      onPagePermissionsChanged: options.onPagePermissionsChanged,
-      declared: options.declaredGroups,
-    }),
-    userData: createUserDataPort(db),
-  }
+  const managed = managedUserPorts(
+    db,
+    {
+      users: userPort,
+      groups: createUserGroupPort(db, {
+        adminKey,
+        nodes,
+        onPagePermissionsChanged: options.onPagePermissionsChanged,
+        declared: options.declaredGroups,
+      }),
+    },
+    config.users?.managedBy ?? [],
+  )
+  return { ...managed, userData: createUserDataPort(db) }
 }
 
 function toPermissions(rows: readonly GranularPermission[]): UserGroupResponse['permissions'] {

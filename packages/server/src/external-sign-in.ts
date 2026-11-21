@@ -134,6 +134,8 @@ export function createExternalSignIn(
     log?: (message: string) => void
     /** The provider as a sign-in uses it, with an administrator's overrides on top (story 033). */
     resolve?: (provider: IdentityProvider) => Promise<IdentityProvider>
+    /** Accounts come from a directory outside the site (story 389): none is made, no groups follow. */
+    managed?: () => boolean
   },
 ): ExternalSignIn {
   const logins = new ExternalLoginRepository(db)
@@ -215,6 +217,7 @@ export function createExternalSignIn(
     }
 
     const loginProvider = externalLoginProvider(audience.audience, provider.oidc.id)
+    const managed = options.managed?.() === true
     const linked = await logins.find(loginProvider, identity.subject)
     // A link to an account that has since been deleted counts for nothing.
     const linkedAccount = linked ? await audience.byKey(linked.ownerKey) : undefined
@@ -224,7 +227,11 @@ export function createExternalSignIn(
       linked: linkedAccount?.key,
       sameEmail: sameEmail?.key,
       identity,
-      provider: { ...provider, name: provider.oidc.name },
+      provider: {
+        ...provider,
+        name: provider.oidc.name,
+        ...(managed ? { autoCreate: false } : {}),
+      },
     })
     // Story 364: what the remote's exchange finds this person by, from this issuer.
     const named = identity.identity
@@ -250,7 +257,7 @@ export function createExternalSignIn(
         break
       }
     }
-    if (decision.kind !== 'create' && Object.keys(provider.groupMap).length > 0) {
+    if (!managed && decision.kind !== 'create' && Object.keys(provider.groupMap).length > 0) {
       const groups = syncedGroups(account.groups, identity.groups, provider.groupMap)
       if (groups.join('\n') !== account.groups.join('\n')) await audience.setGroups(account, groups)
     }

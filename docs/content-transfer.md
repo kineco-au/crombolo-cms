@@ -135,6 +135,33 @@ into `people/`, whose manifest block counts them and names nobody.
   Findings name people by key only.
 - **Groups**: a member group is matched by key, then by name; a user group by
   key, then by alias, and one that exists here keeps its permissions.
+- **A user group the site does not have arrives as it was** (story 393): its
+  sections, its verbs, the languages it may edit (`languages`, unless
+  `hasAccessToAllLanguages`) and its verbs on single items (`granular`):
+
+  ```json
+  "granular": [
+    { "key": "<page key>", "permissions": ["Umb.Document.Read", "Umb.Document.Update"] },
+    { "key": "<Library item key>", "context": "Element", "permissions": ["Umb.Document.Read"] },
+    { "key": "<content type key>", "context": "DocumentTypeProperty",
+      "permissions": ["<field key>|Umb.Document.PropertyValue.Write"] },
+    { "key": "<page key>", "permissions": [] }
+  ]
+  ```
+
+  An entry is a page unless its `context` says otherwise, and no verbs is an
+  explicit "nothing here". A page or Library item counts when the site has it or
+  the same bundle brings it.
+  - A language, page, Library item, content type or field the site lacks is left
+    out, with a `missing-language` or `missing-page` finding.
+  - A retired verb is read as what replaced it. A verb the CMS does not know
+    (`unknown-permission`), or an entry with no key (`invalid-permission`), holds
+    the import up, as a group file's does.
+  - A bundle written before has no `granular`, and its groups arrive as they did,
+    now limited to their `languages`.
+  - `@crombolo/crombolo/transfer` exports the lists a bundle written elsewhere
+    translates into: `SECTION_ALIASES`, `RETIRED_SECTIONS`, `KNOWN_PERMISSIONS`,
+    `PRUNED_PERMISSIONS` and the permission levels.
 - **The administrator `crombolo start` seeds** on a new database stands in until
   the site's own arrive: on that first boot an imported user with the same key,
   login or e-mail takes it over, with the password they had.

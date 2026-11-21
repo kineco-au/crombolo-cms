@@ -36,9 +36,27 @@ export interface BundleUserGroup {
   /** Default permission verbs, e.g. `Umb.Document.Read`. */
   permissions: string[]
   hasAccessToAllLanguages: boolean
+  /** The ISO codes the group may edit, when it may not edit them all. */
   languages: string[]
   documentStartNodeKey: string | null
   mediaStartNodeKey: string | null
+  /** Its verbs on single pages, Library items and fields (story 393); absent in older bundles. */
+  granular?: BundleGranular[]
+}
+
+/** Where a per-item permission applies: a page, a Library item, or one field of a content type. */
+export type BundleGranularContext = 'Document' | 'Element' | 'DocumentTypeProperty'
+
+/**
+ * A group's verbs on one item: a page's or Library item's key, or for a field its
+ * content type's key with each verb as `<field key>|<verb>`. No verbs is an explicit
+ * "nothing here".
+ */
+export interface BundleGranular {
+  key: string
+  /** A page when absent. */
+  context?: BundleGranularContext
+  permissions: string[]
 }
 
 export interface BundleUser {

@@ -105,6 +105,8 @@ export interface ResolvedIdentity {
   exchangedThrough?: string
   /** The tool acting for the person, as the exchanged token named it (story 366). */
   exchangedActor?: { id: string; name: string | null }
+  /** The client an API user's token was issued to (story 389). */
+  viaClient?: string
   allowedSections: Array<SectionAlias | ExtensionSectionAlias>
   groupKeys: string[]
   isAdmin: boolean
@@ -402,9 +404,12 @@ export class AuthService {
     const view = session.view
     const provider = exchangeProviderOf(token.clientId)
     const actor = provider ? await this.#store.devices.exchangeActor(token.sessionId) : undefined
-    const through = provider
-      ? { exchangedThrough: provider, ...(actor ? { exchangedActor: actor } : {}) }
-      : {}
+    const through = {
+      ...(provider
+        ? { exchangedThrough: provider, ...(actor ? { exchangedActor: actor } : {}) }
+        : {}),
+      ...(user.kind === 'Api' ? { viaClient: token.clientId } : {}),
+    }
     if (view && view.until.getTime() > now.getTime() && own.isAdmin) {
       const theirs = await this.#store.loadGroupAuthorization(view.groupKeys)
       return {

@@ -8,12 +8,20 @@
  * decision — take the bundle's details onto the person here, or leave it out.
  * Findings name people by key only.
  */
-import { normaliseUuid, ObjectTypes, SystemNodes } from '@crombolo/core'
+import {
+  KNOWN_PERMISSIONS,
+  normaliseUuid,
+  ObjectTypes,
+  SystemNodes,
+  withoutPrunedPermissions,
+} from '@crombolo/core'
 import {
   ContentTypeRepository,
   currentSchemaState,
   type Db,
   type Finding,
+  type GranularPermission,
+  LanguageRepository,
   MemberRepository,
   NodeRepository,
   type NodeSchemaState,
@@ -22,7 +30,13 @@ import {
   UserRepository,
 } from '@crombolo/data'
 import type { NodeResolutions, Resolution } from './check.ts'
-import type { BundleMember, BundlePeople, BundleUser } from './people.ts'
+import type {
+  BundleGranular,
+  BundleMember,
+  BundlePeople,
+  BundleUser,
+  BundleUserGroup,
+} from './people.ts'
 
 export type PersonKind = 'member-group' | 'member' | 'user-group' | 'user'
 
@@ -41,6 +55,15 @@ export interface PersonPlan {
   localKey?: string
   /** The bundle's password replaces one set here: a new site's seeded administrator. */
   takePassword?: boolean
+  /** A group to create, as it lands here: its verbs, the languages here and the items here (story 393). */
+  group?: PlannedGroup
+}
+
+/** A user group's rights as the site will hold them, once checked against it. */
+export interface PlannedGroup {
+  permissions: string[]
+  languages: string[]
+  granular: GranularPermission[]
 }
 
 export interface PeoplePlan {
@@ -93,6 +116,8 @@ export async function planPeople(
     resolveAll?: Resolution | undefined
     /** A user here the bundle's may take over without asking: a new site's seeded administrator. */
     adoptUsers?: boolean
+    /** The pages and Library items the same bundle brings, which exist by the time people do. */
+    carried?: ReadonlyMap<string, 'document' | 'element'>
   } = {},
 ): Promise<PeoplePlan> {
   const resolutions = options.resolutions ?? {}
@@ -122,15 +147,29 @@ export async function planPeople(
     )
   }
 
+  const languagesHere = new Set(
+    (await new LanguageRepository(db).all()).map((l) => l.isoCode.toLowerCase()),
+  )
+  const groupFinding = (kind: Finding['kind'], code: string, group: string, message: string) =>
+    findings.push(finding(kind, code, 'user-group', group, message))
   for (const group of people.userGroups) {
     const here = (await userGroups.byKey(group.key)) ?? (await userGroups.byAlias(group.alias))
     // A group here is this site's to manage: its permissions are not rewritten
     // by a bundle, only its members added.
-    plan.push(
-      here
-        ? { kind: 'user-group', key: group.key, action: 'unchanged', localKey: here.key }
-        : { kind: 'user-group', key: group.key, action: 'create' },
-    )
+    if (here) {
+      plan.push({ kind: 'user-group', key: group.key, action: 'unchanged', localKey: here.key })
+      continue
+    }
+    plan.push({
+      kind: 'user-group',
+      key: group.key,
+      action: 'create',
+      group: await plannedGroup(db, group, {
+        languagesHere,
+        carried: options.carried ?? new Map(),
+        finding: (kind, code, message) => groupFinding(kind, code, group.key, message),
+      }),
+    })
   }
 
   const decide = (kind: PersonKind, key: string, clashKey: string): PersonPlan | undefined => {
@@ -237,6 +276,109 @@ export async function planPeople(
   return { findings, plan, counts }
 }
 
+/** A verb list with retired verbs read as their replacements; undefined for one that is no verb. */
+function knownVerbs(verbs: readonly string[]): { verbs: string[]; unknown: string[] } {
+  const replaced = withoutPrunedPermissions(verbs.filter((v) => v !== ''))
+  return {
+    verbs: replaced.filter((v) => KNOWN_PERMISSIONS.has(v)),
+    unknown: replaced.filter((v) => !KNOWN_PERMISSIONS.has(v)),
+  }
+}
+
+/** One per-item entry as rows here: undefined when the item is not here. */
+async function granularRows(
+  db: Db,
+  entry: BundleGranular,
+  carried: ReadonlyMap<string, 'document' | 'element'>,
+  unknown: (verbs: string[]) => void,
+): Promise<GranularPermission[] | undefined> {
+  const key = normaliseUuid(entry.key)
+  const context = entry.context ?? 'Document'
+  if (context === 'DocumentTypeProperty') {
+    const type = await new ContentTypeRepository(db).byKey(key)
+    if (!type) return undefined
+    const fields = new Set(type.properties.map((p) => normaliseUuid(p.key)))
+    const rows: GranularPermission[] = []
+    for (const permission of entry.permissions) {
+      const [field = '', verb = ''] = permission.split('|')
+      if (!fields.has(normaliseUuid(field))) return undefined
+      const checked = knownVerbs([verb])
+      unknown(checked.unknown)
+      // A verb retired with nothing in its place leaves the field's explicit "nothing here".
+      for (const kept of checked.verbs.length ? checked.verbs : checked.unknown.length ? [] : [''])
+        rows.push({ key, permission: `${normaliseUuid(field)}|${kept}`, context })
+    }
+    return rows
+  }
+  const brought = carried.get(key)
+  const here = brought ? undefined : (await new NodeRepository(db).byKey(key))?.objectType
+  const isItem =
+    context === 'Element'
+      ? brought === 'element' || here === ObjectTypes.Element
+      : brought === 'document' || here === ObjectTypes.Document
+  if (!isItem) return undefined
+  const checked = knownVerbs(entry.permissions)
+  unknown(checked.unknown)
+  return (checked.verbs.length ? checked.verbs : ['']).map((permission) => ({
+    key,
+    permission,
+    context,
+  }))
+}
+
+/** A bundle's group checked against this site: what it may do here, and findings for the rest. */
+async function plannedGroup(
+  db: Db,
+  group: BundleUserGroup,
+  here: {
+    languagesHere: ReadonlySet<string>
+    carried: ReadonlyMap<string, 'document' | 'element'>
+    finding: (kind: Finding['kind'], code: string, message: string) => void
+  },
+): Promise<PlannedGroup> {
+  const unknown = new Set<string>()
+  const defaults = knownVerbs(group.permissions)
+  for (const verb of defaults.unknown) unknown.add(verb)
+  const languages: string[] = []
+  for (const iso of group.hasAccessToAllLanguages ? [] : group.languages) {
+    if (here.languagesHere.has(iso.toLowerCase())) languages.push(iso)
+    else
+      here.finding(
+        'auto',
+        'missing-language',
+        `the user group ${group.key} may edit ${iso}, which this site does not have: it is left out`,
+      )
+  }
+  const granular: GranularPermission[] = []
+  for (const entry of group.granular ?? []) {
+    if (typeof entry?.key !== 'string' || !entry.key || !Array.isArray(entry.permissions)) {
+      here.finding(
+        'blocking',
+        'invalid-permission',
+        `the user group ${group.key} has a per-item permission with no key or no verbs`,
+      )
+      continue
+    }
+    const rows = await granularRows(db, entry, here.carried, (verbs) => {
+      for (const verb of verbs) unknown.add(verb)
+    })
+    if (rows) granular.push(...rows)
+    else
+      here.finding(
+        'auto',
+        'missing-page',
+        `the user group ${group.key} has permissions on ${entry.key}, which is not here: they are left out`,
+      )
+  }
+  for (const verb of unknown)
+    here.finding(
+      'blocking',
+      'unknown-permission',
+      `the user group ${group.key} has "${verb}", which is not a permission here; \`crombolo users groups permissions --verbs\` lists them`,
+    )
+  return { permissions: defaults.verbs, languages, granular }
+}
+
 async function memberGroupNamed(db: Db, name: string): Promise<string | undefined> {
   const rows = await db.q
     .selectFrom('node')
@@ -321,6 +463,12 @@ export async function applyPeople(
     if (p.action !== 'create') continue
     const starts = async (key: string | null) =>
       key && (await nodes.byKey(key)) ? { root: false, key } : { root: false, key: null }
+    const planned = p.group ?? { permissions: group.permissions, languages: [], granular: [] }
+    // An item the plan counted on that the run then left out has nothing to hold a permission.
+    const granular: GranularPermission[] = []
+    for (const row of planned.granular)
+      if (row.context === 'DocumentTypeProperty' || (row.key && (await nodes.byKey(row.key))))
+        granular.push(row)
     const saved = await userGroups.save({
       key: group.key,
       alias: group.alias,
@@ -328,15 +476,15 @@ export async function applyPeople(
       description: null,
       icon: group.icon,
       sections: group.sections,
-      languages: [],
-      hasAccessToAllLanguages: group.hasAccessToAllLanguages || group.languages.length > 0,
+      languages: planned.languages,
+      hasAccessToAllLanguages: group.hasAccessToAllLanguages,
       startNodes: {
         document: await starts(group.documentStartNodeKey),
         media: await starts(group.mediaStartNodeKey),
         element: { root: false, key: null },
       },
-      permissions: group.permissions,
-      granular: [],
+      permissions: planned.permissions,
+      granular,
     })
     if (saved !== 'saved') throw new Error(`The user group "${group.alias}" could not be created.`)
     await record('user-group', group.key, 'create')
@@ -551,6 +699,7 @@ export async function exportPeople(
       languages: g.languages,
       documentStartNodeKey: g.startNodes.document.key,
       mediaStartNodeKey: g.startNodes.media.key,
+      granular: bundleGranular(g.granular),
     }))
     const aliasOf = new Map(groups.map((g) => [g.key, g.alias]))
     const users = new UserRepository(db)
@@ -575,4 +724,30 @@ export async function exportPeople(
     }
   }
   return people
+}
+
+/** A group's per-item rows as a bundle carries them: one entry per item, its verbs together. */
+export function bundleGranular(rows: readonly GranularPermission[]): BundleGranular[] {
+  const entries = new Map<string, BundleGranular>()
+  for (const row of rows) {
+    if (!row.key) continue
+    if (
+      row.context !== 'Document' &&
+      row.context !== 'Element' &&
+      row.context !== 'DocumentTypeProperty'
+    )
+      continue
+    const id = `${row.context}|${row.key}`
+    let entry = entries.get(id)
+    if (!entry) {
+      entry = {
+        key: row.key,
+        ...(row.context === 'Document' ? {} : { context: row.context }),
+        permissions: [],
+      }
+      entries.set(id, entry)
+    }
+    if (row.permission !== '') entry.permissions.push(row.permission)
+  }
+  return [...entries.values()]
 }

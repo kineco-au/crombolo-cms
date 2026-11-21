@@ -5,7 +5,19 @@
  */
 
 export { type ScaffoldFile, type ScaffoldOptions, scaffoldFiles } from '@crombolo/cli'
-export { ObjectTypes, toEditorValue } from '@crombolo/core'
+export {
+  FORM_LEVELS,
+  KNOWN_PERMISSIONS,
+  levelVerbs,
+  MEDIA_LEVELS,
+  ObjectTypes,
+  PAGE_LEVELS,
+  type PermissionLevel,
+  PRUNED_PERMISSIONS,
+  RETIRED_SECTIONS,
+  SECTION_ALIASES,
+  toEditorValue,
+} from '@crombolo/core'
 export { BUILT_IN_MEDIA_TYPES, DEFAULT_DATA_TYPES, SYSTEM_MEMBER_TYPE } from '@crombolo/data'
 export {
   aliasFromName,
@@ -33,6 +45,8 @@ export { componentAliasesIn, writeDomainsFile, writeUdtAll } from '@crombolo/ser
 export {
   BUNDLE_FORMAT_VERSION,
   type BundleBlob,
+  type BundleGranular,
+  type BundleGranularContext,
   type BundleKind,
   type BundleMember,
   type BundleNode,

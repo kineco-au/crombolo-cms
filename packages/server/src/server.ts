@@ -199,6 +199,7 @@ import {
   listeningBodyLimit,
   loadConfig,
   type ServerRole,
+  usersManaged,
   VERSION,
   workspacesOn,
 } from './config.ts'
@@ -314,6 +315,7 @@ import {
   viteIslandManifest,
   viteOutDir,
 } from './islands.ts'
+import { managedHref } from './managed-users.ts'
 import {
   hasMiddleware,
   isSitePath,
@@ -737,6 +739,7 @@ export async function createServer(
             applicationUrl: config.applicationUrl,
             secureCookies: config.secureCookies,
             log: (message) => log.warning('Backoffice sign-in: {message}', { message }),
+            managed: () => usersManaged(config),
             resolve: (provider) =>
               new IdentityProviderOverrides(
                 db,
@@ -1813,6 +1816,7 @@ export async function createServer(
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
+  const usersManagedPath = `${paths.pluginPath}/api/users-managed`
   const workspacesPath = `${paths.pluginPath}/api/workspaces`
   const changesPath = `${paths.pluginPath}/api/changes`
   const environmentValuesPath = `${paths.pluginPath}/api/environment-values`
@@ -3333,6 +3337,19 @@ export async function createServer(
       return outcome.ok
         ? Response.json(outcome)
         : Response.json(outcome, { status: outcome.status })
+    }
+
+    // Story 389: whether the Users section is the directory's, and where it links each user.
+    if (pathname === usersManagedPath && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const managed = usersManaged(config)
+      const template = managed ? config.users.managedAt : undefined
+      const key = new URL(request.url).searchParams.get('user')
+      if (!key) return Response.json({ managed, linked: template !== undefined })
+      if (!template || !hasSection(principal, 'users')) return Response.json({ href: null })
+      const user = await new UserRepository(db).byKey(key).catch(() => undefined)
+      return Response.json({ href: user ? managedHref(template, user) : null })
     }
 
     // Story 351: a person's command-line tokens, and an administrator's view of anyone's.

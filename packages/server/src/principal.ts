@@ -32,5 +32,6 @@ export async function principalOf(
     ...(identity.viewingAs ? { viewingAs: identity.viewingAs } : {}),
     ...(viaToken ? { viaToken } : {}),
     ...(identity.exchangedThrough ? { viaExchange: { provider: identity.exchangedThrough } } : {}),
+    ...(identity.viaClient ? { viaClient: identity.viaClient } : {}),
   }
 }

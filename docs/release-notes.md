@@ -6,6 +6,35 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.71.0 — 2026-11-21
+
+### Features
+
+- **Users managed from outside the site (389).** With `users.managedBy` (or
+  `CROMBOLO_USERS_MANAGED_BY`) naming the API clients a directory signs in as, only they
+  add, change, disable, remove or regroup back-office people, in the back office, the
+  Management API, the remote protocol and the command line; everyone else, administrators
+  included, is told the site's people are managed outside it. Each person keeps their own
+  language, avatar, password and two-factor; API users and what a group may do stay the
+  administrator's; an identity provider signs in only people who exist and changes no
+  groups. The Users section hides what it cannot do and, with `users.managedAt`, links
+  each person to the directory (`docs/configuration.md`, "Users managed from outside the
+  site").
+
+- **A bundle's user groups arrive as they were (393).** A group the site does not have
+  is created with the languages it may edit and its verbs on single pages, Library items
+  and fields (`granular`), which an environment's export now carries. A language or item
+  the site lacks is left out with a finding; a verb the CMS does not know holds the
+  import up. `@crombolo/crombolo/transfer` exports the CMS's lists of sections, verbs and
+  permission levels for a bundle written elsewhere (`docs/content-transfer.md`, "People").
+
+### Upgrade notes
+
+- No migrations.
+- A bundle whose new user groups name a permission verb this release does not know is
+  now refused until the verb is fixed or removed; before, it was saved as given. A group
+  limited to some languages now arrives limited to them, not with every language.
+
 ## v0.70.0 — 2026-11-21
 
 ### Features

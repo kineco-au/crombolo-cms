@@ -155,7 +155,7 @@ not cover.
 | `282` | A member resets their password | should | M | ready | — |
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
 | `314` | An administrator sees the back office as a group does | should | M | done | — |
-| `389` | Users managed from outside the site | should | S | ready | 031, 034 |
+| `389` | Users managed from outside the site | should | S | done | 031, 034 |
 | `391` | The code setting says what it locks | should | S | done | 343, 385 |
 
 ### Epic E — Cross-cutting
@@ -237,7 +237,7 @@ requests, only server-side and build-time front ends can call it.
 | `073` | Import a WordPress site | should | L | on hold | 141, 142 |
 | `278` | A site can be written from the public package | should | S | done | — |
 | `279` | The Umbraco importer leaves the CMS | should | M | done | 278 |
-| `393` | A bundle's user groups arrive as they were | should | M | ready | 071, 385 |
+| `393` | A bundle's user groups arrive as they were | should | M | done | 071, 385 |
 
 ### Epic I — Hardening
 

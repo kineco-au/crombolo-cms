@@ -32,6 +32,10 @@ export default defineConfig({
   cliAccess: 'sign-in', // CROMBOLO_CLI_ACCESS: commands act as the person signed in
   cliTokens: true, // CROMBOLO_CLI_TOKENS: tokens let scripts run commands as a person
   cliTokenMaxDays: 90, // CROMBOLO_CLI_TOKEN_MAX_DAYS
+  users: {
+    managedBy: [], // CROMBOLO_USERS_MANAGED_BY: API clients a directory outside the site signs in as
+    managedAt: 'https://people.example.com/users/{email}', // CROMBOLO_USERS_MANAGED_AT
+  },
   workspaces: true, // CROMBOLO_WORKSPACES: pages changed apart from Shared
   workspacesRequired: false, // CROMBOLO_WORKSPACES_REQUIRED: every page change made in a workspace
   purgeAfterDays: 0, // CROMBOLO_PURGE_AFTER_DAYS: fewest days between retiring a property and purging it

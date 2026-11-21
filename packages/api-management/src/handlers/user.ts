@@ -106,6 +106,11 @@ const USER_PROBLEMS: Partial<Record<UserStatus, [number, string, string]>> = {
     'The admin group must have at least one user.',
   ],
   CannotDelete: [400, 'Cannot delete', "The site's built-in administrator cannot be deleted."],
+  ManagedOutside: [
+    403,
+    'Managed outside this site',
+    "This site's people come from a directory outside it: add, change or remove them there.",
+  ],
   NotGroupOwner: [
     403,
     "You don't own that group",
@@ -177,6 +182,11 @@ const GROUP_PROBLEMS: Partial<Record<UserGroupStatus, [number, string, string]>>
     400,
     'Admin group cannot be empty',
     'The admin group must have at least one user.',
+  ],
+  ManagedOutside: [
+    403,
+    'Managed outside this site',
+    'Whom this group holds comes from a directory outside the site: change it there.',
   ],
 }
 
@@ -552,6 +562,8 @@ function registerUsers(router: ManagementApiRouter, users: UserPort): void {
     // Who may manage this user, by the same rule every user operation follows.
     const found = await users.get(me(ctx), ctx.params.id as string)
     if (found.status !== 'Success') return status(found.status)
+    const may = (await users.mayManage?.(me(ctx), ctx.params.id as string)) ?? 'Success'
+    if (may !== 'Success') return status(may)
     await provider.reset(ctx.params.id as string)
     return ok()
   })

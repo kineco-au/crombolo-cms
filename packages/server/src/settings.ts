@@ -306,6 +306,20 @@ const DECLARED = [
     section: 'Sign-in and secrets',
     description: "A back office user's login is their e-mail address.",
   },
+  {
+    env: 'CROMBOLO_USERS_MANAGED_BY',
+    kind: 'list',
+    section: 'Sign-in and secrets',
+    description:
+      'The API clients a directory outside the site signs in as. Set, only they add, change, disable or remove back office users or change whom a group holds; each person keeps their own language, avatar, password and two-factor.',
+  },
+  {
+    env: 'CROMBOLO_USERS_MANAGED_AT',
+    kind: 'string',
+    section: 'Sign-in and secrets',
+    description:
+      "The directory's address for one user, with `{email}`, `{key}` or `{userName}` filled in: the Users section links each person there.",
+  },
 
   // Back office and bundles
   {

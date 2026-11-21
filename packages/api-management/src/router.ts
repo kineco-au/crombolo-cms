@@ -82,6 +82,8 @@ export interface Principal {
    * that outlives it.
    */
   viaExchange?: { provider: string }
+  /** The API client an API user signed in as (story 389), for a site whose users a directory keeps. */
+  viaClient?: string
   /**
    * Set while an administrator's session views as user groups (story 314):
    * everything above is the groups', and they are who this really is.

@@ -193,6 +193,17 @@ export const contentFilesLocked = (config: Pick<CromboloConfig, 'code' | 'conten
 export const workspacesOn = (config: Pick<CromboloConfig, 'workspaces' | 'contentEditing'>) =>
   config.workspaces || config.contentEditing === 'locked'
 
+/** Who looks after the site's back-office people (story 389). */
+export interface UsersSetting {
+  /** The API clients a directory signs in as; none leaves users to the site. */
+  managedBy: readonly string[]
+  managedAt?: string | undefined
+}
+
+/** Whether users come only from a directory outside the site (story 389). */
+export const usersManaged = (config: { users?: UsersSetting }) =>
+  (config.users?.managedBy.length ?? 0) > 0
+
 /** Whether the site takes its pages, media, types and code only by a change (story 388). */
 export const contentLocked = (config: Pick<CromboloConfig, 'contentEditing'>) =>
   config.contentEditing === 'locked'
@@ -492,6 +503,13 @@ export interface CromboloConfig {
    * `CROMBOLO_CLI_TOKENS`, off unless set.
    */
   cliTokens: boolean
+  /**
+   * Story 389: back-office people kept in a directory outside the site. With `managedBy`
+   * naming API clients, only they create, change, disable or delete a user, or change
+   * whom a group holds; `managedAt` is the directory's address for one user, with
+   * `{email}`, `{key}` or `{userName}`. `CROMBOLO_USERS_MANAGED_BY`, `CROMBOLO_USERS_MANAGED_AT`.
+   */
+  users: UsersSetting
   /** The most days a command-line token may last. `CROMBOLO_CLI_TOKEN_MAX_DAYS`, 90. */
   cliTokenMaxDays: number
   /**
@@ -1100,6 +1118,13 @@ export function loadConfig(
     // Resolved again below, once it is known whether this is development.
     cliAccess: cliAccessSetting() as CliAccess,
     cliTokens: setting('CROMBOLO_CLI_TOKENS') === 'true',
+    users: {
+      managedBy: (setting('CROMBOLO_USERS_MANAGED_BY') ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+      managedAt: setting('CROMBOLO_USERS_MANAGED_AT') || undefined,
+    },
     cliTokenMaxDays: Math.floor(positiveNumber(setting('CROMBOLO_CLI_TOKEN_MAX_DAYS'), 90)),
     workspaces: setting('CROMBOLO_WORKSPACES') === 'true',
     workspacesRequired: setting('CROMBOLO_WORKSPACES_REQUIRED') === 'true',
@@ -1292,6 +1317,15 @@ export function loadConfig(
     throw new Error(
       `cliAccess is "${String(merged.cliAccess)}" in crombolo.config.ts: it is open or sign-in.`,
     )
+  if (
+    !Array.isArray(merged.users?.managedBy) ||
+    merged.users.managedBy.some((id) => typeof id !== 'string' || !id.trim())
+  )
+    throw new Error('users.managedBy in crombolo.config.ts is a list of API client ids.')
+  if (merged.users.managedAt !== undefined && !/^https?:\/\//.test(merged.users.managedAt))
+    throw new Error(
+      `users.managedAt is "${merged.users.managedAt}": it is an http or https address, with {email}, {key} or {userName}.`,
+    )
   if (merged.workspacesRequired && !merged.workspaces)
     throw new Error(
       'Workspaces are required (CROMBOLO_WORKSPACES_REQUIRED) but not turned on: set CROMBOLO_WORKSPACES=true as well.',
@@ -1448,7 +1482,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.70.0'
+export const VERSION = '0.71.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

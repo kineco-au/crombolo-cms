@@ -43,6 +43,7 @@ export default class UsersReset2fa extends BaseCommand {
       this.auditKey = user.key
       // As the person signed in: only an administrator may reset an administrator's.
       checkStatus((await people.users.get(actingPrincipal(), user.key)).status)
+      checkStatus((await people.users.mayManage?.(actingPrincipal(), user.key)) ?? 'Success')
       const removed = await people.twoFactor.providers(user.key)
       await people.twoFactor.reset(user.key)
       this.say(

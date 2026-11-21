@@ -965,6 +965,13 @@ export async function checkBundle(
         resolutions,
         resolveAll: options.resolveAll,
         adoptUsers: options.adoptUsers,
+        carried: new Map(
+          set.nodes.flatMap((n) =>
+            n.kind === 'document' || n.kind === 'element'
+              ? [[n.key.toLowerCase(), n.kind] as const]
+              : [],
+          ),
+        ),
       })
     : undefined
   if (people) findings.push(...people.findings)

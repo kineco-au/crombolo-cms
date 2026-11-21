@@ -45,6 +45,8 @@ export type UserStatus =
   | 'AdminGroupCannotBeEmpty'
   /** The site's built-in administrator, who is never deleted. */
   | 'CannotDelete'
+  /** Crombolo: the site's people come from a directory outside it (story 389). */
+  | 'ManagedOutside'
 
 export type UserOrder =
   | 'UserName'
@@ -141,6 +143,8 @@ export interface UserPort {
     newPassword: string,
     oldPassword: string | null,
   ): Promise<UserStatus>
+  /** Whether the caller may manage this user's sign-in, such as resetting their two-factor (story 389). */
+  mayManage?(principal: Principal, key: string): Promise<UserStatus>
   /** A generated password, which the backoffice shows once. */
   resetPassword(principal: Principal, key: string): Promise<Result<string>>
   setAvatar(principal: Principal, key: string, temporaryFileId: string): Promise<UserStatus>
@@ -224,6 +228,8 @@ export type UserGroupStatus =
   /** Crombolo: the admin group, or one holding a remote permission, has no owners (story 302). */
   | 'CannotBeOwned'
   | 'OwnerNotFound'
+  /** Crombolo: whom a group holds comes from a directory outside the site (story 389). */
+  | 'ManagedOutside'
 
 export interface UserGroupPort {
   list(skip: number, take: number): Promise<Page<UserGroupResponse>>

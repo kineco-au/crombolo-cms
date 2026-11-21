@@ -108,6 +108,8 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_REMOTE_EXCHANGE_PROVIDERS` | list | — | Back-office identity providers, by id, separated by commas, whose tokens the remote exchanges for a sign-in as the person they name, besides those the site's configuration opts in. |
 | `CROMBOLO_SECRET_KEY` | string | — | Seals secrets kept in the database, such as a webhook's headers and two-factor keys; 32 or more characters. Features that need it are not offered without it. Kept secret: never printed. |
 | `CROMBOLO_USERNAME_IS_EMAIL` | `true` / `false` | `true` | A back office user's login is their e-mail address. |
+| `CROMBOLO_USERS_MANAGED_BY` | list | — | The API clients a directory outside the site signs in as. Set, only they add, change, disable or remove back office users or change whom a group holds; each person keeps their own language, avatar, password and two-factor. |
+| `CROMBOLO_USERS_MANAGED_AT` | string | — | The directory's address for one user, with `{email}`, `{key}` or `{userName}` filled in: the Users section links each person there. |
 
 ### Back office and bundles
 
@@ -440,6 +442,41 @@ export default defineConfig({
 
 Installing an extension from Settings → Extensions gives you its backoffice screen.
 This line is what lets it answer a request.
+
+## Users managed from outside the site
+
+A site whose back-office people are kept in one directory, shared by several sites,
+names the API clients that directory signs in as (story 389):
+
+```ts
+export default defineConfig({
+  users: {
+    managedBy: ['crombolo-back-office-directory'],
+    managedAt: 'https://people.example.com/users/{email}',
+  },
+})
+```
+
+or `CROMBOLO_USERS_MANAGED_BY` (client ids, separated by commas) and
+`CROMBOLO_USERS_MANAGED_AT`. Both are read at boot and nowhere else.
+
+- **Only those clients** add, invite, change, disable, enable, unlock or remove a
+  person, reset their password or two-factor, or change their groups or whom a group
+  holds, through the Management API, the remote protocol or the command line.
+- **Everyone else is refused,** administrators included, with "Managed outside this
+  site" (`operationStatus: ManagedOutside`).
+- **Each person still sets their own** language, avatar, password and two-factor.
+- **API users stay the administrator's:** created, changed and given secrets as before,
+  so the directory's own client can be set up and its secret rotated with this on.
+- **What a group may do** (its sections, permissions and start nodes) is edited as
+  before; only who is in it is the directory's.
+- **An identity provider signs in only people who exist:** it makes no new user and
+  changes no groups from its claims. A person the directory disabled is refused as any
+  disabled user is.
+- **The Users section** offers no way to add, invite, remove, disable, enable or unlock
+  a person or to change their groups, and saves only API users. With `managedAt` set,
+  each person's actions include "Open where this person is managed", the address with
+  `{email}`, `{key}` or `{userName}` filled in.
 
 ## E-mail
 

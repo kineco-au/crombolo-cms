@@ -46,27 +46,40 @@ change made by hand in the Users section from disagreeing with it afterwards.
 - **Unlocking, resetting a password and resetting two-factor for someone else** are the
   directory's, refused like the rest; each person still manages their own two-factor.
 
+- **API users stay the administrator's (2026-11-21):** the rule covers people, so the
+  directory's own client is set up, and its secret rotated, with the setting on.
+
 ## How it is built
 
-- A principal authenticated with a client-credentials token carries `viaClient` (the
-  token row's `client_id`), which the rule checks.
-- The Management API's user writes (`PostUser`, invite, `PutUserById`, delete, disable,
-  enable, unlock, password reset, `PostUserSetUserGroups`, a group's users added or
-  removed) are refused for anyone else; the same rule in `user-admin.ts` covers the remote
-  protocol's user routes and the command line's `users` commands.
-- Still a person's own: `PutUserCurrentProfile`, their avatar, their password and their
-  two-factor set-up. Groups themselves are edited as before.
-- The Users section hides create, invite, delete and enable/disable, and links each user to
-  `users.managedAt`.
+- `config.users` (`UsersSetting`, `usersManaged`) in `packages/server/src/config.ts`, from
+  the config file or `CROMBOLO_USERS_MANAGED_BY` / `CROMBOLO_USERS_MANAGED_AT`, checked at
+  boot.
+- A client-credentials token's `client_id` rides on the identity as `viaClient`
+  (`packages/auth/src/service.ts`) and on the principal.
+- `managedUserPorts` (`packages/server/src/managed-users.ts`) wraps the user and group
+  ports `createUserPorts` returns, so the back office, the Management API, the remote
+  protocol and the command line all meet it: create, invite, resend, update, delete,
+  disable, enable, unlock, set groups, a group's users added or removed, and someone
+  else's password, avatar or two-factor (`mayManage`) answer `ManagedOutside` (403,
+  "Managed outside this site") unless the caller is a named client, or every user
+  touched is an API user.
+- `createExternalSignIn` takes `managed`: no account is created and no group follows a
+  claim.
+- `<plugin>/api/users-managed` says whether the site is managed and, with `?user=<key>`,
+  fills `managedAt` for that person. `users-managed.js` hides the Users section's
+  invite, create-person, delete, disable, enable, unlock, change-password, two-factor and
+  set-group actions, and Save, putting back a Save shown only for an API user
+  (`Crombolo.Condition.User.IsApiUser`), plus "Open where this person is managed".
+- Tests: `tests/users-managed.test.ts`.
 
 ## Acceptance criteria
 
-- [ ] **With the setting on,** a named client creates, changes and disables users and
+- [x] **With the setting on,** a named client creates, changes and disables users and
       sets their groups.
-- [ ] **An administrator's change to a user or their groups** is refused, in the back
+- [x] **An administrator's change to a user or their groups** is refused, in the back
       office and the API, with the reason.
-- [ ] **The Users section** is read-only and links to the address the site names.
-- [ ] **A user changes their own language and avatar** as before.
-- [ ] **A group's permissions** are edited as before.
-- [ ] **With the setting off,** nothing changes.
-- [ ] **Tests** on both dialects; `docs/configuration.md` describes the setting.
+- [x] **The Users section** is read-only and links to the address the site names.
+- [x] **A user changes their own language and avatar** as before.
+- [x] **A group's permissions** are edited as before.
+- [x] **With the setting off,** nothing changes.
+- [x] **Tests** on both dialects; `docs/configuration.md` describes the setting.
