@@ -78,7 +78,10 @@ const person = (email: string, groups: string[]) => ({
 
 describe('the setting', () => {
   test('is read from the environment, and a bad one in the config file is refused', () => {
-    const before = { ...process.env }
+    const before = {
+      by: process.env.CROMBOLO_USERS_MANAGED_BY,
+      at: process.env.CROMBOLO_USERS_MANAGED_AT,
+    }
     try {
       process.env.CROMBOLO_USERS_MANAGED_BY = ' a-client , b-client ,'
       process.env.CROMBOLO_USERS_MANAGED_AT = 'https://dir.example/{userName}'
@@ -94,7 +97,10 @@ describe('the setting', () => {
         /http or https address/,
       )
     } finally {
-      process.env = before
+      if (before.by === undefined) delete process.env.CROMBOLO_USERS_MANAGED_BY
+      else process.env.CROMBOLO_USERS_MANAGED_BY = before.by
+      if (before.at === undefined) delete process.env.CROMBOLO_USERS_MANAGED_AT
+      else process.env.CROMBOLO_USERS_MANAGED_AT = before.at
     }
   })
 
