@@ -151,6 +151,8 @@ export class UmbWorkspaceEditorElement extends UmbLitElement {
 							this.#currentProvidedView?.unprovide();
 						}
 						if (component) {
+							// A view's context destroyed with an earlier set of views provides nothing (Crombolo).
+							if (typeof context.provideAt !== 'function') return;
 							this.#currentProvidedView = context;
 							context.provideAt(component);
 							component.manifest = manifest;
