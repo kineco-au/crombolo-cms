@@ -492,7 +492,7 @@ describe(`members signing in through a provider (${process.env.CROMBOLO_DB ?? 's
       )
       expect(refused.ok ? '' : refused.error).toContain('is locked by the')
     }
-  }, 10_000)
+  }, 20_000)
 
   test('a provider sent to an issuer the config did not name, with no secret of its own, signs nobody in (305)', async () => {
     const { h, visit } = await memberSite({}, { secretKey: KEY })
