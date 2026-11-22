@@ -5,9 +5,10 @@
 
 ## Story
 
-As an editor working on the copy of a site where it is made, I want to see only the types
-and templates the served copy has, and my scheduled publishes passed on like any other,
-so that what I publish can go live at once.
+As an editor working on the copy of a site where it is made, I want to be offered only the
+types and templates the served copy has when I make a page, and my scheduled publishes
+passed on like any other, so that what I publish can go live at once; and as someone
+building schema, I want it to stay in front of me until it is released.
 
 ## Context
 
@@ -29,12 +30,17 @@ Two things get in the way.
 - **The served copy's mark.** A host records on the making copy which of its changes the
   served copy holds, the newest applied one:
   `PUT <plugin>/api/changes/served { "key": "<change key>" }`, needing Apply changes.
-  `GET` returns it. Unset, nothing is hidden.
-- **An editor outside a named workspace** (in their own, `380`) is offered only the
-  types, data types, templates and components the served copy holds: what changes up to
-  the mark carried, and what the site had before its first recorded change. The rest is
-  not in the pickers or the tree, in the back office and the Management API.
-- **A named workspace** sees everything, as now: that work goes out in a release.
+  `GET` returns it. Unset, nothing below applies.
+- **Schema is built in a named workspace.** On a site with the mark set, a change to a
+  type, data type, template, component, stylesheet or script outside a named workspace
+  (in Shared, or in a person's own workspace, `380`) is refused, saying to build schema in
+  a workspace. In a named workspace it is seen, as now, by its owner and the people it is
+  shared with, and stays open to edit there until it is merged.
+- **Merged into Shared and not yet served,** schema stays in the Settings tree and can be
+  changed again through a named workspace. It is left out only of what a person's own
+  workspace offers for making content: the type for a new page, the templates a page may
+  use, and the element and block pickers. Once the mark passes it, it is offered.
+- **A named workspace** is offered everything, as now: that work goes out in a release.
 - **A page already using something not served** still saves and publishes. The event
   says so (`needs: [...]`), so a host can leave it for the next release and say why.
 - **Setting or clearing a schedule** closes the person's open change and raises
@@ -47,13 +53,23 @@ Two things get in the way.
   `POST <plugin>/api/notices { user, message, link? }`, needing Apply changes, shown to that
   user once, as a success or a failure.
 
+## Decisions (2026-11-22)
+
+- **Nothing disappears from whoever is building it.** Hiding schema past the mark from
+  the tree would hide a new type from the person who made it until it was served. Schema
+  is built in a named workspace instead, where it is theirs and the people's they share it
+  with, and the mark limits only what making content offers outside one.
+
 ## Acceptance criteria
 
 - [ ] **The mark** is set and read by a caller holding Apply changes, and refused to
       anyone else.
-- [ ] **An editor in their own workspace** is offered only the types, templates and
-      components up to the mark; a named workspace is offered everything.
-- [ ] **With no mark,** nothing is hidden.
+- [ ] **With the mark set,** a schema change outside a named workspace is refused, saying
+      to build it in a workspace; in a named workspace it is made and edited as now.
+- [ ] **Schema merged into Shared past the mark** stays in the Settings tree, and is not
+      offered when making content in a person's own workspace until the mark passes it.
+- [ ] **A named workspace** is offered everything.
+- [ ] **With no mark,** nothing changes.
 - [ ] **A publish of a page using something past the mark** succeeds, and its event names
       what it needs.
 - [ ] **Setting a schedule** closes the change and raises the event, and the change's
