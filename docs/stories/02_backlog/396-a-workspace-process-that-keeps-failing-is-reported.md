@@ -1,7 +1,7 @@
 # 396 — A workspace process that keeps failing is reported
 
 **Epic:** S — Workspaces and changes · **Priority:** should · **Size:** S
-**Depends on:** 385
+**Depends on:** 378
 
 ## Story
 
@@ -10,7 +10,7 @@ failing, so that I can tell its owner without the site itself looking unhealthy.
 
 ## Context
 
-A workspace that changes code renders in a child process of its own (`385`). The node
+A workspace that changes code renders in a child process of its own (`378`). The node
 stops one that sits idle, grows past its memory or is pushed out by another, and a render
 that fails answers with an error. Nothing outside the node can tell a workspace whose
 process fails on every start from one that was simply stopped: the site's health is the
