@@ -6,6 +6,30 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.72.0 — 2026-11-22
+
+### Features
+
+- **Moving a change through the Management API (394).** A recorded change or an open
+  workspace is exported, and a change checked, staged or applied, at
+  `<backoffice>/crombolo/api/changes`, with the remote switched off. The routes take a
+  sign-in token in `Authorization`, never the back office's cookie, and ask the
+  remote's rights and limits. With `CROMBOLO_APPLY_CHANGES_BY=exchange`, only a sign-in
+  exchanged through a provider's new `remoteExchange.applyAudience` may stage or apply
+  a change, here and on the remote (`docs/changes.md`, "Moving a change without the
+  remote").
+
+### Fixes
+
+- **A change sent to the remote** (`PUT changes`) is taken up to
+  `CROMBOLO_REMOTE_MAX_UPLOAD_GB`, as a push is, rather than the usual request limit.
+
+### Upgrade notes
+
+- No migrations. With workspaces on, the server listens with the remote's upload limit
+  even when the remote is off; every other request is still held to
+  `CROMBOLO_MAX_REQUEST_BODY_MB`.
+
 ## v0.71.0 — 2026-11-21
 
 ### Features

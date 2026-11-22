@@ -62,6 +62,8 @@ export interface IdentityProviderOptions {
 /** How a provider's tokens are exchanged at the remote (stories 364 and 366). */
 export interface RemoteExchangeOptions {
   audience?: string
+  /** The audience of a token exchanged for applying a change (story 394). */
+  applyAudience?: string
   actors?: Readonly<Record<string, string>>
 }
 
@@ -248,12 +250,27 @@ export function exchangeAudienceClashes(
   backoffice: readonly IdentityProvider[],
 ): string[] {
   return exchanging.flatMap((provider) => {
-    const audience = provider.remoteExchange?.audience
+    const { audience, applyAudience } = provider.remoteExchange ?? {}
     const clash = audience ? backoffice.find((p) => p.oidc.clientId === audience) : undefined
-    return clash
-      ? [
-          `The ${provider.oidc.name} identity provider's remoteExchange audience is the client id ${clash.oidc.name} signs in with. Name the audience of an app used only for the remote, so a sign-in token can never be exchanged.`,
-        ]
-      : []
+    const applyClash = applyAudience
+      ? backoffice.find((p) => p.oidc.clientId === applyAudience)
+      : undefined
+    return [
+      ...(clash
+        ? [
+            `The ${provider.oidc.name} identity provider's remoteExchange audience is the client id ${clash.oidc.name} signs in with. Name the audience of an app used only for the remote, so a sign-in token can never be exchanged.`,
+          ]
+        : []),
+      ...(applyClash
+        ? [
+            `The ${provider.oidc.name} identity provider's remoteExchange applyAudience is the client id ${applyClash.oidc.name} signs in with. Name the audience of an app used only for applying changes.`,
+          ]
+        : []),
+      ...(applyAudience !== undefined && applyAudience === audience
+        ? [
+            `The ${provider.oidc.name} identity provider's remoteExchange applyAudience is its audience. Name another, so a token for applying changes is told apart from any other.`,
+          ]
+        : []),
+    ]
   })
 }

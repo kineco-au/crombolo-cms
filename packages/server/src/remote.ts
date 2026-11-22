@@ -78,7 +78,12 @@ import { type MediaStore, streamOf } from './media-store.ts'
 import { siteMemberPorts } from './member-admin.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
-import { type ChangeRouteOptions, createChangeRoutes } from './remote-changes.ts'
+import {
+  type ChangeRouteOptions,
+  createChangeRoutes,
+  mayApplyChanges,
+  streamBody,
+} from './remote-changes.ts'
 import { createCiSignIn, readRuleInput, trustedIssuers, unverifiedIssuer } from './remote-ci.ts'
 import { createExtensionActivityRoutes } from './remote-extension-activity.ts'
 import { createMediaLibraryRoutes } from './remote-media-library.ts'
@@ -359,7 +364,10 @@ export function createRemote(options: RemoteOptions): Remote {
         problem,
         atLeast,
         notAtLevel,
-        may,
+        may: (principal, verb) =>
+          verb === RemotePermissions.ApplyChanges
+            ? mayApplyChanges(principal, config.applyChangesBy, may)
+            : may(principal, verb),
         receive: (request, path) => receive(request, path),
       })
     : undefined
@@ -789,28 +797,11 @@ export function createRemote(options: RemoteOptions): Remote {
   }
 
   /** Streams a request body to a file, hashing it as it goes; undefined when it is not what it claimed. */
-  async function receive(
+  function receive(
     request: Request,
     path: string,
   ): Promise<{ sha256: string; size: number } | undefined> {
-    if (!request.body) return undefined
-    const hasher = createHash('sha256')
-    let size = 0
-    const sink = createWriteStream(path)
-    const reader = request.body.getReader()
-    try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        size += value.length
-        if (size > settings.maxUploadBytes) throw new Error('too large')
-        hasher.update(value)
-        if (!sink.write(value)) await new Promise((r) => sink.once('drain', r))
-      }
-    } finally {
-      await new Promise<void>((resolve) => sink.end(() => resolve()))
-    }
-    return { sha256: hasher.digest('hex'), size }
+    return streamBody(request, path, settings.maxUploadBytes)
   }
 
   /** The options a site apply was sent with, in `Crombolo-Options` (story 167). */
@@ -1628,7 +1619,7 @@ export function createRemote(options: RemoteOptions): Remote {
             applyChanges:
               Boolean(changeRoutes?.capabilities().length) &&
               atLeast('content') &&
-              may(principal, RemotePermissions.ApplyChanges),
+              mayApplyChanges(principal, config.applyChangesBy, may),
           },
         },
       ])
@@ -1811,6 +1802,7 @@ export function createRemote(options: RemoteOptions): Remote {
       return (
         url.pathname === `${prefix}pushes` ||
         url.pathname === `${prefix}bundles` ||
+        url.pathname === `${prefix}changes` ||
         url.pathname.startsWith(`${prefix}media/`) ||
         (mediaLibraryRoutes?.isUpload(url.pathname.slice(prefix.length), request.method) ?? false)
       )

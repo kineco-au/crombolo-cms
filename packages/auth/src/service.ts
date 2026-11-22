@@ -29,6 +29,8 @@ import type { Authorization, AuthStore, UserRow } from './store.ts'
  */
 export const BACKOFFICE_CLIENT_ID = 'umbraco-back-office'
 export const DEFAULT_SCOPE = 'offline_access'
+/** The scope of a token exchanged for applying a change (story 394). */
+export const APPLY_CHANGES_SCOPE = 'crombolo.apply-changes'
 
 export interface AuthSettings {
   /** Access token lifetime. Umbraco uses a quarter of the session timeout. */
@@ -107,6 +109,8 @@ export interface ResolvedIdentity {
   exchangedActor?: { id: string; name: string | null }
   /** The client an API user's token was issued to (story 389). */
   viaClient?: string
+  /** Exchanged for applying a change (story 394). */
+  exchangedForApplying?: true
   allowedSections: Array<SectionAlias | ExtensionSectionAlias>
   groupKeys: string[]
   isAdmin: boolean
@@ -406,7 +410,11 @@ export class AuthService {
     const actor = provider ? await this.#store.devices.exchangeActor(token.sessionId) : undefined
     const through = {
       ...(provider
-        ? { exchangedThrough: provider, ...(actor ? { exchangedActor: actor } : {}) }
+        ? {
+            exchangedThrough: provider,
+            ...(actor ? { exchangedActor: actor } : {}),
+            ...(token.scope === APPLY_CHANGES_SCOPE ? { exchangedForApplying: true as const } : {}),
+          }
         : {}),
       ...(user.kind === 'Api' ? { viaClient: token.clientId } : {}),
     }
@@ -560,6 +568,7 @@ export class AuthService {
     seconds: number,
     ipAddress?: string,
     actor?: { id: string; name: string | null },
+    forApplying = false,
   ): Promise<
     | { status: 'success'; user: UserRow; accessToken: string; expiresIn: number }
     | { status: 'notAllowed'; reason: 'lockedOut' | 'notApproved' | 'unknown' }
@@ -587,7 +596,7 @@ export class AuthService {
       userId: user.id,
       sessionId,
       clientId,
-      scope: '',
+      scope: forApplying ? APPLY_CHANGES_SCOPE : '',
       expiresAt,
     })
     return { status: 'success', user, accessToken, expiresIn: seconds }

@@ -468,6 +468,13 @@ providers exchange.
   exchange as it does to sign-in.
 - **Tokens last** up to 90 minutes at the provider and are accepted once; have
   the tool exchange one as soon as it has it, and never log it.
+- **For applying a change** (story 394), `applyAudience` names a second
+  audience. A token issued for it exchanges for a sign-in marked as for applying a
+  change, which is the only kind `CROMBOLO_APPLY_CHANGES_BY=exchange` lets stage or
+  apply one ([`changes.md`](changes.md), "Moving a change without the remote"). It
+  is never the ordinary audience or a sign-in client id: the site refuses to start
+  if it is, and a token naming both audiences is refused. With Entra, it is a third
+  app's client id.
 - **Knowing the person on the host's side** (story 372). A host whose back-office
   tools work for people on its own service sets `host.provider` to this provider,
   locked, and each host token then carries `host_sub` and `host_iss`, the person's

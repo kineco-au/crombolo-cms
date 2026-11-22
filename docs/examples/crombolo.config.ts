@@ -38,6 +38,7 @@ export default defineConfig({
   },
   workspaces: true, // CROMBOLO_WORKSPACES: pages changed apart from Shared
   workspacesRequired: false, // CROMBOLO_WORKSPACES_REQUIRED: every page change made in a workspace
+  applyChangesBy: 'any', // CROMBOLO_APPLY_CHANGES_BY: exchange, to stage or apply only by an exchanged sign-in
   purgeAfterDays: 0, // CROMBOLO_PURGE_AFTER_DAYS: fewest days between retiring a property and purging it
   workspacesHost: '{workspace}.preview.example.com', // CROMBOLO_WORKSPACES_HOST: where a workspace is looked at
   workspaceLinkMaxDays: 30, // CROMBOLO_WORKSPACE_LINK_MAX_DAYS: longest a link to a workspace lasts

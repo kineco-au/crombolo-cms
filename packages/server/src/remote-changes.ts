@@ -6,7 +6,8 @@
  * Install code too when the change carries templates or the site's own code.
  * docs/changes.md.
  */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createWriteStream, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Principal } from '@crombolo/api-management/domain'
@@ -46,6 +47,44 @@ export interface ChangeRouteOptions {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ONE = /^changes\/([0-9a-f-]{36})\/bundle$/i
 const WORKSPACE = /^workspaces\/([0-9a-f-]{36})\/change$/i
+
+/**
+ * Whether the principal may stage or apply a change (story 394): Apply changes, and
+ * under `exchange` only for a sign-in exchanged for applying one.
+ */
+export const mayApplyChanges = (
+  principal: Principal,
+  by: 'any' | 'exchange',
+  may: (principal: Principal, verb: RemoteVerb) => boolean,
+) =>
+  may(principal, RemotePermissions.ApplyChanges) &&
+  (by === 'any' || principal.viaExchange?.forApplying === true)
+
+/** Streams a request body to a file, hashing it as it goes; undefined when it carried none. */
+export async function streamBody(
+  request: Request,
+  path: string,
+  maxBytes: number,
+): Promise<{ sha256: string; size: number } | undefined> {
+  if (!request.body) return undefined
+  const hasher = createHash('sha256')
+  let size = 0
+  const sink = createWriteStream(path)
+  const reader = request.body.getReader()
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.length
+      if (size > maxBytes) throw new Error('too large')
+      hasher.update(value)
+      if (!sink.write(value)) await new Promise((r) => sink.once('drain', r))
+    }
+  } finally {
+    await new Promise<void>((resolve) => sink.end(() => resolve()))
+  }
+  return { sha256: hasher.digest('hex'), size }
+}
 
 /** A change bundle packed as a tarball, as it travels. */
 export function packChange(change: ChangeBundle, media: ReadonlyMap<string, Uint8Array>) {

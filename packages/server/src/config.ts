@@ -257,9 +257,9 @@ export function runsOnLocalhost(config: CromboloConfig): boolean {
   }
 }
 
-/** The body limit to listen with: raised for remote uploads when the remote is on. */
+/** The body limit to listen with: raised for uploads when the remote or workspaces are on. */
 export function listeningBodyLimit(config: CromboloConfig): number {
-  return config.remote.enabled
+  return config.remote.enabled || workspacesOn(config)
     ? Math.max(config.maxRequestBodyBytes, config.remote.maxUploadBytes)
     : config.maxRequestBodyBytes
 }
@@ -523,6 +523,11 @@ export interface CromboloConfig {
    * needs workspaces on.
    */
   workspacesRequired: boolean
+  /**
+   * Who may stage or apply a change (story 394): `exchange` honours Apply changes only
+   * for a sign-in exchanged for applying one. `CROMBOLO_APPLY_CHANGES_BY`, any unless set.
+   */
+  applyChangesBy: 'any' | 'exchange'
   /**
    * How many workspaces with changed views render at once on a node, each in a
    * process of its own (story 378); past it the least recently used is stopped.
@@ -1128,6 +1133,7 @@ export function loadConfig(
     cliTokenMaxDays: Math.floor(positiveNumber(setting('CROMBOLO_CLI_TOKEN_MAX_DAYS'), 90)),
     workspaces: setting('CROMBOLO_WORKSPACES') === 'true',
     workspacesRequired: setting('CROMBOLO_WORKSPACES_REQUIRED') === 'true',
+    applyChangesBy: (setting('CROMBOLO_APPLY_CHANGES_BY') || 'any') as 'any' | 'exchange',
     purgeAfterDays: Math.floor(nonNegativeNumber(setting('CROMBOLO_PURGE_AFTER_DAYS'), 0)),
     workspacesHost: setting('CROMBOLO_WORKSPACES_HOST') || undefined,
     workspaceLinkMaxDays: Math.floor(
@@ -1326,6 +1332,10 @@ export function loadConfig(
     throw new Error(
       `users.managedAt is "${merged.users.managedAt}": it is an http or https address, with {email}, {key} or {userName}.`,
     )
+  if (merged.applyChangesBy !== 'any' && merged.applyChangesBy !== 'exchange')
+    throw new Error(
+      `applyChangesBy is "${String(merged.applyChangesBy)}": it is any or exchange (CROMBOLO_APPLY_CHANGES_BY).`,
+    )
   if (merged.workspacesRequired && !merged.workspaces)
     throw new Error(
       'Workspaces are required (CROMBOLO_WORKSPACES_REQUIRED) but not turned on: set CROMBOLO_WORKSPACES=true as well.',
@@ -1482,7 +1492,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.71.0'
+export const VERSION = '0.72.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

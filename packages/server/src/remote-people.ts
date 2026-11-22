@@ -100,6 +100,8 @@ export interface ExchangeAccounts {
     seconds: number,
     ip: string | undefined,
     actor: ExchangeActor | undefined,
+    /** Exchanged for applying a change (story 394), by the provider's apply audience. */
+    forApplying?: boolean,
   ): Promise<{ accessToken: string } | { refused: string }>
 }
 
@@ -261,6 +263,7 @@ export function createPeopleExchange(options: {
         )
 
       const audience = audienceOf(provider, url.origin)
+      const applyAudience = provider.remoteExchange?.applyAudience
       const signInClients = await Promise.all(
         options.backoffice.map(
           async (p) => (await options.resolve(p).catch(() => p)).oidc.clientId,
@@ -268,12 +271,14 @@ export function createPeopleExchange(options: {
       )
       if (signInClients.includes(audience))
         return refuse(request, ip, 'its audience is a sign-in client id', provider)
+      if (applyAudience && (applyAudience === audience || signInClients.includes(applyAudience)))
+        return refuse(request, ip, 'its audience for applying changes is not its own', provider)
 
       let claims: JWTPayload
       try {
         ;({ payload: claims } = await jwtVerify(token, await keysOf(issuer), {
           issuer,
-          audience,
+          audience: applyAudience ? [audience, applyAudience] : audience,
           algorithms: ASYMMETRIC,
           requiredClaims: ['exp', 'iat'],
         }))
@@ -285,6 +290,10 @@ export function createPeopleExchange(options: {
           provider,
         )
       }
+      const audiences = typeof claims.aud === 'string' ? [claims.aud] : (claims.aud ?? [])
+      const forApplying = applyAudience !== undefined && audiences.includes(applyAudience)
+      if (forApplying && audiences.includes(audience))
+        return refuse(request, ip, 'it names both of its audiences', provider)
       if (claims.nonce !== undefined)
         return refuse(request, ip, 'it is a sign-in ID token, which carries a nonce', provider)
       const exp = claims.exp as number
@@ -322,6 +331,7 @@ export function createPeopleExchange(options: {
         PERSON_TOKEN_SECONDS,
         ip,
         actor,
+        forApplying,
       )
       if ('refused' in signedIn) return refuse(request, ip, signedIn.refused, provider)
       await options.onExchange({ ok: true, provider, account, actor }, request)

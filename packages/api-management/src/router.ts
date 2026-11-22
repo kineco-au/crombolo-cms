@@ -81,7 +81,7 @@ export interface Principal {
    * them for its fifteen minutes, but it decides no approval and makes nothing
    * that outlives it.
    */
-  viaExchange?: { provider: string }
+  viaExchange?: { provider: string; forApplying?: true }
   /** The API client an API user signed in as (story 389), for a site whose users a directory keeps. */
   viaClient?: string
   /**

@@ -152,6 +152,17 @@ capabilities on `context.bundle`. Site routes no longer answer under
 `"schemaVersion": 2`, and one that does not is refused. `bundles.md`, Part 3,
 "Routes", lists the changes to make.
 
+## Moving a change through the Management API (unreleased)
+
+Story 394 adds `GET <backoffice>/crombolo/api/changes/{id}/bundle`,
+`GET <backoffice>/crombolo/api/workspaces/{key}/change` and
+`PUT <backoffice>/crombolo/api/changes`: the remote's export and import of a change,
+for a sign-in token in `Authorization`, never a cookie. They need the remote's rights:
+*Pull* to export, *Apply changes* to check, stage or apply, and *Install code* for a
+change carrying code. `CROMBOLO_APPLY_CHANGES_BY=exchange` honours *Apply changes*
+only for a sign-in exchanged through a provider's `remoteExchange.applyAudience`.
+[`changes.md`](changes.md), "Moving a change without the remote", has the details.
+
 ## A bundle's tables move into a place of their own (unreleased)
 
 **An exception to the promise above.** Story 189 moved a bundle's tables out

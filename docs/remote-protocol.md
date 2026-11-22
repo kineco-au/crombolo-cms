@@ -226,7 +226,8 @@ Nothing stored in the back office turns it on or off.
      algorithm;
    - `iss`, the provider's issuer as sign-in uses it, with an administrator's
      changes (story 033) unless the provider is locked;
-   - `aud`, the provider's audience;
+   - `aud`, the provider's audience, or its `applyAudience` for a sign-in that
+     applies changes (story 394), never both;
    - `exp`, `nbf` and `iat`, and a lifetime of 90 minutes at most;
    - no `nonce`, which only a sign-in ID token carries;
    - `jti`, or Entra's `uti`, accepted once.

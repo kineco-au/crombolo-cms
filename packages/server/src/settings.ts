@@ -591,6 +591,15 @@ const DECLARED = [
       'Whether every change to a page is made in a workspace. What everyone sees then changes only when a workspace is merged; someone who edits without choosing one works in their own. Needs `CROMBOLO_WORKSPACES=true`.',
   },
   {
+    env: 'CROMBOLO_APPLY_CHANGES_BY',
+    kind: 'enum',
+    values: ['any', 'exchange'],
+    default: 'any',
+    section: 'Schema',
+    description:
+      "Who may stage or apply a change from another copy of the site. `exchange`: only a sign-in exchanged through an identity provider's `applyAudience`, so a person's own sign-in never can.",
+  },
+  {
     env: 'CROMBOLO_SYNC_SCHEMA_AT_BOOT',
     kind: 'boolean',
     default: 'true',

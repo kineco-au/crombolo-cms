@@ -45,6 +45,38 @@ At `<backoffice>/crombolo/api/changes`, for people with Content:
 | `GET /{id}/compare?path=` | that change's version of the file against the file now |
 | `POST /{id}/revert` `{ toWorkspace? }` | puts it back, as a change of its own (an administrator) |
 
+### Moving a change without the remote
+
+A change moves between copies of a site through the Management API as well, with the
+remote switched off (story `394`). These routes take a sign-in token in
+`Authorization` only: a person's own, a command-line token, an API user's, or one
+exchanged through a provider. A request carrying only the back office's cookie is
+refused, so another page in someone's browser can't send one. They don't need the
+Content section, only the remote's rights:
+
+| | |
+| --- | --- |
+| `GET <backoffice>/crombolo/api/changes/{id}/bundle` | a recorded change, as the tarball the remote gives, with `Crombolo-Sha256`. Needs *Pull* |
+| `GET <backoffice>/crombolo/api/workspaces/{key}/change` | an open workspace, as the change its merge will be. Needs *Pull* |
+| `PUT <backoffice>/crombolo/api/changes` | a change, with `?check`, `?stage`, `&into`, `&editable` and `?accept` as on the remote. Needs *Apply changes*, and *Install code* when it carries templates or the site's own code |
+
+- **The same limits:** `Crombolo-Sha256` is required and checked, and the body is
+  streamed to disk up to `CROMBOLO_REMOTE_MAX_UPLOAD_GB`. The rights are checked before
+  any of it is read.
+- **The same answers,** in the Management API's shape: a refusal is
+  `{ message, detail?, refusals? }`; a staged change is `{ workspace, skipped,
+  conflicts }`, and an apply its outcome, as the remote answers them.
+- **`CROMBOLO_REMOTE_ACCESS` governs the remote alone.** At `off` or `read`, these
+  routes still take changes. What holds them is the rights, the setting below and the
+  content lock.
+- **Applying only by an exchange.** With `CROMBOLO_APPLY_CHANGES_BY=exchange`, *Apply
+  changes* is honoured only for a sign-in exchanged through a provider's
+  `remoteExchange.applyAudience` (story `364`), here and on the remote alike. A
+  person's own sign-in, however their groups are set, can then not stage or apply a
+  change, and the host's tool that exchanges for them decides when it happens.
+- **The record** names the person, as the remote's import does, and a staged workspace
+  is theirs.
+
 ## Reverting
 
 A revert is a change of its own, and can itself be reverted. Its pages go back through
@@ -59,7 +91,8 @@ revert`.
 ## Between sites
 
 A change moves from one copy of a site to another (story `383`), over the remote
-protocol's `changes` routes ([`remote-protocol.md`](remote-protocol.md)).
+protocol's `changes` routes ([`remote-protocol.md`](remote-protocol.md)) or the
+Management API's (above, "Moving a change without the remote").
 
 - **A change bundle** is a private package like any site export: `package.json`, a
   `bundle.json` typed `change` with the one integrity hash over everything and the

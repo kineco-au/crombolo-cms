@@ -155,6 +155,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_WORKSPACE_PROCESS_MEMORY_MB` | number | `1024` | How much memory a workspace with changed templates may use before it is stopped, to start again when next asked for. |
 | `CROMBOLO_WORKSPACE_RENDER_SECONDS` | number | `30` | How long a page of a workspace with changed templates may take to show before it is stopped and the page answers with an error. |
 | `CROMBOLO_WORKSPACES_REQUIRED` | `true` / `false` | `false` | Whether every change to a page is made in a workspace. What everyone sees then changes only when a workspace is merged; someone who edits without choosing one works in their own. Needs `CROMBOLO_WORKSPACES=true`. |
+| `CROMBOLO_APPLY_CHANGES_BY` | `any`, `exchange` | `any` | Who may stage or apply a change from another copy of the site. `exchange`: only a sign-in exchanged through an identity provider's `applyAudience`, so a person's own sign-in never can. |
 | `CROMBOLO_SYNC_SCHEMA_AT_BOOT` | `true` / `false` | `true` | Syncs the schema files when the server starts. Turn it off when a deploy runs `crombolo types sync` itself. |
 
 ### Components

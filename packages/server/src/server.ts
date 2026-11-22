@@ -271,6 +271,7 @@ import {
 import { principalOf } from './principal.ts'
 import { provenanceProblem } from './provenance.ts'
 import { createRemote, may, type RestartOutcome } from './remote.ts'
+import { createChangeRoutes, mayApplyChanges, streamBody } from './remote-changes.ts'
 import { createPeopleExchange } from './remote-people.ts'
 import { createSchemaTransfer, UPLOAD_LIMITS } from './schema-transfer.ts'
 import { SiteAssets } from './site-assets.ts'
@@ -1067,7 +1068,7 @@ export async function createServer(
                   ? undefined
                   : 'the person has no access to the back office'
               },
-              signIn: async (key, provider, seconds, ip, actor) => {
+              signIn: async (key, provider, seconds, ip, actor, forApplying) => {
                 const user = await users.byKey(key)
                 if (!user) return { refused: 'the person no longer exists' }
                 const result = await auth.signInByExchange(
@@ -1076,6 +1077,7 @@ export async function createServer(
                   seconds,
                   ip,
                   actor,
+                  forApplying,
                 )
                 if (result.status === 'success') return { accessToken: result.accessToken }
                 return {
@@ -1897,6 +1899,45 @@ export async function createServer(
     schema: () => workspaceSchema,
     merge: () => core.operations.merge,
   })
+  // Story 394: the remote's change routes, on the Management API for a bearer token.
+  const managementChanges = createChangeRoutes({
+    db,
+    changes: () => (workspacesOn(config) ? changeTransfer : undefined),
+    problem: (status, body) =>
+      Response.json(
+        {
+          message: body.title,
+          ...(body.detail ? { detail: body.detail } : {}),
+          ...(body.items ? { refusals: body.items } : {}),
+        },
+        { status },
+      ),
+    atLeast: () => true,
+    notAtLevel: () => new Response(null, { status: 403 }),
+    may: (principal, verb) =>
+      verb === RemotePermissions.ApplyChanges
+        ? mayApplyChanges(principal, config.applyChangesBy, may)
+        : may(principal, verb),
+    receive: (request, path) => streamBody(request, path, config.remote.maxUploadBytes),
+  })
+  /** The remote's route a Management API change request is, if it is one. */
+  const managementChange = (pathname: string, method: string): string | undefined => {
+    if (pathname === changesPath) return method === 'PUT' ? 'changes' : undefined
+    const bundle = /^\/([0-9a-f-]{36})\/bundle$/i.exec(pathname.slice(changesPath.length))
+    if (pathname.startsWith(`${changesPath}/`) && bundle && method === 'GET')
+      return `changes/${bundle[1]}/bundle`
+    const open = /^\/([0-9a-f-]{36})\/change$/i.exec(pathname.slice(workspacesPath.length))
+    if (pathname.startsWith(`${workspacesPath}/`) && open && method === 'GET')
+      return `workspaces/${open[1]}/change`
+    return undefined
+  }
+  /** A token the caller set in `Authorization`, never the back office's cookie. */
+  const carriesBearer = (request: Request) => {
+    const header = request.headers.get('authorization')
+    const bearer = header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : ''
+    return bearer !== '' && bearer !== REDACTED
+  }
+
   // Story 379: each workspace's site, kept on this node while it is looked at.
   const workspaceSites = createWorkspaceSites({
     db,
@@ -3367,6 +3408,22 @@ export async function createServer(
         principal,
         pathname.slice(cliTokensPath.length),
         clientAddress(request),
+      )
+    }
+
+    // Story 394: a change exported or taken, for a token in Authorization alone.
+    const moving = managementChange(pathname, request.method)
+    if (moving) {
+      if (!carriesBearer(request))
+        return Response.json(
+          { message: 'Moving a change needs a sign-in token in Authorization, not a cookie.' },
+          { status: 401 },
+        )
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return (
+        (await managementChanges.handle(request, new URL(request.url), principal, moving)) ??
+        new Response(null, { status: 404 })
       )
     }
 
@@ -5243,7 +5300,8 @@ export async function createServer(
         // request is held to the usual one here.
         if (
           listeningBodyLimit(config) > config.maxRequestBodyBytes &&
-          !remote.isUpload(request, requestUrl)
+          !remote.isUpload(request, requestUrl) &&
+          managementChange(pathname, request.method) !== 'changes'
         ) {
           const length = Number(request.headers.get('content-length') ?? 0)
           if (length > config.maxRequestBodyBytes)
