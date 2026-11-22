@@ -6,6 +6,37 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.73.0 — 2026-11-22
+
+### Features
+
+- **What is live, for an editor where a site is made (395).** A host reports each change
+  it applies to the served copy (`PUT <backoffice>/crombolo/api/changes/served`, Apply
+  changes). From the first report, types, data types, templates, components,
+  stylesheets and scripts are built in a named workspace and refused outside one; schema
+  not yet on the served copy stays in Settings but is not offered for a new page, its
+  templates or its blocks outside a named workspace. `Crombolo.ChangePublished` now names
+  the change in its payload (`Change`), says whether a person or a tool acting for one
+  made it, and lists what it `Needs`; setting or clearing a schedule raises it and the
+  change carries the schedule. A host leaves a person a notice in the back office with
+  `POST <backoffice>/crombolo/api/notices` (`docs/changes.md`, "What the served copy
+  holds").
+- **A workspace process that keeps failing is reported (396).** Each node records its
+  workspaces' processes and their crashes, time-outs and failed starts;
+  `GET <backoffice>/crombolo/api/workspaces/processes` (Settings) lists those running and
+  those that failed three or more times in the hour, across every node, with who owns
+  them; `/health` counts the failing ones and stays healthy; each failure logs
+  `workspace.process.failed` (`docs/workspaces.md`).
+
+### Upgrade notes
+
+- **Migration 091** (`AddServedChanges`) adds the `served_change` and `backoffice_notice`
+  tables. Nothing changes until a host reports a change.
+- **Migration 092** (`AddWorkspaceProcesses`) adds the `workspace_process` and
+  `workspace_process_failure` tables.
+- **`/health` gains `workspaces: { failing }`.** It never fails a node; a monitor can
+  alert on it.
+
 ## v0.72.0 — 2026-11-22
 
 ### Features

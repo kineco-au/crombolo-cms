@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.72.0",
+  "version": "0.73.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -178,6 +178,12 @@
       "alias": "Crombolo.EntryPoint.ContentLocked",
       "name": "Crombolo Content Locked",
       "js": "/crombolo-plugin/content-locked.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.Notices",
+      "name": "Crombolo Notices",
+      "js": "/crombolo-plugin/notices.js"
     },
     {
       "type": "backofficeEntryPoint",

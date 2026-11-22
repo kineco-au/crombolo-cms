@@ -166,6 +166,19 @@ wrote it.
   as the unit tests run) cannot be opened from another process, so there the workspace
   renders on the node as before. Site search works in the process; a page's actions and
   signed deferred parts are Shared's renderer's.
+- **A process that keeps failing is reported (story 396).** Each node records in the
+  database which workspaces' processes it runs, and each failure: a process that exits on
+  its own, a render over its time, or one that never comes up ready. A template that
+  throws on one page is that page's error, not a failure, and a process stopped for
+  idling, its memory or another workspace needing its place is not one either. Failures
+  older than an hour are pruned. Each failure logs `workspace.process.failed` with the
+  workspace's key, the node and the reason. `GET <plugin>/api/workspaces/processes`, for
+  anyone with the Settings section, by cookie or bearer, answers for the whole site from
+  any node: each workspace with a process on a node seen in the last minute, and each
+  with three or more failures in the hour, as
+  `{ key, name, owner, nodes, running, failing, failures, lastError, since }`. `/health`
+  counts the failing ones in `workspaces: { failing }`, naming none, and stays 200: a
+  workspace failing is its owner's to fix, not a reason to drain a node.
 - **`GET /{key}/render?path=/`** renders one page with the workspace's views on Shared's
   published content, for its members, until the workspace has an address of its own
   (`379`), which also serves its stylesheets and scripts.

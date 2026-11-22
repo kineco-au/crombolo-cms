@@ -116,6 +116,7 @@ import {
   UserRepository,
   WorkspaceFileRepository,
   WorkspaceLinkRepository,
+  WorkspaceProcessRepository,
   WorkspaceRepository,
   type WritesPaused,
   withAuditContext,
@@ -274,6 +275,14 @@ import { createRemote, may, type RestartOutcome } from './remote.ts'
 import { createChangeRoutes, mayApplyChanges, streamBody } from './remote-changes.ts'
 import { createPeopleExchange } from './remote-people.ts'
 import { createSchemaTransfer, UPLOAD_LIMITS } from './schema-transfer.ts'
+import { createServedApi } from './served-api.ts'
+import {
+  isSchemaWrite,
+  PURPOSE_HEADER,
+  schemaInWorkspace,
+  servedView,
+  withoutUnserved,
+} from './served-schema.ts'
 import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
 import { PublicFiles } from './site-public.ts'
@@ -370,10 +379,21 @@ import {
   workspaceHosts,
 } from './workspace-access.ts'
 import { createWorkspaceChecks } from './workspace-checks.ts'
-import { createWorkspaceProcesses, type WorkspaceProcesses } from './workspace-processes.ts'
+import {
+  createWorkspaceProcesses,
+  PROCESS_FAILURES_REPORTED,
+  type WorkspaceProcesses,
+  type WorkspaceProcessReports,
+  workspaceProcessList,
+} from './workspace-processes.ts'
 import { createWorkspaceSchema } from './workspace-schema.ts'
 import { createWorkspaceSites } from './workspace-sites.ts'
-import { createWorkspaceScope, createWorkspacesApi } from './workspaces.ts'
+import {
+  createWorkspaceScope,
+  createWorkspacesApi,
+  OWN_WORKSPACE,
+  WORKSPACE_HEADER,
+} from './workspaces.ts'
 
 export interface ServerHandle {
   config: CromboloConfig
@@ -1729,7 +1749,21 @@ export async function createServer(
     },
     onServerEvent: announce,
     // Story 375: a request in a workspace, with the workspace held while it runs.
-    scope: workspaceScope,
+    // Story 395: outside a named one, schema is refused and what is not served is not offered.
+    scope: async (request, principal, operation) => {
+      const named = request.headers.get(WORKSPACE_HEADER)?.trim()
+      const view = named && named.toLowerCase() !== OWN_WORKSPACE ? undefined : await servedView(db)
+      if (view && isSchemaWrite(operation.operationId, request.method)) return schemaInWorkspace()
+      const scope = await workspaceScope(request, principal, operation)
+      if (!view || scope instanceof Response) return scope
+      const making = request.headers.get(PURPOSE_HEADER)?.trim().toLowerCase() === 'content'
+      const filtered = async <T>(answer: T): Promise<T> =>
+        answer instanceof Response
+          ? ((await withoutUnserved(answer, operation.operationId, view, making)) as T)
+          : answer
+      if (scope) return { run: async (fn) => filtered(await scope.run(fn)) }
+      return request.method === 'GET' ? { run: async (fn) => filtered(await fn()) } : undefined
+    },
   })
 
   // Fixed by the contract and the client's SDK, wherever the editor is mounted.
@@ -1750,6 +1784,36 @@ export async function createServer(
       behind: checkpoint === undefined || latest === undefined ? null : checkpoint < latest,
       builtAt: served?.builtAt.toISOString() ?? null,
     }
+  }
+
+  // Story 396: how many workspaces' processes keep failing, across the nodes, for /health.
+  const processLog = logger('workspaces')
+  const processRows = new WorkspaceProcessRepository(db)
+  let failingWorkspaces = 0
+  let failingCheckedAt = 0
+  const refreshFailing = async () => {
+    if (Date.now() - failingCheckedAt < 5000) return
+    failingCheckedAt = Date.now()
+    failingWorkspaces = await processRows
+      .failing(PROCESS_FAILURES_REPORTED)
+      .catch(() => failingWorkspaces)
+  }
+  const processReports: WorkspaceProcessReports = {
+    started: (workspace) => {
+      void processRows.started(schema.nodeId, workspace.key).catch(() => {})
+    },
+    stopped: (workspace) => {
+      void processRows.stopped(schema.nodeId, workspace.key).catch(() => {})
+    },
+    failed: (workspace, reason) => {
+      processLog.warning('workspace.process.failed {workspace} on node {nodeId}: {reason}', {
+        workspace: workspace.key,
+        nodeId: schema.nodeId,
+        reason,
+      })
+      failingCheckedAt = 0
+      void processRows.failed(schema.nodeId, workspace.key, reason).catch(() => {})
+    },
   }
 
   const health = () => {
@@ -1780,6 +1844,8 @@ export async function createServer(
       // Where jobs run, and on a node that leaves them to a worker whether one
       // is running them; reported, never drained on (story 223).
       ...(config.role === 'web' ? {} : { jobs: core.workerWatch.status() }),
+      // Reported, never drained on: one workspace failing is its owner's to fix.
+      workspaces: { failing: failingWorkspaces },
     }
   }
 
@@ -1839,8 +1905,10 @@ export async function createServer(
         idleMs: config.workspaceProcessIdleMinutes * 60_000,
         memoryMb: config.workspaceProcessMemoryMb,
         renderMs: config.workspaceRenderSeconds * 1000,
+        reports: processReports,
       })
     : undefined
+  if (workspaceProcesses) await processRows.nodeStarted(schema.nodeId).catch(() => {})
   const workspacesApi = createWorkspacesApi(db, {
     enabled: () => workspacesOn(config),
     locked: () => contentLocked(config),
@@ -1931,6 +1999,11 @@ export async function createServer(
       return `workspaces/${open[1]}/change`
     return undefined
   }
+  // Story 395: the served copy's changes, reported by a host, and its notices for people.
+  const noticesPath = `${paths.pluginPath}/api/notices`
+  const servedApi = createServedApi(db, {
+    mayApply: async (principal) => mayApplyChanges(principal, config.applyChangesBy, may),
+  })
   /** A token the caller set in `Authorization`, never the back office's cookie. */
   const carriesBearer = (request: Request) => {
     const header = request.headers.get('authorization')
@@ -2081,6 +2154,7 @@ export async function createServer(
 
     // Non-contract, unauthenticated: a load balancer drains a node that has fallen behind.
     if (pathname === '/health') {
+      await refreshFailing()
       const status = health()
       return Response.json(status, { status: status.ok ? 200 : 503 })
     }
@@ -3411,6 +3485,25 @@ export async function createServer(
       )
     }
 
+    // Story 395: what the served copy holds, and notices a host leaves for a person.
+    if (pathname === `${changesPath}/served` || pathname === noticesPath) {
+      if (!carriesBearer(request))
+        return Response.json(
+          { message: 'A host calls this with a sign-in token in Authorization, not a cookie.' },
+          { status: 401 },
+        )
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return pathname === noticesPath
+        ? servedApi.notices(request, principal, '')
+        : ((await servedApi.changes(request, principal, '/served')) as Response)
+    }
+    if (pathname === `${noticesPath}/mine`) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return servedApi.notices(request, principal, '/mine')
+    }
+
     // Story 394: a change exported or taken, for a token in Authorization alone.
     const moving = managementChange(pathname, request.method)
     if (moving) {
@@ -3425,6 +3518,18 @@ export async function createServer(
         (await managementChanges.handle(request, new URL(request.url), principal, moving)) ??
         new Response(null, { status: 404 })
       )
+    }
+
+    // Story 396: the workspaces whose processes run, or keep failing, across the nodes.
+    if (pathname === `${workspacesPath}/processes` && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'settings'))
+        return Response.json(
+          { message: 'Workspace processes are for people who look after the site.' },
+          { status: 403 },
+        )
+      return Response.json({ items: await workspaceProcessList(db) })
     }
 
     // Story 375: workspaces, opened, listed, shared and discarded.

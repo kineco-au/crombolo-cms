@@ -98,6 +98,15 @@ export interface CoreTables {
     token_type: string
     user_id: number
   }
+  backoffice_notice: {
+    created_at: Timestamp
+    id: Generated<number>
+    kind: string
+    link: string | null
+    message: string
+    seen_at: Timestamp | null
+    user_key: string
+  }
   bundle: {
     components: string
     content_load_child_nodes: Bool
@@ -786,6 +795,11 @@ export interface CoreTables {
     node_key: string
     removed_at: Timestamp
   }
+  served_change: {
+    change_key: string
+    reported_at: Timestamp
+    reported_by: string | null
+  }
   server: {
     crombolo_version: string | null
     last_seen: Timestamp
@@ -1075,5 +1089,17 @@ export interface CoreTables {
     target_parent_id: number | null
     user_id: number | null
     workspace_id: number
+  }
+  workspace_process: {
+    node_id: string
+    started_at: Timestamp
+    workspace_key: string
+  }
+  workspace_process_failure: {
+    failed_at: Timestamp
+    id: Generated<number>
+    node_id: string
+    reason: string
+    workspace_key: string
   }
 }

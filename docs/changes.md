@@ -156,3 +156,40 @@ what they changed and is finished, and raises `Crombolo.ChangePublished` naming 
 (`changes/{id}/bundle`) and apply it to the serving copy at once. Their next edit starts
 another change.
 
+
+### What the served copy holds
+
+A host that applies each published change to the serving copy tells the making copy
+which ones it applied (story `395`), so editors there are offered only what is live:
+
+- **`PUT <backoffice>/crombolo/api/changes/served { "key": "<change key>" }`** reports
+  one change applied there, pages included, and `GET` answers
+  `{ newest: { key, name, reportedAt } | null, waiting }`, `waiting` counting the
+  changes to schema not yet reported. Both need the Apply changes right and a sign-in
+  token in `Authorization`, as `PUT changes` does. Reports are a set, not a single
+  mark, since a page goes out at once and a release later: schema is served when the
+  change that last touched it is reported, or came before the oldest one reported.
+- **From the first report, schema is built in a named workspace.** A change to a type,
+  data type, template, component, stylesheet or script with no workspace, or in a
+  person's own, is refused (409, "Build this in a workspace"). The command line and
+  installed code are not refused.
+- **Schema merged but not served** stays in the Settings tree. Outside a named
+  workspace it is left out of the types offered for a new page or Library item
+  (`allowed-at-root`, `allowed-children`, `allowed-in-library`), and, for a request
+  that says it is making content (`Crombolo-Purpose: content`, which the back office
+  sends outside Settings), of a type's templates and a block editor's blocks. Only
+  what the served copy does not have at all is left out; a type changed since is
+  offered as it is now. A named workspace is offered everything.
+- **A page using anything not served** still saves and publishes, and its
+  `Crombolo.ChangePublished` lists the changes it `Needs` and what for
+  ([`webhooks.md`](webhooks.md)), so a host can hold it for the release.
+- **Setting or clearing a schedule** closes the person's change and raises the event,
+  as a publish does. The change carries the page's schedule, and applying it sets the
+  same schedule there, which fires at its time.
+- **The event says who made the change:** `By: "person"`, or `"tool"` for a sign-in
+  exchanged with an actor (story `364`), named in `Tool`.
+- **A host leaves the person a notice** of how it went with
+  `POST <backoffice>/crombolo/api/notices { user, message, link?, kind }` (`kind` is
+  `success` or `failure`; `link` a back office path or a web address), needing Apply
+  changes. The back office shows it once, while open or the next time it opens; one
+  not seen in 30 days is dropped.

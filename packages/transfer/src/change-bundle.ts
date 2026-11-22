@@ -39,7 +39,16 @@ export interface ChangePageState {
   /** Names per language, for a page that varies by language. */
   names?: Record<string, string>
   published: boolean
+  /** Story 395: when it goes live and comes down, per language, as the change set it. */
+  schedule?: PageSchedule
 }
+
+/** A page's schedule: per language, when it is published and unpublished, or none. */
+export type PageSchedule = Array<{
+  culture: string | null
+  publishTime: string | null
+  unpublishTime: string | null
+}>
 
 export interface ChangeBundlePage {
   key: string

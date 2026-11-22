@@ -10,6 +10,21 @@ import { Locks } from '../locks.ts'
 import { type ContentKind, deleteNodeRows } from './documents.ts'
 import { WorkspaceFileRepository } from './workspace-files.ts'
 
+/** A change staged in a workspace (story 383), with the schedules its merge sets (story 395). */
+export interface StagedChange {
+  key: string
+  name: string | null
+  schedules?: Array<{
+    key: string
+    kind: string
+    entries: Array<{
+      culture: string | null
+      publishTime: string | null
+      unpublishTime: string | null
+    }>
+  }>
+}
+
 export interface Workspace {
   id: number
   key: string
@@ -25,7 +40,7 @@ export interface Workspace {
   createdAt: Date
   updatedAt: Date
   /** Changes from another site it holds (story 383), which its merge applies. */
-  stagedChanges: Array<{ key: string; name: string | null }> | null
+  stagedChanges: StagedChange[] | null
   /** Staged to be looked at and applied: nobody edits it. A refused apply's is open to edit. */
   stagedReadOnly: boolean
   /** Who can see it (story 384): its members, or everyone who may edit, reading only. */
@@ -301,7 +316,7 @@ export class WorkspaceRepository {
   /** Marks a workspace as holding changes from another site, read-only or open to edit (story 383). */
   async setStaged(
     id: number,
-    changes: ReadonlyArray<{ key: string; name: string | null }> | null,
+    changes: readonly StagedChange[] | null,
     readOnly = true,
   ): Promise<void> {
     await this.#db.q

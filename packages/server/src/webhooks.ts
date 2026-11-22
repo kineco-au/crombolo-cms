@@ -240,7 +240,36 @@ export interface WebhookFacts extends RaisedWebhookEvent {
   via?: string
   /** Its ancestors' keys, nearest first, for Crombolo's payload (story 208). */
   ancestors?: string[]
+  /** The change a publish finished (story 388), who made it, and what it needs (story 395). */
+  change?: {
+    key: string
+    name: string | null
+    by?: 'person' | 'tool'
+    tool?: { id: string; name: string }
+    needs?: Array<{
+      key: string
+      name: string | null
+      items: Array<{ kind: string; alias: string }>
+    }>
+  }
 }
+
+/** The change as a payload names it (story 395). Pure. */
+const changeOf = (change: NonNullable<WebhookFacts['change']>) => ({
+  Key: change.key,
+  Name: change.name,
+  By: change.by ?? 'person',
+  ...(change.tool ? { Tool: { Id: change.tool.id, Name: change.tool.name } } : {}),
+  ...(change.needs
+    ? {
+        Needs: change.needs.map((n) => ({
+          Key: n.key,
+          Name: n.name,
+          Items: n.items.map((i) => ({ Kind: i.kind, Alias: i.alias })),
+        })),
+      }
+    : {}),
+})
 
 /** An event as the site's own handler receives it (story 298). Pure. */
 export function siteEventOf(facts: WebhookFacts): SiteContentEvent {
@@ -258,11 +287,13 @@ export function webhookPayload(
   facts: WebhookFacts,
   payload: WebhookDefinition['payload'],
 ): Record<string, unknown> {
-  if (payload !== 'crombolo') return { Id: facts.key }
+  const change = facts.change ? { Change: changeOf(facts.change) } : {}
+  if (payload !== 'crombolo') return { Id: facts.key, ...change }
   return {
     Id: facts.key,
     ContentType: facts.contentTypeAlias ?? null,
     Ancestors: facts.ancestors ?? [],
+    ...change,
   }
 }
 

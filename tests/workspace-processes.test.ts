@@ -3,13 +3,19 @@
  * A template that never finishes or that crashes takes only that process with
  * it; the site's own pages go on being served. A process is stopped when idle,
  * over its memory, when its workspace closes, and past the node's limit.
+ * Story 396: a process that keeps failing is listed, and logged, whichever node it
+ * fails on, without the site looking unhealthy.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import {
+  ComponentRepository,
+  ContentTypeRepository,
+  WorkspaceProcessRepository,
+} from '@crombolo/data'
 import { dialectUnderTest } from './support/db.ts'
-import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -230,4 +236,120 @@ describe(`a workspace's own process (${dialectUnderTest})`, () => {
     expect(h.server.workspaceProcesses?.size).toBe(1)
     expect(await ended(pid)).toBe(true)
   }, 10_000)
+})
+
+type Listed = {
+  key: string
+  name: string | null
+  owner: { key: string; name: string | null } | null
+  nodes: string[]
+  running: boolean
+  failing: boolean
+  failures: number
+  lastError: string | null
+}
+
+/** The list, once it shows what `until` waits for: failures are recorded as they happen. */
+async function listedOnce(h: Harness, until: (items: Listed[]) => boolean) {
+  let items: Listed[] = []
+  for (let n = 0; n < 50; n++) {
+    items = (await h.json<{ items: Listed[] }>(`${WORKSPACES}/processes`)).items
+    if (until(items)) break
+    await Bun.sleep(50)
+  }
+  return items
+}
+
+describe(`a workspace process that keeps failing (${dialectUnderTest})`, () => {
+  test('three crashes in an hour list it, logged each time, and the site stays healthy', async () => {
+    const { h, opened, rendered, saveView } = await site()
+    const sale = await opened('Spring sale')
+    await saveView('/parts/heading.tsx', 'export default () => process.exit(1)\n', sale.key)
+    for (let n = 0; n < 3; n++) expect((await rendered(sale.key)).status).toBe('error')
+    const items = await listedOnce(h, (list) => list.some((i) => i.failures >= 3))
+    const listed = items.find((i) => i.key === sale.key)
+    expect(listed).toMatchObject({
+      name: 'Spring sale',
+      failing: true,
+      failures: 3,
+      lastError: expect.stringContaining('stopped on its own'),
+    })
+    expect(listed?.owner?.key).toBeTruthy()
+
+    const health = await h.server.fetch(new Request('http://localhost/health'))
+    expect(health.status).toBe(200)
+    expect(((await health.json()) as { workspaces: unknown }).workspaces).toEqual({ failing: 1 })
+
+    const logged = await h.json<{ items: Array<{ renderedMessage: string }> }>(
+      `${V1}/log-viewer/log?skip=0&take=100&filterExpression=${enc('workspace.process.failed')}`,
+    )
+    expect(
+      logged.items.filter((i) => i.renderedMessage.includes(sale.key)).length,
+    ).toBeGreaterThanOrEqual(3)
+  }, 20_000)
+
+  test('a running process is listed; a render over its time counts as a failure', async () => {
+    const { h, db, opened, rendered, saveView } = await site({ workspaceRenderSeconds: 1 })
+    const sale = await opened('Spring sale')
+    await saveView('/parts/heading.tsx', PID_VIEW, sale.key)
+    expect((await rendered(sale.key)).status).toBe('ok')
+    const running = await listedOnce(h, (list) => list.some((i) => i.running))
+    expect(running.find((i) => i.key === sale.key)).toMatchObject({
+      running: true,
+      failing: false,
+      failures: 0,
+    })
+    await saveView('/parts/heading.tsx', 'export default () => { while (true) {} }\n', sale.key)
+    expect((await rendered(sale.key)).status).toBe('error')
+    // Once, it is not listed: it is neither running nor failing three times.
+    const rows = new WorkspaceProcessRepository(db)
+    let counted: Awaited<ReturnType<typeof rows.report>> = []
+    for (let n = 0; n < 50; n++) {
+      counted = await rows.report({ seenWithinMs: 60_000 })
+      if (counted.some((r) => r.key === sale.key && r.failures === 1)) break
+      await Bun.sleep(50)
+    }
+    expect(counted.find((r) => r.key === sale.key)?.lastError).toContain('longer than 1 seconds')
+    expect(await listedOnce(h, (list) => list.length === 0)).toEqual([])
+  }, 20_000)
+
+  test('stopped for idling, memory or room, a process is not counted as failing', async () => {
+    const { h, db, opened, rendered, saveView } = await site({
+      workspaceProcesses: 1,
+      workspaceProcessIdleMinutes: 0.001,
+    })
+    const first = await opened('First')
+    const second = await opened('Second')
+    await saveView('/parts/heading.tsx', PID_VIEW, first.key)
+    await saveView('/parts/heading.tsx', PID_VIEW, second.key)
+    expect((await rendered(first.key)).status).toBe('ok')
+    expect((await rendered(second.key)).status).toBe('ok')
+    await Bun.sleep(100)
+    h.server.workspaceProcesses?.sweep()
+    expect(h.server.workspaceProcesses?.size).toBe(0)
+    await Bun.sleep(200)
+    expect(await new WorkspaceProcessRepository(db).failing(1)).toBe(0)
+    expect(await listedOnce(h, (list) => list.length === 0)).toEqual([])
+  }, 20_000)
+
+  test('failures on another node are listed here; a node gone quiet runs nothing', async () => {
+    const { h, db, opened } = await site()
+    const sale = await opened('Spring sale')
+    const rows = new WorkspaceProcessRepository(db)
+    for (let n = 0; n < 3; n++) await rows.failed('node-b', sale.key, `boom ${n}`)
+    await rows.started('node-gone', sale.key)
+    const listed = (await h.json<{ items: Listed[] }>(`${WORKSPACES}/processes`)).items
+    expect(listed).toEqual([
+      expect.objectContaining({
+        key: sale.key,
+        nodes: [],
+        running: false,
+        failing: true,
+        failures: 3,
+        lastError: 'boom 2',
+      }),
+    ])
+    const writer = await signInAsGroup(h, 'writer')
+    expect((await writer.call(`${WORKSPACES}/processes`)).status).toBe(403)
+  }, 20_000)
 })

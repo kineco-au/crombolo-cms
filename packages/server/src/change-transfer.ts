@@ -20,6 +20,7 @@ import {
   DbDate,
   DocumentRepository,
   type DocumentRepositoryOptions,
+  SCHEDULE_PREFIX,
   TransferRunRepository,
   type Workspace,
   WorkspaceFileRepository,
@@ -32,6 +33,7 @@ import type {
   ChangeBundlePage,
   ChangePageState,
   ChangeValue,
+  PageSchedule,
 } from '@crombolo/transfer'
 import type { MediaFileStore } from './media-files.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
@@ -249,8 +251,18 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
           JSON.parse(i.before as string),
         ]),
     ) as Map<string, DocumentAggregate>
+    // Story 395: a page's schedule, as the change set it.
+    const schedules = new Map(
+      items
+        .filter((i) => i.path.startsWith(SCHEDULE_PREFIX) && i.after !== null)
+        .map((i) => [
+          normaliseUuid(i.path.slice(SCHEDULE_PREFIX.length)),
+          JSON.parse(i.after as string) as PageSchedule,
+        ]),
+    )
     for (const item of items) {
-      if (item.path.startsWith(REMOVED_PAGE_PREFIX)) continue
+      if (item.path.startsWith(REMOVED_PAGE_PREFIX) || item.path.startsWith(SCHEDULE_PREFIX))
+        continue
       const versions = await changes.versions(item.path)
       const at = versions.findIndex((v) => v.changeId === change.id)
       const earlier = at > 0 ? versions[at - 1] : undefined
@@ -277,6 +289,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       if (!shape) continue
       const action =
         row.action === 'create' ? 'create' : row.action === 'recycle' ? 'delete' : 'update'
+      const schedule = schedules.get(normaliseUuid(row.nodeKey))
       const page = pageOf(
         row.nodeKey,
         row.kind,
@@ -286,6 +299,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         after,
         await lastChangeOfNode(row.nodeKey, row.beforeEventId, change.key),
       )
+      if (page.after && schedule) page.after.schedule = schedule
       pages.push(page)
       depends.push(...(await madeBy([page.after], change.key)))
       if (page.lastChange && page.action !== 'create') depends.push(page.lastChange)
@@ -463,9 +477,18 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     }
     if (schemaTouched) await options.schema()?.build({ id: workspace.id, key: workspace.key })
     const staged = [...(workspace.stagedChanges ?? [])]
-    for (const { change } of todo)
+    for (const { change } of todo) {
+      // Story 395: a schedule is set on Shared once the change is merged, as a merge drops a workspace's.
+      const schedules = change.pages.flatMap((p) =>
+        p.after?.schedule ? [{ key: p.key, kind: p.kind, entries: p.after.schedule }] : [],
+      )
       if (!staged.some((s) => s.key === change.key))
-        staged.push({ key: change.key, name: change.name })
+        staged.push({
+          key: change.key,
+          name: change.name,
+          ...(schedules.length > 0 ? { schedules } : {}),
+        })
+    }
     await workspaces.setStaged(workspace.id, staged)
     return { workspace: (await workspaces.byKey(workspace.key)) ?? workspace, skipped, conflicts }
   }
@@ -667,7 +690,27 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         conflicts: outcome.blockers.map((says) => ({ change: workspace.key, item: '', says })),
         workspace: workspace.key,
       }
+    for (const change of applied)
+      for (const page of change.schedules ?? []) await scheduleHere(page)
     return { ok: true, skipped, changeId: outcome.changeId ?? null }
+  }
+
+  /** A page's schedule as a change carries it, replacing what Shared had for the page. */
+  async function scheduleHere(page: { key: string; kind: string; entries: PageSchedule }) {
+    const here = repo(page.kind as PageKind)
+    if (!(await here.byKey(page.key))) return
+    const had = await here.schedules(page.key)
+    const cleared = [...new Set(had.map((s) => s.culture))]
+      .filter((culture) => !page.entries.some((e) => e.culture === culture))
+      .map((culture) => ({ culture, publishTime: null, unpublishTime: null }))
+    await here.setSchedule(page.key, [
+      ...cleared,
+      ...page.entries.map((e) => ({
+        culture: e.culture,
+        publishTime: e.publishTime ? new Date(e.publishTime) : null,
+        unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
+      })),
+    ])
   }
 
   return { exportChange, exportWorkspace, exportSince, stage, apply, mergeStaged }

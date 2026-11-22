@@ -9,7 +9,14 @@
  */
 import { fileURLToPath } from 'node:url'
 import { Outcome, type OutcomeStatus } from '@crombolo/core'
-import type { DialectName, NodeSchemaState, WorkspaceScope } from '@crombolo/data'
+import {
+  type Db,
+  type DialectName,
+  type NodeSchemaState,
+  WorkspaceProcessRepository,
+  WorkspaceRepository,
+  type WorkspaceScope,
+} from '@crombolo/data'
 import type {
   PublishedCache,
   PublishedContent,
@@ -31,6 +38,8 @@ interface Running {
   waiting: Map<number, (answer: ProcessRender) => void>
   usedAt: number
   rss: number
+  /** Whether it said it was ready. */
+  started: boolean
 }
 
 export interface WorkspaceProcessOptions {
@@ -46,16 +55,28 @@ export interface WorkspaceProcessOptions {
   idleMs: number
   memoryMb: number
   renderMs: number
+  /** Story 396: told of each process started and stopped, and of each that failed. */
+  reports?: WorkspaceProcessReports
+}
+
+/** Where a node tells the site of its workspaces' processes (story 396). */
+export interface WorkspaceProcessReports {
+  started(workspace: { key: string }): void
+  stopped(workspace: { key: string }): void
+  failed(workspace: { key: string; name: string }, reason: string): void
 }
 
 export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
   const running = new Map<string, Running>()
   let next = 1
 
-  const stop = (key: string, why: string) => {
+  /** Stops a workspace's process; `failed` when it crashed, hung or never came up. */
+  const stop = (key: string, why: string, failed = false) => {
     const one = running.get(key)
     if (!one) return
     running.delete(key)
+    options.reports?.stopped(one.workspace)
+    if (failed) options.reports?.failed(one.workspace, why)
     for (const answer of one.waiting.values())
       answer({ type: 'rendered', id: 0, status: 'error', error: why })
     one.waiting.clear()
@@ -84,6 +105,7 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
       workspace,
       usedAt: Date.now(),
       rss: 0,
+      started: false,
       waiting: new Map(),
       ready: new Promise<void>((resolve) => {
         ready = resolve
@@ -94,17 +116,23 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
         stderr: 'ignore',
         env: { ...process.env },
         ipc(message: ChildAnswer) {
-          if (message.type === 'ready') ready()
-          else if (message.type === 'memory') one.rss = message.rss
+          if (message.type === 'ready') {
+            one.started = true
+            ready()
+          } else if (message.type === 'memory') one.rss = message.rss
           else {
             const answer = one.waiting.get(message.id)
             one.waiting.delete(message.id)
             answer?.(message)
           }
         },
-        onExit() {
+        onExit(_proc, exitCode, signal) {
           if (running.get(workspace.key) === one)
-            stop(workspace.key, `The workspace "${workspace.name}" stopped while it was rendering.`)
+            stop(
+              workspace.key,
+              `The workspace "${workspace.name}" stopped on its own (${signal ?? `exit code ${exitCode}`}).`,
+              true,
+            )
         },
       }),
     }
@@ -121,6 +149,7 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
     }
     one.proc.send(init)
     running.set(workspace.key, one)
+    options.reports?.started(workspace)
     sweep()
     return one
   }
@@ -137,10 +166,13 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
     const limit = new Promise<ProcessRender>((resolve) => {
       const t = setTimeout(() => {
         if (!one.waiting.has(id)) return
-        // Over its time: this render is answered, and its process is stopped.
+        // Over its time: this render is answered, and its process is stopped, as failed.
         stop(
           workspace.key,
-          `The workspace "${workspace.name}" took longer than ${Math.round(options.renderMs / 1000)} seconds to render this page.`,
+          one.started
+            ? `The workspace "${workspace.name}" took longer than ${Math.round(options.renderMs / 1000)} seconds to render this page.`
+            : `The workspace "${workspace.name}" did not start within ${Math.round(options.renderMs / 1000)} seconds.`,
+          true,
         )
         resolve({
           type: 'rendered',
@@ -231,6 +263,48 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
 }
 
 export type WorkspaceProcesses = ReturnType<typeof createWorkspaceProcesses>
+
+/** How many failures in the hour put a workspace on the list (story 396). */
+export const PROCESS_FAILURES_REPORTED = 3
+
+/** A node not seen within this long runs nothing, as far as the list goes. */
+const NODE_SEEN_WITHIN_MS = 60_000
+
+/**
+ * The workspaces with a process running on a live node, and those that failed three
+ * or more times in the last hour, with who to tell (story 396).
+ */
+export async function workspaceProcessList(db: Db) {
+  const reports = await new WorkspaceProcessRepository(db).report({
+    seenWithinMs: NODE_SEEN_WITHIN_MS,
+  })
+  const workspaces = new WorkspaceRepository(db)
+  const out = []
+  for (const report of reports) {
+    const failing = report.failures >= PROCESS_FAILURES_REPORTED
+    if (!failing && report.nodes.length === 0) continue
+    const workspace = await workspaces.byKey(report.key)
+    const owner = workspace
+      ? await db.q
+          .selectFrom('user_account')
+          .select('user_name')
+          .where('key', '=', workspace.ownerKey)
+          .executeTakeFirst()
+      : undefined
+    out.push({
+      key: report.key,
+      name: workspace?.name ?? null,
+      owner: workspace ? { key: workspace.ownerKey, name: owner?.user_name ?? null } : null,
+      nodes: report.nodes,
+      running: report.nodes.length > 0,
+      failing,
+      failures: report.failures,
+      lastError: report.lastError,
+      since: report.since.toISOString(),
+    })
+  }
+  return out
+}
 
 const MAX_ACCESS_SUBSTITUTIONS = 5
 

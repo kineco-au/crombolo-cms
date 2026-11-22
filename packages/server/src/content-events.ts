@@ -26,8 +26,16 @@ import {
   notificationFor,
   webhookFor,
 } from '@crombolo/content'
-import { AuditLog, ChangeRepository, ContentEventRepository, type Db } from '@crombolo/data'
+import {
+  AuditLog,
+  ChangeRepository,
+  ContentEventRepository,
+  currentAuditContext,
+  type Db,
+  DocumentRepository,
+} from '@crombolo/data'
 import type { ContentNotifier } from './content-notifications.ts'
+import { neededBy, servedView } from './served-schema.ts'
 import type { WebhookService } from './webhooks.ts'
 
 export interface ContentEventSinkOptions {
@@ -75,6 +83,43 @@ export const outboxActor = (actor: MediaActor) => {
   }
 }
 
+/** A page's schedule as a change carries it: per language, when it goes live and comes down. */
+export const scheduleEntries = (
+  rows: ReadonlyArray<{ culture: string | null; action: 'Release' | 'Expire'; date: Date }>,
+) => {
+  const byCulture = new Map<
+    string | null,
+    { culture: string | null; publishTime: string | null; unpublishTime: string | null }
+  >()
+  for (const row of rows) {
+    const entry = byCulture.get(row.culture) ?? {
+      culture: row.culture,
+      publishTime: null,
+      unpublishTime: null,
+    }
+    if (row.action === 'Release') entry.publishTime = row.date.toISOString()
+    else entry.unpublishTime = row.date.toISOString()
+    byCulture.set(row.culture, entry)
+  }
+  return [...byCulture.values()]
+}
+
+/** Story 395: a person, or a tool acting for one (a sign-in exchanged with an actor, 364). */
+async function madeBy(): Promise<{ by: 'person' | 'tool'; tool?: { id: string; name: string } }> {
+  const actor = currentAuditContext()?.exchange?.actor
+  return actor
+    ? { by: 'tool', tool: { id: actor.id, name: actor.name ?? actor.id } }
+    : { by: 'person' }
+}
+
+/** Story 395: the unserved changes a page needs, once a host reports what is served. */
+async function needsOf(tx: Db, key: string) {
+  const view = await servedView(tx)
+  if (!view) return {}
+  const page = await new DocumentRepository(tx).byKey(key)
+  return page ? { needs: neededBy(view, page) } : {}
+}
+
 export function createContentEventSink(options: ContentEventSinkOptions): EventSink {
   /** A person's own write in the back office or the API, not a merge's nor the site's code. */
   const ownEdit = (actor: Actor) => actor.kind === 'user' && !actor.origin.via
@@ -86,9 +131,15 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     if (!key || !userKey || !ownEdit(actor)) return
     const changes = new ChangeRepository(tx)
     if (SAVES.has(event.type)) await changes.pageSavedBy(userKey, { key, kind: 'document' })
-    if (!PUBLISHES.has(event.type)) return
-    const change = await changes.publishedBy(userKey, { key, kind: 'document' })
-    if (!change) return
+    // Story 395: setting or clearing a schedule is passed on as a publish is.
+    const scheduled = event.type === 'scheduled'
+    if (!PUBLISHES.has(event.type) && !scheduled) return
+    const schedule = await new DocumentRepository(tx).schedules(key)
+    if (scheduled || schedule.length > 0)
+      await changes.scheduleOf(userKey, { key, kind: 'document' }, scheduleEntries(schedule))
+    const closed = await changes.publishedBy(userKey, { key, kind: 'document' })
+    if (!closed) return
+    const change = { ...closed, ...(await madeBy()), ...(await needsOf(tx, key)) }
     const hook = { alias: CHANGE_PUBLISHED, key }
     await new ContentEventRepository(tx).record({
       kind: 'change-published',

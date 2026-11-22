@@ -70,6 +70,15 @@ export const workspaceHeaders = (storage) => {
   return header ? { [WORKSPACE_HEADER]: header } : {}
 }
 
+export const PURPOSE_HEADER = 'Crombolo-Purpose'
+
+/**
+ * Story 395: whether a screen is making content, rather than building the site's types
+ * and templates, by the section it is in. Pure.
+ */
+export const purposeFor = (pathname) =>
+  /\/section\/settings(\/|$)/.test(pathname ?? '') ? undefined : 'content'
+
 /** A request, sent in the tab's workspace unless it names one. */
 export const inWorkspace = (required, storage) => (request) => {
   requiredHere = required
@@ -77,6 +86,9 @@ export const inWorkspace = (required, storage) => (request) => {
   const header = headerFor(currentWorkspace(storage), required)
   if (header && path.includes('/management/api/') && !request.headers.has(WORKSPACE_HEADER))
     request.headers.set(WORKSPACE_HEADER, header)
+  const purpose = purposeFor(globalThis.location?.pathname)
+  if (purpose && path.includes('/management/api/') && !request.headers.has(PURPOSE_HEADER))
+    request.headers.set(PURPOSE_HEADER, purpose)
   return request
 }
 

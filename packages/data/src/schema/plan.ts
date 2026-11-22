@@ -79,6 +79,7 @@ import { remoteTrustMigration } from './remote-trust.ts'
 import { richTextUiMigration } from './rich-text-ui.ts'
 import { searchIndexMigration } from './search-index.ts'
 import { searchRemovalsMigration } from './search-removals.ts'
+import { servedChangesMigration } from './served-changes.ts'
 import { serverRoleMigration } from './server-role.ts'
 import { sessionViewAsMigration } from './session-view-as.ts'
 import { sinceVersionMigration } from './since-version.ts'
@@ -101,6 +102,7 @@ import { webhooksMigration } from './webhooks.ts'
 import { workspaceLinksMigration } from './workspace-links.ts'
 import { workspaceMergeMigration } from './workspace-merge.ts'
 import { workspacePrivacyMigration } from './workspace-privacy.ts'
+import { workspaceProcessesMigration } from './workspace-processes.ts'
 import { workspaceSchemaMigration } from './workspace-schema.ts'
 import { workspacesMigration } from './workspaces.ts'
 
@@ -195,4 +197,6 @@ export const cromboloPlan = new MigrationPlan([
   changeTransferMigration,
   environmentValuesMigration,
   workspacePrivacyMigration,
+  servedChangesMigration,
+  workspaceProcessesMigration,
 ])

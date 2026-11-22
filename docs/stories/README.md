@@ -545,6 +545,6 @@ it.
 | `388` | Content and schema that arrive only by a change | should | M | done | 383, 391 |
 | `392` | Changes carry languages, the dictionary, blueprints, forms and workflow set-up | could | L | done | 376, 377, 381, 383, 388, 390 |
 | `394` | Moving a change through the Management API | should | M | done | 383, 388 |
-| `395` | What is live, for an editor where a site is made | should | M | backlog | 380, 388, 394 |
-| `396` | A workspace process that keeps failing is reported | should | S | backlog | 378 |
+| `395` | What is live, for an editor where a site is made | should | M | done | 380, 388, 394 |
+| `396` | A workspace process that keeps failing is reported | should | M | done | 378 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

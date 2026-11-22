@@ -205,6 +205,8 @@ describe('the media verbs (story 088)', () => {
       'AddChangeTransfer',
       'AddEnvironmentValues',
       'AddWorkspacePrivacy',
+      'AddServedChanges',
+      'AddWorkspaceProcesses',
     ])
     const held = async (key: string) =>
       (

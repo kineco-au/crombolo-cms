@@ -18,6 +18,9 @@ export type ChangeSource = 'bundle' | 'replace' | 'merge' | 'edit' | 'revert'
 /** How long a person's direct edits keep gathering in one change. */
 export const EDIT_WINDOW_MS = 10 * 60 * 1000
 
+/** Where a change keeps a page's schedule among its items (story 395): `schedules/<page key>`. */
+export const SCHEDULE_PREFIX = 'schedules/'
+
 export interface Change {
   id: string
   kind: ChangeSource
@@ -216,6 +219,36 @@ export class ChangeRepository {
   async pageSavedBy(madeBy: string, page: { key: string; kind: string }, now = new Date()) {
     const id = await this.#openEdit(madeBy, now)
     await this.#recordPage(id, page)
+    await this.#touch(id, now)
+  }
+
+  /**
+   * A page's schedule a person set or cleared straight in Shared (story 395): in their
+   * open change with the page, kept as an item of its own, as the change carries it.
+   */
+  async scheduleOf(
+    madeBy: string,
+    page: { key: string; kind: string },
+    entries: readonly unknown[],
+    now = new Date(),
+  ): Promise<void> {
+    const id = await this.#openEdit(madeBy, now)
+    if (!(await this.#recordPage(id, page))) return
+    const path = `${SCHEDULE_PREFIX}${normaliseUuid(page.key)}`
+    const after = JSON.stringify(entries)
+    const found = await this.#db.q
+      .selectFrom('change_item')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('path', '=', path)
+      .execute()
+    if (found[0])
+      await this.#db.q
+        .updateTable('change_item')
+        .set({ after_hash: await this.#put(after) })
+        .where('id', '=', Number(found[0].id))
+        .execute()
+    else await this.item(id, { path, kind: 'page', class: 'none', before: null, after })
     await this.#touch(id, now)
   }
 
