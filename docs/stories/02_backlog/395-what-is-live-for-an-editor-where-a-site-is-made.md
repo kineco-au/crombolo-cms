@@ -41,7 +41,11 @@ Two things get in the way.
   `Crombolo.ChangePublished`, as a publish does. The change carries the schedule, and the
   copy it is applied to fires it at its time.
 - **The event says who acted:** a person, or a tool acting for one (an exchanged sign-in
-  with an actor, `364`), so a host can pass on only a person's.
+  with an actor, `364`), so a host can pass on only a person's. Its payload names the
+  change (`Change: { Key, Name }`) beside the page, so a host need not look it up.
+- **A host tells the person how it went,** in the back office's own notifications:
+  `POST <plugin>/api/notices { user, message, link? }`, needing Apply changes, shown to that
+  user once, as a success or a failure.
 
 ## Acceptance criteria
 
@@ -54,5 +58,8 @@ Two things get in the way.
       what it needs.
 - [ ] **Setting a schedule** closes the change and raises the event, and the change's
       bundle carries the schedule.
-- [ ] **The event** says whether a person or a tool acting for one made the change.
+- [ ] **The event** says whether a person or a tool acting for one made the change, and
+      names the change.
+- [ ] **A notice** posted for a person shows in their back office once, and is refused
+      to a caller without Apply changes.
 - [ ] **Tests** on both dialects; `docs/` describes the mark.
