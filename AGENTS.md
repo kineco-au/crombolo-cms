@@ -62,12 +62,14 @@
 ## Releasing
 
 - CI runs the browser suite and the Postgres unit suite on `main` only when the last commit's
-  message says `--browser-tests` and `--postgres-tests`. A release always runs both, so a
-  failure found there costs a version number
-- A release is cut in two pushes: first `main` alone, with both flags in the last commit's
-  message, and the tag only once that CI run has passed
-- Locally before that, run `check` and the SQLite suite, plus the Postgres suite when the data
-  layer changed and the browser tests a change touches; CI runs the rest, across runners
+  message says `--browser-tests` and `--postgres-tests`
+- A release is cut in two pushes: first `main` alone, with `--browser-tests` in the last
+  commit's message, and the full Postgres suite run locally beside that CI run
+  (`bun run docker:test:postgres`); the tag only once both have passed
+- The tag's Release workflow does not run CI again: it runs the load test and benchmarks,
+  then publishes. A failure found there costs a version number
+- Locally before pushing `main`, run `check` and the SQLite suite, and the browser tests a
+  change touches
 
 ## Rules
 

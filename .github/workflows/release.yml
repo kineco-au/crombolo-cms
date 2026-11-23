@@ -1,6 +1,8 @@
-# A tag push runs the whole CI build, then publishes the workspace to npm as one
+# A tag push runs the load test, then publishes the workspace to npm as one
 # fixed-version set. Versions the registry already holds are skipped, so a tag
-# that only moves some packages is safe to push.
+# that only moves some packages is safe to push. It does not run CI again: a tag
+# goes on a commit main's CI has passed, with the Postgres suite run locally
+# beside it (docs/testing.md).
 #
 # Needs an NPM_TOKEN secret with publish rights to the @crombolo scope.
 name: Release
@@ -22,14 +24,6 @@ env:
     BUN_VERSION: "1.4.4"
 
 jobs:
-    ci:
-        uses: ./.github/workflows/ci.yml
-        # A release always runs the browser suite and both database dialects,
-        # whatever the tagged commit says: main runs SQLite alone to stay fast.
-        with:
-            browser_tests: true
-            postgres_tests: true
-
     # Story 081's load test: concurrent edits on overlapping branches, then an
     # invariant pass, on both dialects, two nodes sharing the database on
     # Postgres. It runs here rather than in CI: it is minutes of hammering that
@@ -112,7 +106,7 @@ jobs:
               run: bun run test:ci --timeout 600000 ./tests/load/large-site.bench.ts
 
     publish:
-        needs: [ci, load]
+        needs: [load]
         runs-on: ubuntu-latest
         permissions:
             # Creates the GitHub release the signed demo bundles are attached to.

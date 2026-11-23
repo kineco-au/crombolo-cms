@@ -49,20 +49,23 @@ pushed. A failed release is fixed by a **new** patch version.
    a short section of its own.
 3. `bun run release:version <version>`, then `bun install` so `bun.lock` agrees.
 4. Commit everything the bump touched with the fix, release notes included,
-   with both CI switches in the message:
-   `git commit -am "<what changed>; bump version->v<version> --browser-tests --postgres-tests"`.
-   CI on `main` runs the browser suite and Postgres only when the **last**
-   commit's message says so, and a release always runs both.
-5. **Push `main` alone first:** `git push origin main`. Watch that CI run, as
-   below, and fix anything it finds with a new commit carrying both flags.
-6. **Only once it has passed,** `git tag v<version>` and
-   `git push origin v<version>`. A failure the Release pipeline finds costs a
+   with the browser switch in the message:
+   `git commit -am "<what changed>; bump version->v<version> --browser-tests"`.
+   CI on `main` runs the browser suite only when the **last** commit's message
+   says so. Postgres is not run in CI for a release.
+5. **Push `main` alone first:** `git push origin main`, and start the full
+   Postgres suite locally beside that CI run, in the background:
+   `bun run docker:test:postgres`. Watch both, as below, and fix anything they
+   find with a new commit.
+6. **Only once both have passed,** `git tag v<version>` and
+   `git push origin v<version>`. The Release pipeline does not run CI again: it
+   runs the load test and benchmarks, then publishes. A failure there costs a
    version number, which this step is there to save.
 
 ## Watch it
 
 **CI** starts from the push of `main`, and **Release** from the push of the tag,
-which runs CI again with the browser suite and Postgres, then publishes.
+which runs the load test and benchmarks, then publishes.
 
 ```bash
 gh run list --limit 4 --json databaseId,workflowName,headSha,status,conclusion
