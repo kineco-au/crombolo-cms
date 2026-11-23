@@ -57,6 +57,19 @@ export const mayUse = (workspace: Workspace, principal: Principal): boolean => {
 const problem = (status: number, title: string, detail?: string) =>
   problemResponse(problemDetails({ title, status, ...(detail ? { detail } : {}) }))
 
+/** What an administrator may read of a workspace they are not in, when they ask to (story 401). */
+const ADMIN_READS = new Set([
+  'changes',
+  'merge',
+  'conflicts',
+  'diff',
+  'errors',
+  'pages',
+  'files',
+  'render',
+  'members',
+])
+
 /** The header's word for a person's own unnamed workspace (story 380). */
 export const OWN_WORKSPACE = 'mine'
 
@@ -225,6 +238,8 @@ export interface WorkspaceView {
   ownerKey: string
   memberKeys: string[]
   mine: boolean
+  /** Story 398: a person's own unnamed workspace, rather than a named one. */
+  personal: boolean
   state: 'open' | 'merged'
   mergedAt: string | null
   createdAt: string
@@ -253,6 +268,7 @@ const viewOf = (workspace: Workspace, principal: Principal): WorkspaceView => ({
   ownerKey: workspace.ownerKey,
   memberKeys: workspace.memberKeys,
   mine: workspace.ownerKey === normaliseUuid(principal.id),
+  personal: workspace.personal,
   state: workspace.state,
   mergedAt: workspace.mergedAt?.toISOString() ?? null,
   createdAt: workspace.createdAt.toISOString(),
@@ -473,6 +489,8 @@ export function createWorkspacesApi(
       principal: Principal,
       path: string,
       request: Request,
+      /** Story 401: an administrator who is not in it, reading it because they asked to. */
+      asAdministrator?: boolean,
     ) => Promise<string | undefined>
     /** Links for someone else to look at the workspace's site (story 379). */
     links?: () => {
@@ -702,7 +720,7 @@ export function createWorkspacesApi(
             const found = await workspaces.byKey(one.key)
             if (found?.state !== 'open') continue
             const files = await filesNamedBy(db, found.id)
-            await workspaces.discard(found.id)
+            await workspaces.discard(found.id, principal.id)
             options.onClosed?.(found.key)
             options.onDiscardedFiles?.(files)
             await audit(
@@ -721,15 +739,30 @@ export function createWorkspacesApi(
 
       const [key, sub, member] = parts as [string, string | undefined, string | undefined]
       const found = UUID.test(key) ? await workspaces.byKey(key) : undefined
-      // An administrator may list and discard any, to clear one left behind, never read it.
+      // An administrator may list and discard any, to clear one left behind, and read one
+      // only when they ask to (story 401).
       const usable = found && mayUse(found, principal)
       const discardable = found && (usable || principal.isAdmin)
+      const adminRead =
+        !usable &&
+        principal.isAdmin &&
+        new URL(request.url).searchParams.get('includePrivate') === 'true' &&
+        ((request.method === 'GET' &&
+          (sub === undefined || ADMIN_READS.has(sub)) &&
+          (sub !== 'changes' || !member)) ||
+          (request.method === 'POST' && !member && (sub === 'check' || sub === 'open')))
       // Story 384: one its owner shows to every editor is read by them, and changed by its members.
       const readable =
         found?.visibility === 'editors' &&
         request.method === 'GET' &&
         (sub === undefined || ['changes', 'diff', 'merge', 'members', 'conflicts'].includes(sub))
-      if (!found || (!usable && !readable && !(discardable && request.method === 'DELETE' && !sub)))
+      if (
+        !found ||
+        (!usable &&
+          !readable &&
+          !adminRead &&
+          !(discardable && request.method === 'DELETE' && !sub))
+      )
         return refused('There is no such workspace.', 404)
       const owner = found.ownerKey === normaliseUuid(principal.id)
 
@@ -755,7 +788,7 @@ export function createWorkspacesApi(
           if (!owner && !principal.isAdmin)
             return refused('Only its owner discards a workspace.', 403)
           const files = await filesNamedBy(db, found.id)
-          await workspaces.discard(found.id)
+          await workspaces.discard(found.id, principal.id)
           options.onClosed?.(found.key)
           options.onDiscardedFiles?.(files)
           await audit(principal, 'Discard', found, `Discarded "${found.name}"`, client)
@@ -848,7 +881,7 @@ export function createWorkspacesApi(
         if (found.state === 'merged') return refused('This workspace was merged already.', 409)
         const asked = await body()
         const path = typeof asked.path === 'string' && asked.path.startsWith('/') ? asked.path : '/'
-        const url = await options.open(found, principal, path, request)
+        const url = await options.open(found, principal, path, request, adminRead === true)
         return url ? json({ url }) : refused('You may not open it.', 403)
       }
       if (sub === 'links' && options.links) {
@@ -895,7 +928,12 @@ export function createWorkspacesApi(
       }
       if (schema && sub === 'update' && !member && request.method === 'POST') {
         if (found.state === 'merged') return refused('This workspace was merged already.', 409)
-        return json(await schema.updateFromShared({ id: found.id, key: found.key }))
+        const updated = await schema.updateFromShared({ id: found.id, key: found.key })
+        // Story 400: what Shared's changes settled is raised again if it conflicts later.
+        await workspaces.settled(found.id, {
+          files: { keep: updated.conflicts.map((c) => c.path) },
+        })
+        return json(updated)
       }
       if (schema && sub === 'files' && member === 'resolve' && request.method === 'POST') {
         const asked = await body()
@@ -910,6 +948,8 @@ export function createWorkspacesApi(
           return refused('Name the file, and keep "mine", "theirs" or a text.', 400)
         if (!(await schema.resolve({ id: found.id, key: found.key }, path, answer)))
           return refused('The text still holds conflict markers.', 400)
+        const still = (await schema.plan(found.id)).conflicts.map((c) => c.path)
+        await workspaces.settled(found.id, { files: { keep: still } })
         return json({ ok: true })
       }
 
@@ -958,6 +998,7 @@ export function createWorkspacesApi(
             if (error instanceof WorkspaceRefusedError) return refused(error.message, 409)
             throw error
           }
+          await workspaces.settled(found.id, { key: page })
           return json(planView(await merging.preview(found)))
         }
         if (sub === 'pending' && member && request.method === 'DELETE') {

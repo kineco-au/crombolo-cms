@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
 import { dialectUnderTest } from './support/db.ts'
-import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -201,6 +201,29 @@ describe(`a workspace's site (${dialectUnderTest})`, () => {
     expect(await (await h.server.fetch(new Request('http://localhost/'))).text()).toContain(
       'Welcome',
     )
+  })
+
+  test('an administrator not in it opens it only when they ask to include private ones (story 401)', async () => {
+    const { h } = await site()
+    const writer = await signInAsGroup(h, 'writer')
+    const made = await writer.call(WORKSPACES, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Theirs' }),
+    })
+    expect(made.status).toBe(201)
+    const { key } = (await made.json()) as { key: string }
+    const open = (query = '') =>
+      h.call(`${WORKSPACES}/${key}/open${query}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: '/' }),
+      })
+    expect((await open()).status).toBe(404)
+    const opening = (await (await open('?includePrivate=true')).json()) as { url: string }
+    const visitor = browser(h)
+    expect((await visitor.get(opening.url)).status).toBe(303)
+    expect((await visitor.get(`http://${label(key)}.preview.test/`)).status).toBe(200)
   })
 
   test('a stranger is refused, and robots and the sitemap say nothing', async () => {

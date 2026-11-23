@@ -7,7 +7,17 @@ import { normaliseUuid } from '@crombolo/core'
 import type { Db } from '../database.ts'
 import { DbDate, fromDbBool } from '../dialect.ts'
 import { Locks } from '../locks.ts'
+import { ChangeSourceRepository } from './change-sources.ts'
 import { type ContentKind, deleteNodeRows } from './documents.ts'
+import {
+  type ConflictedItem,
+  recordWorkspaceEvent,
+  WORKSPACE_CONFLICTED,
+  WORKSPACE_DISCARDED,
+  WORKSPACE_MERGED,
+  WORKSPACE_OPENED,
+  type WorkspaceFacts,
+} from './workspace-events.ts'
 import { WorkspaceFileRepository } from './workspace-files.ts'
 
 /** A change staged in a workspace (story 383), with the schedules its merge sets (story 395). */
@@ -73,6 +83,19 @@ export interface WorkspaceChange {
   kind: 'changed' | 'made' | 'move' | 'sort' | 'trash' | 'delete' | 'orphaned' | 'gone'
 }
 
+/** How an item in conflict is kept: a file by its path, anything else by its kind and key. */
+const conflictId = (item: ConflictedItem) =>
+  (item.path ? `file:${item.path}` : `${item.kind}:${item.key}`).slice(0, 512)
+
+/** A workspace as its events carry it (story 400). */
+const factsOf = (workspace: Workspace): WorkspaceFacts => ({
+  key: workspace.key,
+  name: workspace.name,
+  personal: workspace.personal,
+  owner: workspace.ownerKey,
+  state: workspace.state,
+})
+
 export class WorkspaceRepository {
   #db: Db
 
@@ -86,6 +109,8 @@ export class WorkspaceRepository {
     personal?: boolean
     visibility?: 'members' | 'editors'
     tellOthers?: boolean
+    /** Opened only to see what something would do, then discarded: raises nothing. */
+    quiet?: boolean
   }): Promise<Workspace> {
     const key = normaliseUuid(crypto.randomUUID())
     const now = DbDate.toDb(new Date())
@@ -102,7 +127,12 @@ export class WorkspaceRepository {
         updated_at: now,
       })
       .execute()
-    return (await this.byKey(key)) as Workspace
+    const opened = (await this.byKey(key)) as Workspace
+    if (!input.quiet)
+      await recordWorkspaceEvent(this.#db, WORKSPACE_OPENED, factsOf(opened), {
+        by: input.ownerKey,
+      })
+    return opened
   }
 
   /** A person's own unnamed workspace, while it is open (story 380). */
@@ -114,6 +144,11 @@ export class WorkspaceRepository {
       .where('personal', '=', this.#db.dialect.boolValue(true) as boolean)
       .where('state', '=', 'open')
       .execute()
+    return (await this.#withMembers(rows))[0]
+  }
+
+  async byId(id: number): Promise<Workspace | undefined> {
+    const rows = await this.#db.q.selectFrom('workspace').selectAll().where('id', '=', id).execute()
     return (await this.#withMembers(rows))[0]
   }
 
@@ -239,10 +274,13 @@ export class WorkspaceRepository {
     ]
   }
 
-  /** Removes the workspace and everything carrying it; Shared is as it was. */
-  async discard(id: number): Promise<void> {
+  /** Removes the workspace and everything carrying it; Shared is as it was. `by` discarded it. */
+  async discard(id: number, by?: string | null, options: { quiet?: boolean } = {}): Promise<void> {
     await this.#db.locks.withLock(Locks.ContentTree, () =>
       this.#db.transaction(async (tx) => {
+        const gone = await new WorkspaceRepository(tx).byId(id)
+        if (gone && !options.quiet)
+          await recordWorkspaceEvent(tx, WORKSPACE_DISCARDED, factsOf(gone), { by })
         const versions = () =>
           tx.q.selectFrom('content_version').select('id').where('workspace_id', '=', id)
         const made = (
@@ -262,6 +300,8 @@ export class WorkspaceRepository {
           'workspace_document',
           'workspace_member',
           'workspace_link',
+          'workspace_conflict_raised',
+          'change_source_staged',
         ] as const)
           await tx.q.deleteFrom(table).where('workspace_id', '=', id).execute()
         if (made.length > 0) await deleteNodeRows(tx, { ids: made })
@@ -438,14 +478,96 @@ export class WorkspaceRepository {
       'workspace_pending',
       'workspace_document_culture',
       'workspace_document',
+      'workspace_conflict_raised',
     ] as const)
       await this.#db.q.deleteFrom(table).where('workspace_id', '=', id).execute()
     await dropWorkspaceSchema(this.#db, id)
+    // Story 399: what it staged from a source is now that source's base.
+    await new ChangeSourceRepository(this.#db).merged(id)
     const now = DbDate.toDb(new Date())
     await this.#db.q
       .updateTable('workspace')
       .set({ state: 'merged', merged_at: now, merged_by: normaliseUuid(by), updated_at: now })
       .where('id', '=', id)
+      .execute()
+  }
+
+  /** Story 400: a merge closed it, making `change`: raises `WorkspaceMerged`, in the merge's transaction. */
+  async announceMerged(
+    id: number,
+    change: { key: string; name: string | null },
+    by: string | null,
+  ): Promise<void> {
+    const merged = await this.byId(id)
+    if (merged)
+      await recordWorkspaceEvent(this.#db, WORKSPACE_MERGED, factsOf(merged), { by, change })
+  }
+
+  /**
+   * Story 400: the items now in conflict with Shared. Those not raised before raise
+   * `WorkspaceConflicted` together, and are kept so they are raised once until settled.
+   */
+  async conflicted(id: number, items: readonly ConflictedItem[], by: string | null): Promise<void> {
+    if (items.length === 0) return
+    const raised = new Set(
+      (
+        await this.#db.q
+          .selectFrom('workspace_conflict_raised')
+          .select('item')
+          .where('workspace_id', '=', id)
+          .execute()
+      ).map((r) => String(r.item)),
+    )
+    const fresh = items.filter((i) => !raised.has(conflictId(i)))
+    if (fresh.length === 0) return
+    const now = DbDate.toDb(new Date())
+    for (const item of fresh)
+      await this.#db.q
+        .insertInto('workspace_conflict_raised')
+        .values({ workspace_id: id, item: conflictId(item), raised_at: now })
+        .execute()
+    const workspace = await this.byId(id)
+    if (workspace)
+      await recordWorkspaceEvent(this.#db, WORKSPACE_CONFLICTED, factsOf(workspace), {
+        by,
+        items: fresh,
+      })
+  }
+
+  /**
+   * Story 400: what a person settled in the workspace, a page by its key or a file by its
+   * path, so a conflict there later is raised again. `keepFiles` are files still in conflict.
+   */
+  async settled(id: number, settled: { key?: string; files?: { keep: readonly string[] } }) {
+    if (settled.key) {
+      const key = normaliseUuid(settled.key)
+      await this.#db.q
+        .deleteFrom('workspace_conflict_raised')
+        .where('workspace_id', '=', id)
+        .where(
+          'item',
+          'in',
+          ['document', 'media', 'element', 'blueprint'].map((kind) => `${kind}:${key}`),
+        )
+        .execute()
+    }
+    if (settled.files) {
+      let query = this.#db.q
+        .deleteFrom('workspace_conflict_raised')
+        .where('workspace_id', '=', id)
+        .where('item', 'like', 'file:%')
+      const keep = settled.files.keep.map((path) => `file:${path}`)
+      if (keep.length > 0) query = query.where('item', 'not in', keep)
+      await query.execute()
+    }
+  }
+
+  /** Story 400: an item no longer in conflict, so a conflict there later is raised again. */
+  async settle(id: number, item: ConflictedItem): Promise<void> {
+    await this.#db.q
+      .deleteFrom('workspace_conflict_raised')
+      .where('workspace_id', '=', id)
+      .where('item', '=', conflictId(item))
       .execute()
   }
 

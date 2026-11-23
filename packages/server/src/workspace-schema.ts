@@ -317,8 +317,13 @@ export function createWorkspaceSchema(
     sharedFiles,
     shown,
 
+    /** Story 399: every file a workspace copies, as Shared has it now, by its key. */
+    copiedNow: (handle: Db = db) => sharedCopied(handle),
+
     /** A file as Shared has it now, by its full path: a definition's, or any other's. */
     async textNow(key: string): Promise<string | null> {
+      // Story 392: Shared's dictionary is rows, read as the workspace's file holds it.
+      if (key === WORKSPACE_DICTIONARY) return sharedDictionaryLines(db)
       return sharedText(key, await sharedFiles())
     },
 

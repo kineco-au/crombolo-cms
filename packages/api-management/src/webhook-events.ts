@@ -34,6 +34,15 @@ export const WEBHOOK_EVENTS: readonly WebhookEventInfo[] = [
   { alias: 'Umbraco.MediaDelete', eventName: 'Media Deleted', eventType: 'Media' },
   // Story 388: a publish closed its change, which a host may apply elsewhere at once.
   { alias: 'Crombolo.ChangePublished', eventName: 'Change Published', eventType: 'Content' },
+  // Story 400: a workspace's life, for a host following them.
+  { alias: 'Crombolo.WorkspaceOpened', eventName: 'Workspace Opened', eventType: 'Content' },
+  { alias: 'Crombolo.WorkspaceMerged', eventName: 'Workspace Merged', eventType: 'Content' },
+  { alias: 'Crombolo.WorkspaceDiscarded', eventName: 'Workspace Discarded', eventType: 'Content' },
+  {
+    alias: 'Crombolo.WorkspaceConflicted',
+    eventName: 'Workspace In Conflict With Shared',
+    eventType: 'Content',
+  },
 ]
 
 /** Raised when a publish finishes a person's change (story 388), naming it. */

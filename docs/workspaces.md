@@ -307,8 +307,18 @@ The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
 | `POST /{key}/open` `{ path }` | a member's link to the workspace's site, used once (story 379) |
 | `GET /{key}/links` · `POST /{key}/links` `{ days }` · `DELETE /{key}/links/{id}` | links for someone else to look |
 
+Each workspace answers its key, name, owner and members, its privacy, its state, `mine`
+(the caller owns it) and `personal` (story `398`): `true` for a person's own unnamed
+workspace, `false` for one opened by name, so a host listing them can leave out the
+editors' own changes. The remote protocol's workspace routes answer the same.
+
 Someone else's workspace answers 404, as one that is not there. An administrator may
-list and discard any, to clear one left behind, and reads none.
+list and discard any, to clear one left behind, and reads one they are not in only when
+they ask to (story `401`): with `includePrivate=true` (the command line's
+`--include-private`) they read the workspace, a person's own included, and its
+`changes`, `merge` preview, `conflicts`, `diff`, `errors`, `pages`, `files`, `members`,
+`render` and `POST check`, and open its site, honoured while they remain an
+administrator. Writes stay with its owner and members, and `member` stays false.
 
 **The Management API takes the workspace as a header:** `Crombolo-Workspace: <key>`.
 The router asks once the request is authorised:
@@ -384,6 +394,28 @@ person may make each of its changes; otherwise it stays published there and the 
 says why. The merge raises `Crombolo.ChangePublished`, as a publish in Shared does, with
 `From: "own-workspace"` (story `397`, [`webhooks.md`](webhooks.md)). Media, schema and files are not held by a workspace yet (`390`, `376`, `377`),
 so they are still changed directly.
+
+## Its life as events (story 400)
+
+A workspace raises a webhook event as it is opened, merged, discarded, or comes into
+conflict with Shared ([`webhooks.md`](webhooks.md)), each written to the outbox in the
+transaction that does it, so a host follows workspaces without polling the list.
+
+- **Every workspace raises them,** a person's own included, carrying `Personal`.
+  A dry run of a change, staged and set aside again, raises nothing.
+- **A conflict is found as Shared is written.** A write of a page, media or Library item
+  asks each open workspace holding it how its merge would go for that item now; a write
+  of a definition or another of the site's files is checked once the request that wrote
+  it ends, when the file is in place, and a merge's files once they land. A conflict not
+  raised before raises `Crombolo.WorkspaceConflicted`, naming the item.
+- **Once until settled:** the items raised are kept (`workspace_conflict_raised`,
+  migration 093). Answering a page's conflict, resolving a file, updating from Shared, or
+  a later write that merges cleanly lets it be raised again; merging or discarding the
+  workspace drops them.
+- **What it costs:** a write no open workspace holds costs a query; one a workspace holds
+  costs that workspace's merge plan.
+- **The command line** writing Shared directly raises no conflicts: it is checked at the
+  next write through the server.
 
 ## Known gaps
 

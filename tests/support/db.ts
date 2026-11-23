@@ -134,6 +134,13 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 094, where site bundles staged as changes came from (story 399): tables of their own.
+  await db.exec('DROP TABLE IF EXISTS change_source')
+  await db.exec('DROP TABLE IF EXISTS change_source_staged')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddChangeSources'")
+  // 093, the conflicts each workspace was told of (story 400): a table of its own.
+  await db.exec('DROP TABLE IF EXISTS workspace_conflict_raised')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceConflictsRaised'")
   // 092, workspaces' processes as each node reports them (story 396): tables of their own.
   await db.exec('DROP TABLE IF EXISTS workspace_process')
   await db.exec('DROP TABLE IF EXISTS workspace_process_failure')

@@ -17,6 +17,7 @@ import {
   writeContentType,
   writeDataType,
 } from '@crombolo/schema'
+import { noteFileWritten } from '../workspace-conflicts.ts'
 
 /** The class a file's change costs, by its items. */
 const classOf = (path: string, before: string | null, after: string | null, definition: boolean) =>
@@ -24,6 +25,12 @@ const classOf = (path: string, before: string | null, after: string | null, defi
     (worst, i) => costlier(worst, i.class),
     'none',
   )
+
+/** The class one file's change costs, by its key: a definition under `schema/`, or any file. */
+export const fileClass = (path: string, before: string | null, after: string | null) => {
+  const definition = path.startsWith('schema/')
+  return classOf(definition ? path.slice('schema/'.length) : path, before, after, definition)
+}
 
 /** Records one file's direct edit, when someone made it and it changed. */
 export async function recordEdit(
@@ -34,6 +41,7 @@ export async function recordEdit(
   after: string | null,
 ): Promise<void> {
   if (!by || before === after) return
+  noteFileWritten(path, by)
   const definition = path.startsWith('schema/')
   await new ChangeRepository(db).recordEdit(by, {
     path,

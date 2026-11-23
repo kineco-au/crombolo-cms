@@ -135,7 +135,12 @@ describe('the first boot of a self-hosted site', () => {
   test('a database the previous release left is upgraded by `crombolo upgrade`, and then starts', async () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
-    // 092 (story 396), 091 (story 395), 090 (story 384), 089 (story 387), 088 (story 383), 087 (story 379), 086 (story 381), 085 (story 376), then 084.
+    // 094 (story 399), 093 (story 400), 092 (story 396), 091 (story 395), 090 (story 384), 089 (story 387), 088 (story 383), 087 (story 379), 086 (story 381), 085 (story 376), then 084.
+    sqlite.exec('DROP TABLE change_source')
+    sqlite.exec('DROP TABLE change_source_staged')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddChangeSources'")
+    sqlite.exec('DROP TABLE workspace_conflict_raised')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceConflictsRaised'")
     sqlite.exec('DROP TABLE workspace_process')
     sqlite.exec('DROP TABLE workspace_process_failure')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceProcesses'")

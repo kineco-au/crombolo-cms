@@ -126,6 +126,40 @@ Management API's (above, "Moving a change without the remote").
 - **A whole site** applied into a site with no pages is its first change (`bundle`); over
   one holding pages, it is recorded as `replace`.
 
+### A site bundle staged as a change (story 399)
+
+A pipeline whose checkout has no database stages what it holds into a workspace on a
+site, to be looked at and merged there like any other change, rather than replacing
+the site. The site works out the change itself, measured from a base.
+
+- **`PUT <backoffice>/crombolo/api/changes/from-site?source=&into=&base=&prune=&check=`**,
+  and the remote protocol's `changes/from-site`, take a site bundle (`application/gzip`,
+  `Crombolo-Sha256`, the upload limit), with the rights `PUT changes` needs: *Apply
+  changes*, and *Install code* when it changes templates or the site's own code.
+- **What travels:** its definitions, components, stylesheets and scripts, its dictionary
+  (as the workspace keeps one, `content/dictionary.jsonl`, merged by item), and its
+  pages, media items (with their files), Library items and blueprints. Its code,
+  `public/` and Library folders are left out and listed (`leftOut`).
+- **The base is a source's last merge.** `source` names where it comes from. When a
+  change staged from it merges, the site keeps the bundle's items as they were in it
+  (`change_source`, migration 094), and the next staging from the source measures from
+  them: a later edit in Shared to an item the bundle left alone is kept, and one to an
+  item it changed is a conflict. A staging discarded, or staged again before it merged,
+  leaves the base as it was.
+- **The first staging from a source** names its base: `base=now`, the site as it is, or
+  `base=<change key>`, the site as that change left it. Without one it is refused (409).
+  Either may be given later too, in place of the source's.
+- **Nothing is deleted unless asked:** with `prune`, an item the base had and the bundle
+  lacks is deleted in the change, and the merge asks for each to be accepted.
+- **`into`** names an open workspace, by key or name, or a name to open one with. Staging
+  again from the same source replaces the workspace it staged before.
+- **`check=true`** says what staging would do, as `PUT changes?check=true` does, and
+  stages nothing.
+- **From the command line:** `crombolo changes stage <path> --into --source [--base]
+  [--prune] [--dry-run]`. The path is a site bundle's `.tgz`, its folder, or a site's
+  checkout, which is built into a whole-site bundle of its files first: its schema,
+  components, stylesheets and scripts, with no pages and no database.
+
 ### Pending workspaces
 
 An administrator sees every open workspace, staged changes included, with its owner, its

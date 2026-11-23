@@ -6,6 +6,36 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.74.0 — 2026-11-23
+
+### Features
+
+- **A workspace says whether it is someone's own (398).** Each workspace the workspace
+  routes answer, the list (`?all=true` too), one workspace and `mine`, and the remote
+  protocol's, carries `personal`: `true` for a person's own unnamed workspace, `false`
+  for a named one.
+- **A workspace's life raised as events (400).** `Crombolo.WorkspaceOpened`,
+  `WorkspaceMerged`, `WorkspaceDiscarded` and `WorkspaceConflicted` follow every
+  workspace, each carrying it (`Personal` included) and who did it. A conflict is found
+  as Shared is written, and raised once per item until it is settled
+  (`docs/webhooks.md`, `docs/workspaces.md`).
+- **A site bundle staged as a change (399).** A pipeline stages a site bundle, or a
+  checkout with no database, into a workspace on a site:
+  `PUT <backoffice>/crombolo/api/changes/from-site` or `crombolo changes stage`. The site
+  measures the change from the source's last merge, so an editor's later edit to what the
+  bundle left alone is kept, and deletes nothing unless asked (`docs/changes.md`).
+- **An administrator reads any workspace, when they ask to (401).** With
+  `includePrivate=true` (`--include-private`), an administrator reads a workspace they
+  are not in, a person's own included, on every read route, and opens its site. Writes
+  stay with its owner and members (`docs/workspaces.md`).
+
+### Upgrade notes
+
+- **Migration 093** (`AddWorkspaceConflictsRaised`) adds the `workspace_conflict_raised`
+  table.
+- **Migration 094** (`AddChangeSources`) adds the `change_source` and
+  `change_source_staged` tables.
+
 ## v0.73.2 — 2026-11-23
 
 0.73.1 was not released: its fixes are here.

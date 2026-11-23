@@ -548,4 +548,8 @@ it.
 | `395` | What is live, for an editor where a site is made | should | M | done | 380, 388, 394 |
 | `396` | A workspace process that keeps failing is reported | should | M | done | 378 |
 | `397` | A publish in a person's own workspace is passed on | should | S | done | 380, 388, 395 |
+| `398` | A workspace says whether it is someone's own | should | S | done | 380, 384 |
+| `399` | A site bundle staged as a change | should | L | done | 382, 383, 392, 394 |
+| `400` | A workspace's life raised as events | could | M | done | 380, 384, 388, 398 |
+| `401` | An administrator reads any workspace, when they ask to | should | S | done | 384, 386 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

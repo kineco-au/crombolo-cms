@@ -4939,7 +4939,7 @@ Open a workspace, change it, check it, and push and merge it as one change; list
 Where a workspace’s site is looked at, as you. Each run acts again.
 
 ```
-crombolo workspace address <workspace> [--profile <profile>] [--env <env>] [--path <path>]
+crombolo workspace address <workspace> [--profile <profile>] [--env <env>] [--include-private] [--path <path>]
 ```
 
 | Argument | Type | What it is |
@@ -4947,6 +4947,7 @@ crombolo workspace address <workspace> [--profile <profile>] [--env <env>] [--pa
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--path` | string | A page on it. Default `/`. |
 
 **Output** (single, with `-o json`):
@@ -4961,7 +4962,7 @@ crombolo workspace address <workspace> [--profile <profile>] [--env <env>] [--pa
 Every check before a merge: each changed page rendered, a sample per changed type and template, every file’s problems. Changes nothing.
 
 ```
-crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--all]
+crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--include-private] [--all]
 ```
 
 | Argument | Type | What it is |
@@ -4969,6 +4970,7 @@ crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--all]
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--all` | boolean | Render every affected page, not a sample. |
 
 **Output** (single, with `-o json`):
@@ -4988,7 +4990,7 @@ crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--all]
 Each conflict, by part: the base, mine and theirs, and the change that made theirs. Changes nothing.
 
 ```
-crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>]
+crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>] [--include-private]
 ```
 
 | Argument | Type | What it is |
@@ -4996,6 +4998,7 @@ crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>]
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 
 **Output** (bounded, with `-o json`):
 
@@ -5011,7 +5014,7 @@ crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>]
 How a workspace differs: from Shared (what a merge changes), from where it began, or from another environment. Changes nothing.
 
 ```
-crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--against <against>] [--to <to>]
+crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--include-private] [--against <against>] [--to <to>]
 ```
 
 | Argument | Type | What it is |
@@ -5019,6 +5022,7 @@ crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--again
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--against` | string | Shared, base, or an environment of the site --to names. Default `shared`. |
 | `--to` | string | The profile of the site --against <env> is on. |
 
@@ -5037,7 +5041,7 @@ crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--again
 Discard a workspace and everything in it. Each run acts again.
 
 ```
-crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--yes]
+crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--include-private] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -5045,6 +5049,7 @@ crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--ye
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--yes` | boolean | Discard it, rather than only saying what would go. |
 
 **Output** (single, with `-o json`):
@@ -5059,7 +5064,7 @@ crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--ye
 What a workspace’s renders logged: exceptions, crashes and timeouts. Changes nothing.
 
 ```
-crombolo workspace errors <workspace> [--profile <profile>] [--env <env>] [--since <since>]
+crombolo workspace errors <workspace> [--profile <profile>] [--env <env>] [--include-private] [--since <since>]
 ```
 
 | Argument | Type | What it is |
@@ -5067,6 +5072,7 @@ crombolo workspace errors <workspace> [--profile <profile>] [--env <env>] [--sin
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--since` | string | Only those since this time. |
 
 **Output** (bounded, with `-o json`):
@@ -5081,13 +5087,14 @@ crombolo workspace errors <workspace> [--profile <profile>] [--env <env>] [--sin
 The workspaces you may use there, newest first. Changes nothing.
 
 ```
-crombolo workspace list [--profile <profile>] [--env <env>] [--all]
+crombolo workspace list [--profile <profile>] [--env <env>] [--include-private] [--all]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--all` | boolean | Every one, for an administrator. |
 
 **Output** (bounded, with `-o json`):
@@ -5102,7 +5109,7 @@ crombolo workspace list [--profile <profile>] [--env <env>] [--all]
 Merge workspaces into Shared, all or none: a dry run says what it would do and runs the checks. Each run acts again.
 
 ```
-crombolo workspace merge <workspaces> [--profile <profile>] [--env <env>] [--dry-run] [--yes] [--accept-lossy <accept-lossy>]
+crombolo workspace merge <workspaces> [--profile <profile>] [--env <env>] [--include-private] [--dry-run] [--yes] [--accept-lossy <accept-lossy>]
 ```
 
 | Argument | Type | What it is |
@@ -5110,6 +5117,7 @@ crombolo workspace merge <workspaces> [--profile <profile>] [--env <env>] [--dry
 | `workspaces` | string | One or more, by name or key, separated by commas. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--dry-run` | boolean | Say what it would do, changing nothing. |
 | `--yes` | boolean | Merge, rather than only saying what would. |
 | `--accept-lossy` | string[] | A change that loses data, removes or renames, by its id or kind; repeatable. |
@@ -5130,7 +5138,7 @@ crombolo workspace merge <workspaces> [--profile <profile>] [--env <env>] [--dry
 Open a workspace, to change pages, types and files apart from Shared. Each run acts again.
 
 ```
-crombolo workspace open <name> [--profile <profile>] [--env <env>]
+crombolo workspace open <name> [--profile <profile>] [--env <env>] [--include-private]
 ```
 
 | Argument | Type | What it is |
@@ -5138,6 +5146,7 @@ crombolo workspace open <name> [--profile <profile>] [--env <env>]
 | `name` | string | What to call it. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 
 **Output** (single, with `-o json`):
 
@@ -5152,7 +5161,7 @@ crombolo workspace open <name> [--profile <profile>] [--env <env>]
 Each page a workspace affects: its address, whether it rendered, and how long it took. Changes nothing.
 
 ```
-crombolo workspace pages <workspace> [--profile <profile>] [--env <env>] [--failing] [--all]
+crombolo workspace pages <workspace> [--profile <profile>] [--env <env>] [--include-private] [--failing] [--all]
 ```
 
 | Argument | Type | What it is |
@@ -5160,6 +5169,7 @@ crombolo workspace pages <workspace> [--profile <profile>] [--env <env>] [--fail
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--failing` | boolean | Only those that did not render. |
 | `--all` | boolean | Every affected page, not a sample per type and template. |
 
@@ -5175,7 +5185,7 @@ crombolo workspace pages <workspace> [--profile <profile>] [--env <env>] [--fail
 Bring changes from another site: those merged there that this site lacks, or one of its workspaces to work on here. Each run acts again.
 
 ```
-crombolo workspace pull [<workspace>] [--profile <profile>] [--env <env>] --from <from> [--from-env <from-env>] [--yes]
+crombolo workspace pull [<workspace>] [--profile <profile>] [--env <env>] [--include-private] --from <from> [--from-env <from-env>] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -5183,6 +5193,7 @@ crombolo workspace pull [<workspace>] [--profile <profile>] [--env <env>] --from
 | `workspace` | string | A workspace there, by its name or key. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--from` | string | The site it comes from, by its profile. Required. |
 | `--from-env` | string | Its environment. |
 | `--yes` | boolean | Bring it, rather than only saying what would come. |
@@ -5204,7 +5215,7 @@ crombolo workspace pull [<workspace>] [--profile <profile>] [--env <env>] --from
 Send a workspace from here to a workspace on another site, where it is looked at and merged; it never merges. Each run acts again.
 
 ```
-crombolo workspace push <workspace> [--profile <profile>] [--env <env>] --to <to> [--to-env <to-env>] [--yes]
+crombolo workspace push <workspace> [--profile <profile>] [--env <env>] [--include-private] --to <to> [--to-env <to-env>] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -5212,6 +5223,7 @@ crombolo workspace push <workspace> [--profile <profile>] [--env <env>] --to <to
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--to` | string | The site it goes to, by its profile. Required. |
 | `--to-env` | string | Its environment. |
 | `--yes` | boolean | Send it, rather than only saying what it holds. |
@@ -5232,7 +5244,7 @@ crombolo workspace push <workspace> [--profile <profile>] [--env <env>] --to <to
 One page of a workspace’s site: whether it rendered, and its error if not. Changes nothing.
 
 ```
-crombolo workspace render <workspace> <path> [--profile <profile>] [--env <env>] [--html]
+crombolo workspace render <workspace> <path> [--profile <profile>] [--env <env>] [--include-private] [--html]
 ```
 
 | Argument | Type | What it is |
@@ -5241,6 +5253,7 @@ crombolo workspace render <workspace> <path> [--profile <profile>] [--env <env>]
 | `path` | string | The page’s address on the site. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--html` | boolean | Print the page too. |
 
 **Output** (single, with `-o json`):
@@ -5259,7 +5272,7 @@ crombolo workspace render <workspace> <path> [--profile <profile>] [--env <env>]
 Settle one conflict: a page’s part by --mine or --theirs, a file by those or its merged text. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo workspace resolve <workspace> <item> [--profile <profile>] [--env <env>] [--mine] [--theirs] [--file <file>] [--value <value>]
+crombolo workspace resolve <workspace> <item> [--profile <profile>] [--env <env>] [--include-private] [--mine] [--theirs] [--file <file>] [--value <value>]
 ```
 
 | Argument | Type | What it is |
@@ -5268,6 +5281,7 @@ crombolo workspace resolve <workspace> <item> [--profile <profile>] [--env <env>
 | `item` | string | A page’s part as `conflicts` names it (<key>#<part>), or a file’s path. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--mine` | boolean | Keep the workspace’s. |
 | `--theirs` | boolean | Take Shared’s. |
 | `--file` | string | A file’s merged text, from this file. |
@@ -5286,7 +5300,7 @@ crombolo workspace resolve <workspace> <item> [--profile <profile>] [--env <env>
 Let people read and change a workspace, by their email. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo workspace share <workspace> <people> [--profile <profile>] [--env <env>]
+crombolo workspace share <workspace> <people> [--profile <profile>] [--env <env>] [--include-private]
 ```
 
 | Argument | Type | What it is |
@@ -5295,6 +5309,7 @@ crombolo workspace share <workspace> <people> [--profile <profile>] [--env <env>
 | `people` | string | Their emails, separated by commas. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 
 **Output** (single, with `-o json`):
 
@@ -5308,7 +5323,7 @@ crombolo workspace share <workspace> <people> [--profile <profile>] [--env <env>
 What a workspace has changed, and whether it would merge now. Changes nothing.
 
 ```
-crombolo workspace status <workspace> [--profile <profile>] [--env <env>]
+crombolo workspace status <workspace> [--profile <profile>] [--env <env>] [--include-private]
 ```
 
 | Argument | Type | What it is |
@@ -5316,6 +5331,7 @@ crombolo workspace status <workspace> [--profile <profile>] [--env <env>]
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 
 **Output** (single, with `-o json`):
 
@@ -5331,7 +5347,7 @@ crombolo workspace status <workspace> [--profile <profile>] [--env <env>]
 Bring Shared’s latest into a workspace: what merges is merged, the rest is a conflict. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo workspace sync <workspace> [--profile <profile>] [--env <env>]
+crombolo workspace sync <workspace> [--profile <profile>] [--env <env>] [--include-private]
 ```
 
 | Argument | Type | What it is |
@@ -5339,6 +5355,7 @@ crombolo workspace sync <workspace> [--profile <profile>] [--env <env>]
 | `workspace` | string | The workspace, by its name or key. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 
 **Output** (single, with `-o json`):
 
@@ -5352,7 +5369,7 @@ crombolo workspace sync <workspace> [--profile <profile>] [--env <env>]
 Take people out of a workspace, by their email. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo workspace unshare <workspace> <people> [--profile <profile>] [--env <env>]
+crombolo workspace unshare <workspace> <people> [--profile <profile>] [--env <env>] [--include-private]
 ```
 
 | Argument | Type | What it is |
@@ -5361,6 +5378,7 @@ crombolo workspace unshare <workspace> <people> [--profile <profile>] [--env <en
 | `people` | string | Their emails, separated by commas. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 
 **Output** (single, with `-o json`):
 
@@ -5374,13 +5392,14 @@ crombolo workspace unshare <workspace> <people> [--profile <profile>] [--env <en
 The workspaces open there, with what each holds. Changes nothing.
 
 ```
-crombolo workspaces [--profile <profile>] [--env <env>] [--all]
+crombolo workspaces [--profile <profile>] [--env <env>] [--include-private] [--all]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--all` | boolean | Every one, for an administrator. |
 
 **Output** (bounded, with `-o json`):
@@ -5395,7 +5414,7 @@ crombolo workspaces [--profile <profile>] [--env <env>] [--all]
 The changes made there, newest first, or one of them with what it holds. Changes nothing.
 
 ```
-crombolo changes [<change>] [--profile <profile>] [--env <env>] [--take <take>]
+crombolo changes [<change>] [--profile <profile>] [--env <env>] [--include-private] [--take <take>]
 ```
 
 | Argument | Type | What it is |
@@ -5403,6 +5422,7 @@ crombolo changes [<change>] [--profile <profile>] [--env <env>] [--take <take>]
 | `change` | string | One change, by its id. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--take` | integer | How many. Default `20`. |
 
 **Output** (bounded, with `-o json`):
@@ -5413,12 +5433,45 @@ crombolo changes [<change>] [--profile <profile>] [--env <env>] [--take <take>]
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`.
 
+### `crombolo changes stage`
+
+Stage a site bundle, or a site's checkout, into a workspace there as a change, measured from its source's last merge. Each run acts again.
+
+```
+crombolo changes stage <path> [--profile <profile>] [--env <env>] [--include-private] --into <into> --source <source> [--base <base>] [--prune] [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `path` | string | A site bundle (.tgz or its folder), or a site's checkout. Required. |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
+| `--into` | string | The workspace it goes into, by name or key; one by that name is opened if none is. Required. |
+| `--source` | string | Where it comes from, as the site remembers it: its base is what was last merged from here. Required. |
+| `--base` | string | What it is measured from the first time: now, or a change's key. |
+| `--prune` | boolean | Delete what the base had and it lacks, each accepted by name at the merge. |
+| `--dry-run` | boolean | Say what staging it would do, and stage nothing. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `workspace` (string)
+- `pages` (array of object)
+- `files` (array of object)
+- `conflicts` (array of object)
+- `leftOut` (array of string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
+
+**Outcomes:** `conflicts_found`.
+
 ### `crombolo revert`
 
 Undo a change as a change of its own, or reopen its work as a workspace to carry on with. Each run acts again.
 
 ```
-crombolo revert <change> [--profile <profile>] [--env <env>] [--to-workspace <to-workspace>] [--yes]
+crombolo revert <change> [--profile <profile>] [--env <env>] [--include-private] [--to-workspace <to-workspace>] [--yes]
 ```
 
 | Argument | Type | What it is |
@@ -5426,6 +5479,7 @@ crombolo revert <change> [--profile <profile>] [--env <env>] [--to-workspace <to
 | `change` | string | The change, by its id. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
 | `--to-workspace` | string | Reopen its work in a workspace of this name. |
 | `--yes` | boolean | Revert it, rather than only saying so. |
 

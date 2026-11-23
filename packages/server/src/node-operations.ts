@@ -6,6 +6,7 @@
  */
 import type { Principal } from '@crombolo/api-management/domain'
 import {
+  actorUserKey,
   createDocumentOperations,
   createElementOperations,
   createMediaOperations,
@@ -46,6 +47,7 @@ import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
 import type { MediaFileStore } from './media-files.ts'
 import { createRedirectTracker, NO_REDIRECT_TRACKING, type RedirectTracker } from './redirects.ts'
 import type { WebhookService } from './webhooks.ts'
+import { type ConflictWatch, createConflictWatch } from './workspace-conflicts.ts'
 import { createWorkspaceSchema, type FileMergePlan } from './workspace-schema.ts'
 
 export interface NodeOperations {
@@ -63,6 +65,8 @@ export interface NodeOperations {
   elements: ElementOperations
   /** Merging a workspace into Shared (story 380). */
   merge: WorkspaceMerging
+  /** Story 400: what tells the open workspaces Shared has come into conflict with them. */
+  conflicts: ConflictWatch
 }
 
 /** A workspace's merge: what it would do, and doing it, as the person merging. */
@@ -114,6 +118,21 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
   }
   const refusalReason = (error: unknown) =>
     error instanceof TemporaryFileMissingError ? error.message : undefined
+  // Story 400: each write to Shared asks the open workspaces holding its item how they merge now.
+  const conflicts = createConflictWatch({ repository, files: () => workspaceSchema })
+  const watched = <S extends { record(tx: Db, event: never, actor: never): Promise<void> }>(
+    sink: S,
+  ): S =>
+    ({
+      ...sink,
+      async record(tx: Db, event: never, actor: never) {
+        await sink.record(tx, event, actor)
+        const key = (event as { key?: unknown }).key
+        if (typeof key === 'string')
+          await conflicts.itemWritten(tx, key, actorUserKey(actor) ?? null)
+      },
+    }) as S
+  const contentEvents = watched(options.contentEvents ?? SILENT)
   const tracker = cache
     ? createRedirectTracker({
         cache,
@@ -149,7 +168,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
   documents = createDocumentOperations({
     db,
     repository,
-    events: options.contentEvents ?? SILENT,
+    events: contentEvents,
     approvals: approvalsGate(approvals),
     redirects: tracker,
     onChange: () => cache?.invalidate(),
@@ -160,7 +179,9 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
   const media = createMediaOperations({
     db,
     repository,
-    events: createMediaEventSink({ webhooks: options.webhooks, nudge: options.nudgeEvents }),
+    events: watched(
+      createMediaEventSink({ webhooks: options.webhooks, nudge: options.nudgeEvents }),
+    ),
     files: options.mediaFiles,
     // Only the items it touched: a media change leaves the pages alone (story 197).
     onChange: (change) => cache?.media?.apply(change),
@@ -176,7 +197,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
         instructedBy: options.instructedBy,
         valueIntake: repository.valueIntake,
       }),
-    events: createElementEventSink(),
+    events: watched(createElementEventSink()),
     onChange: () => cache?.invalidate(),
   })
   /** A workspace's media and Library (story 390): audited, announced nowhere else. */
@@ -237,7 +258,18 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
         ready: planned,
       }
     },
-    apply: (tx, ready) => workspaceSchema.apply(tx, ready as FileMergePlan),
+    async apply(tx, ready) {
+      const applied = await workspaceSchema.apply(tx, ready as FileMergePlan)
+      const written = Object.keys((ready as FileMergePlan).writes)
+      return {
+        ...applied,
+        // Story 400: once Shared's files are in place, the workspaces still open hear of them.
+        async after() {
+          await applied.after()
+          for (const path of written) await conflicts.fileWritten(db, path)
+        },
+      }
+    },
   }
   const merge: WorkspaceMerging = {
     preview: (workspace) => previewWorkspaceMerge(db, repository, workspace),
@@ -247,7 +279,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
       const outcome = await runWorkspaceMerge(list, {
         db,
         repository,
-        events: options.contentEvents ?? SILENT,
+        events: contentEvents,
         actor: userActor(principal, {
           via: `a merge of ${list.length > 1 ? 'the workspaces' : 'the workspace'} ${names}`,
         }),
@@ -286,5 +318,6 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     elementsIn,
     media,
     elements,
+    conflicts,
   }
 }

@@ -12,9 +12,11 @@
 import type { Principal } from '@crombolo/api-management/domain'
 import { REMOVED_PAGE_PREFIX } from '@crombolo/content'
 import type { DocumentAggregate } from '@crombolo/core'
-import { normaliseUuid } from '@crombolo/core'
+import { normaliseUuid, ObjectTypes } from '@crombolo/core'
 import {
   ChangeRepository,
+  ChangeSourceRepository,
+  ComponentRepository,
   type ContentKind,
   type Db,
   DbDate,
@@ -27,20 +29,114 @@ import {
   WorkspaceRepository,
   type WorkspaceScope,
 } from '@crombolo/data'
-import type {
-  ChangeBundle,
-  ChangeBundleFile,
-  ChangeBundlePage,
-  ChangePageState,
-  ChangeValue,
-  PageSchedule,
+import {
+  type BundleNode,
+  type ChangeBundle,
+  type ChangeBundleFile,
+  type ChangeBundlePage,
+  type ChangePageState,
+  type ChangeValue,
+  loadBundle,
+  type PageSchedule,
 } from '@crombolo/transfer'
+import { fileClass } from './adapters/change-recording.ts'
+import { WORKSPACE_DICTIONARY, writeDictionaryLines } from './adapters/workspace-dictionary.ts'
 import type { MediaFileStore } from './media-files.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
+import { readUdt, type UdtItem } from './udt.ts'
 
 type PageKind = ChangeBundlePage['kind']
 const PAGE_KINDS: readonly PageKind[] = ['document', 'media', 'element', 'blueprint']
 const isPageKind = (kind: string): kind is PageKind => (PAGE_KINDS as string[]).includes(kind)
+
+/** A page, media item, Library item or blueprint as a site bundle carries it (story 399). */
+export interface SitePage {
+  kind: PageKind
+  parentKey: string | null
+  contentTypeKey: string
+  contentTypeAlias: string
+  componentKey: string | null
+  state: ChangePageState
+}
+
+/** A site's items, by key: each file's text, and each page as it stands. */
+export interface SiteSnapshot {
+  files: Record<string, string>
+  pages: Record<string, SitePage>
+}
+
+/** What staging a site bundle did, or would do with `check`. */
+export type SiteStageOutcome =
+  | {
+      ok: true
+      workspace: Workspace | undefined
+      skipped: string[]
+      conflicts: ChangeConflict[]
+      pages: Array<{ key: string; name: string; action: string }>
+      files: Array<{ path: string; class: string }>
+      /** What the bundle carries that this does not stage, by its path in the bundle. */
+      leftOut: string[]
+    }
+  | { ok: false; status: number; code: string; title: string; detail?: string }
+
+/** A bundle's section path as a workspace keeps its files; undefined for one not staged. */
+export function siteFileKey(path: string): string | undefined {
+  if (path.startsWith('schema/') || path.startsWith('components/') || path.startsWith('scripts/'))
+    return path
+  if (path.startsWith('styles/')) return `stylesheets/${path.slice('styles/'.length)}`
+  return undefined
+}
+
+/** Where a whole site's bundle carries its dictionary. */
+export const SITE_DICTIONARY = 'dictionary.udt'
+
+/** A bundle's dictionary as a workspace keeps it, an item a line; undefined when it is not one. Pure. */
+export function siteDictionaryLines(udt: string): string | undefined {
+  const tree = readUdt(udt)
+  if (!tree) return undefined
+  const flat: Array<{
+    key: string
+    name: string
+    parentKey: string | null
+    translations: UdtItem['translations']
+  }> = []
+  const walk = (item: UdtItem, parentKey: string | null) => {
+    flat.push({
+      key: normaliseUuid(item.key),
+      name: item.name,
+      parentKey,
+      translations: item.translations,
+    })
+    for (const child of item.children) walk(child, normaliseUuid(item.key))
+  }
+  for (const item of tree) walk(item, null)
+  return writeDictionaryLines(flat)
+}
+
+/** A bundle's node as the state a change carries. Pure. */
+export function siteStateOf(node: BundleNode): ChangePageState {
+  const invariant = node.variants.find((v) => v.culture === null) ?? node.variants[0]
+  const names: Record<string, string> = {}
+  for (const v of node.variants) if (v.culture) names[v.culture] = v.name
+  return {
+    name: invariant?.name ?? '',
+    values: node.values.map((v) => ({
+      alias: v.property,
+      culture: v.culture,
+      segment: v.segment,
+      ...(v.environment ? { environment: v.environment } : {}),
+      value: v.value,
+    })),
+    ...(Object.keys(names).length > 0 ? { names } : {}),
+    published: node.variants.some((v) => v.published),
+  }
+}
+
+/** Whether two page states are the same, field by field, with the same place. Pure. */
+const samePage = (a: SitePage, b: SitePage) =>
+  a.parentKey === b.parentKey &&
+  a.state.published === b.state.published &&
+  JSON.stringify([...fieldsOf(a.state)].sort()) === JSON.stringify([...fieldsOf(b.state)].sort())
 
 /** One thing a change could not do on this site, in the words it is shown in. */
 export interface ChangeConflict {
@@ -76,6 +172,9 @@ export interface ChangeTransferOptions {
     | {
         snapshot(workspaceId: number): Promise<void>
         build(workspace: WorkspaceScope): Promise<void>
+        /** Story 399: a file as Shared has it now, and every file it has. */
+        textNow?(key: string): Promise<string | null>
+        copiedNow?(): Promise<Map<string, string>>
       }
     | undefined
   merge: () => WorkspaceMerging | undefined
@@ -423,6 +522,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     bundles: ReadonlyArray<{ change: ChangeBundle; media: Map<string, Uint8Array> }>,
     principal: Principal,
     into?: Workspace,
+    /** Story 400: staged only to see what it would do, so the workspace raises nothing. */
+    quiet = false,
   ): Promise<StageOutcome> {
     const changes = new ChangeRepository(db)
     const keys = bundles.map((b) => b.change.key)
@@ -441,7 +542,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         todo.length === 1
           ? `Change: ${todo[0]?.change.name ?? todo[0]?.change.key}`
           : `${todo.length} changes`
-      workspace = await workspaces.open({ name, ownerKey: principal.id })
+      workspace = await workspaces.open({ name, ownerKey: principal.id, quiet })
       await options.schema()?.snapshot(workspace.id)
     }
     const store = new WorkspaceFileRepository(db)
@@ -713,7 +814,288 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     ])
   }
 
-  return { exportChange, exportWorkspace, exportSince, stage, apply, mergeStaged }
+  /** A page as Shared has it now, as a site bundle would carry it. */
+  async function pageNow(key: string): Promise<SitePage | null> {
+    for (const kind of PAGE_KINDS) {
+      const doc = await repo(kind).byKey(key)
+      if (doc)
+        return {
+          kind,
+          parentKey: doc.parentKey,
+          contentTypeKey: doc.contentTypeKey,
+          contentTypeAlias: doc.contentTypeAlias,
+          componentKey: doc.componentKey,
+          state: stateOf(doc),
+        }
+    }
+    return null
+  }
+
+  /** A page as it stood at `at`: its latest version then, or none when it came later. */
+  async function pageAt(key: string, at: Date): Promise<SitePage | null> {
+    for (const kind of PAGE_KINDS) {
+      const r = repo(kind)
+      const now = await r.byKey(key)
+      if (!now) continue
+      const then = (await r.versions(key))
+        .filter((v) => new Date(v.versionDate) <= at)
+        .sort((a, b) => new Date(b.versionDate).getTime() - new Date(a.versionDate).getTime())[0]
+      const doc = then ? await stateAt(kind, Number(then.id)) : null
+      if (!doc) return null
+      return {
+        kind,
+        parentKey: doc.parentKey,
+        contentTypeKey: doc.contentTypeKey,
+        contentTypeAlias: doc.contentTypeAlias,
+        componentKey: doc.componentKey,
+        state: stateOf(doc),
+      }
+    }
+    return null
+  }
+
+  /** A file as it stood when a change finished at `at`: its text after the last change by then. */
+  async function fileAt(key: string, at: Date): Promise<string | null> {
+    const changes = new ChangeRepository(db)
+    const versions = await changes.versions(key)
+    let latest: { after: string | null } | undefined
+    let later: { before: string | null } | undefined
+    for (const v of versions) {
+      const made = await changes.byId(v.changeId)
+      const when = made?.finishedAt ?? made?.startedAt
+      if (!when) continue
+      const item = (await changes.itemsOf(v.changeId)).find((i) => i.path === key)
+      if (!item) continue
+      if (when <= at) latest = { after: item.after }
+      else if (!later) later = { before: item.before }
+    }
+    if (latest) return latest.after
+    if (later) return later.before
+    return (await options.schema()?.textNow?.(key)) ?? null
+  }
+
+  /** Every page, media item, Library item and blueprint in Shared, by key. */
+  async function sharedPageKeys(): Promise<string[]> {
+    const rows = await db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('workspace_id', 'is', null)
+      .where('trashed', '=', db.dialect.boolValue(false) as boolean)
+      .where('node_object_type', 'in', [
+        ObjectTypes.Document,
+        ObjectTypes.Media,
+        ObjectTypes.Element,
+        ObjectTypes.DocumentBlueprint,
+      ])
+      .execute()
+    return rows.map((r) => normaliseUuid(String(r.unique_id)))
+  }
+
+  /**
+   * Story 399: a site bundle staged into a workspace as a change, measured from a base: the
+   * source's last merged staging, the site as a change left it, or the site now. What the
+   * base had and the bundle lacks is deleted only with `prune`.
+   */
+  async function stageSite(
+    input: {
+      dir: string
+      source: string
+      into: string
+      base?: string
+      prune?: boolean
+      check?: boolean
+    },
+    principal: Principal,
+    /** Whether the person may stage this change: one carrying code needs Install code. */
+    mayStage: (change: ChangeBundle) => boolean = () => true,
+  ): Promise<SiteStageOutcome> {
+    const refused = (status: number, code: string, title: string, detail?: string) =>
+      ({ ok: false, status, code, title, ...(detail ? { detail } : {}) }) as const
+    const loaded = loadBundle(input.dir)
+    if (!loaded.set || loaded.problems.length > 0)
+      return refused(
+        400,
+        'not-a-site',
+        'It is not a site bundle this site can read',
+        loaded.problems.map((p) => `${p.file}: ${p.message}`).join(' '),
+      )
+    if (loaded.set.sealed)
+      return refused(400, 'sealed', 'Its content is sealed: export it with its content open')
+
+    // What the bundle carries, as this site would hold it.
+    const leftOut: string[] = []
+    const after: SiteSnapshot = { files: {}, pages: {} }
+    for (const [path, onDisk] of loaded.files) {
+      const key = siteFileKey(path)
+      if (key) after.files[key] = await Bun.file(onDisk).text()
+      else if (path === SITE_DICTIONARY) {
+        const lines = siteDictionaryLines(await Bun.file(onDisk).text())
+        if (lines !== undefined) after.files[WORKSPACE_DICTIONARY] = lines
+        else leftOut.push(path)
+      } else leftOut.push(path)
+    }
+    const components = new ComponentRepository(db)
+    for (const node of loaded.set.nodes) {
+      if (node.kind === 'element-folder') {
+        leftOut.push(`nodes/${node.key}.json`)
+        continue
+      }
+      after.pages[normaliseUuid(node.key)] = {
+        kind: node.kind,
+        parentKey: node.parent ? normaliseUuid(node.parent) : null,
+        contentTypeKey: node.contentType.key,
+        contentTypeAlias: node.contentType.alias,
+        componentKey: node.template
+          ? ((await components.byAlias(node.template))?.key ?? null)
+          : null,
+        state: siteStateOf(node),
+      }
+    }
+
+    // What it is measured from.
+    const sources = new ChangeSourceRepository(db)
+    const fileKeys = new Set(Object.keys(after.files))
+    const pageKeys = new Set(Object.keys(after.pages))
+    let base: SiteSnapshot
+    const stored = await sources.base(input.source)
+    if (input.base === 'now' || (input.base && input.base !== 'now')) {
+      const at =
+        input.base === 'now'
+          ? undefined
+          : await (async () => {
+              const found = await db.q
+                .selectFrom('content_transfer_run')
+                .select(['finished_at', 'started_at'])
+                .where('change_key', '=', normaliseUuid(input.base as string))
+                .executeTakeFirst()
+              return found
+                ? (DbDate.fromDb((found.finished_at ?? found.started_at) as never) as Date)
+                : null
+            })()
+      if (at === null)
+        return refused(404, 'no-base', `There is no change ${input.base} here to measure from`)
+      if (input.prune) {
+        for (const key of (await options.schema()?.copiedNow?.())?.keys() ?? []) fileKeys.add(key)
+        for (const key of await sharedPageKeys()) pageKeys.add(key)
+      }
+      base = { files: {}, pages: {} }
+      for (const key of fileKeys) {
+        const text = at ? await fileAt(key, at) : ((await options.schema()?.textNow?.(key)) ?? null)
+        if (text !== null) base.files[key] = text
+      }
+      for (const key of pageKeys) {
+        const page = at ? await pageAt(key, at) : await pageNow(key)
+        if (page) base.pages[key] = page
+      }
+    } else if (stored) base = JSON.parse(stored) as SiteSnapshot
+    else
+      return refused(
+        409,
+        'base-required',
+        `Nothing has been merged from ${input.source} yet: name its base`,
+        'Give base=now to measure from the site as it is, or base=<change key> to measure from the site as that change left it.',
+      )
+
+    // The change: what differs between the base and the bundle.
+    const files: ChangeBundleFile[] = []
+    for (const key of new Set([...Object.keys(after.files), ...Object.keys(base.files)])) {
+      const before = base.files[key] ?? null
+      const now = after.files[key] ?? null
+      if (before === now) continue
+      if (now === null && !input.prune) continue
+      files.push({
+        path: key,
+        kind: key.startsWith('schema/') ? 'definition' : 'file',
+        class: fileClass(key, before, now),
+        before,
+        after: now,
+        lastChange: null,
+      })
+    }
+    const pages: ChangeBundlePage[] = []
+    for (const key of new Set([...Object.keys(after.pages), ...Object.keys(base.pages)])) {
+      const before = base.pages[key] ?? null
+      const now = after.pages[key] ?? null
+      if (before && now && samePage(before, now)) continue
+      if (!now && !input.prune) continue
+      const shape = (now ?? before) as SitePage
+      pages.push({
+        key,
+        kind: shape.kind,
+        action: !before ? 'create' : !now ? 'delete' : 'update',
+        parentKey: shape.parentKey,
+        ...(before && now && before.parentKey !== now.parentKey
+          ? { beforeParentKey: before.parentKey }
+          : {}),
+        contentTypeKey: shape.contentTypeKey,
+        contentTypeAlias: shape.contentTypeAlias,
+        componentKey: shape.componentKey,
+        before: before?.state ?? null,
+        after: now?.state ?? null,
+        lastChange: null,
+      })
+    }
+    const change = bundleOf({
+      key: crypto.randomUUID(),
+      name: input.into,
+      kind: 'site',
+      madeBy: principal.id,
+      createdAt: new Date(),
+      depends: [],
+      files,
+      pages,
+    })
+    if (!mayStage(change))
+      return refused(
+        403,
+        'forbidden',
+        'You may not stage this site here',
+        'It carries templates or the site\'s own code, which needs "Install code on this site" (Crombolo.Remote.InstallCode).',
+      )
+    const media = new Map<string, Uint8Array>()
+    for (const url of change.media) {
+      const onDisk = loaded.blobs.get(url.replace(/^\/media\//, '')) ?? loaded.blobs.get(url)
+      if (onDisk) media.set(url, new Uint8Array(await Bun.file(onDisk).arrayBuffer()))
+    }
+    const told = {
+      pages: change.pages.map((p) => ({
+        key: p.key,
+        name: p.after?.name ?? p.before?.name ?? p.key,
+        action: p.action,
+      })),
+      files: change.files.map((f) => ({ path: f.path, class: f.class })),
+      leftOut,
+    }
+
+    const workspaces = new WorkspaceRepository(db)
+    if (input.check) {
+      const outcome = await stage([{ change, media }], principal, undefined, true)
+      if (outcome.workspace)
+        await workspaces.discard(outcome.workspace.id, principal.id, { quiet: true })
+      return { ok: true, ...outcome, workspace: undefined, ...told }
+    }
+
+    // Into the workspace named, replacing what this source staged there before.
+    const named = /^[0-9a-f-]{36}$/i.test(input.into)
+      ? await workspaces.byKey(input.into)
+      : (await workspaces.forUser(principal.id)).find(
+          (w) => w.state === 'open' && w.name === input.into,
+        )
+    const before = await sources.stagedFrom(input.source)
+    let into = named?.state === 'open' ? named : undefined
+    if (before !== undefined && (!into || into.id === before)) {
+      await workspaces.discard(before, principal.id)
+      into = undefined
+    }
+    const outcome = await stage([{ change, media }], principal, into)
+    if (outcome.workspace) {
+      if (!into) await workspaces.rename(outcome.workspace.id, named?.name ?? input.into)
+      await sources.staged(outcome.workspace.id, input.source, JSON.stringify(after))
+    }
+    return { ok: true, ...outcome, ...told }
+  }
+
+  return { exportChange, exportWorkspace, exportSince, stage, stageSite, apply, mergeStaged }
 }
 
 export type ChangeTransfer = ReturnType<typeof createChangeTransfer>

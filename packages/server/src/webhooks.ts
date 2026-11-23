@@ -254,6 +254,19 @@ export interface WebhookFacts extends RaisedWebhookEvent {
     /** Story 397: published in the person's own workspace, merging that page alone. */
     from?: 'own-workspace'
   }
+  /** Story 400: the workspace a workspace event is about, as it was then. */
+  workspace?: {
+    key: string
+    name: string
+    personal: boolean
+    owner: string
+    state: 'open' | 'merged'
+  }
+  /** Who did it, for a workspace event: a person, or a tool acting for one. */
+  by?: 'person' | 'tool'
+  tool?: { id: string; name: string }
+  /** The items a workspace event names: those newly in conflict with Shared. */
+  items?: Array<{ kind: string; key?: string; path?: string; name: string }>
 }
 
 /** The change as a payload names it (story 395). Pure. */
@@ -285,11 +298,33 @@ export function siteEventOf(facts: WebhookFacts): SiteContentEvent {
   }
 }
 
+/** A workspace event as a payload names it (story 400). Pure. */
+const workspaceOf = (facts: WebhookFacts) => {
+  const w = facts.workspace as NonNullable<WebhookFacts['workspace']>
+  return {
+    Workspace: { Key: w.key, Name: w.name, Personal: w.personal, Owner: w.owner, State: w.state },
+    By: facts.by ?? 'person',
+    ...(facts.tool ? { Tool: { Id: facts.tool.id, Name: facts.tool.name } } : {}),
+    ...(facts.change ? { Change: { Key: facts.change.key, Name: facts.change.name } } : {}),
+    ...(facts.items
+      ? {
+          Items: facts.items.map((i) => ({
+            Kind: i.kind,
+            ...(i.key ? { Key: i.key } : {}),
+            ...(i.path ? { Path: i.path } : {}),
+            Name: i.name,
+          })),
+        }
+      : {}),
+  }
+}
+
 /** What a webhook is posted. Pure. */
 export function webhookPayload(
   facts: WebhookFacts,
   payload: WebhookDefinition['payload'],
 ): Record<string, unknown> {
+  if (facts.workspace) return { Id: facts.key, ...workspaceOf(facts) }
   const change = facts.change ? { Change: changeOf(facts.change) } : {}
   if (payload !== 'crombolo') return { Id: facts.key, ...change }
   return {

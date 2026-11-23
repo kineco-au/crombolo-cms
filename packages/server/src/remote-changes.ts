@@ -127,6 +127,48 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
   const forbidden = (title: string, detail: string) =>
     problem(403, { code: 'forbidden', title, detail })
 
+  /** Story 399: a site bundle sent to be staged, unpacked to a folder `use` reads, then removed. */
+  async function receiveSite<T>(
+    request: Request,
+    use: (dir: string) => Promise<T>,
+  ): Promise<T | Response> {
+    const declared = request.headers.get('crombolo-sha256')?.toLowerCase()
+    if (!declared || !/^[0-9a-f]{64}$/.test(declared))
+      return problem(400, { code: 'hash-required', title: 'Crombolo-Sha256 is required' })
+    const dir = mkdtempSync(join(tmpdir(), 'crombolo-site-in-'))
+    const file = join(dir, 'site.tgz')
+    const unpacked = join(dir, 'site')
+    try {
+      let received: { sha256: string } | undefined
+      try {
+        received = await options.receive(request, file)
+      } catch {
+        return problem(413, { code: 'too-large', title: 'The site is larger than this site takes' })
+      }
+      if (!received)
+        return problem(400, { code: 'body-required', title: 'The request carried no site' })
+      if (received.sha256 !== declared)
+        return problem(400, {
+          code: 'hash-mismatch',
+          title: 'The site is not the one described',
+          detail:
+            'Its SHA-256 does not match Crombolo-Sha256: it was changed or cut short on the way.',
+        })
+      try {
+        await extractTarball(file, unpacked)
+      } catch (error) {
+        return problem(400, {
+          code: 'not-a-site',
+          title: 'It is not a site bundle this site can read',
+          detail: String(error),
+        })
+      }
+      return await use(unpacked)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
   async function receiveChange(request: Request) {
     const declared = request.headers.get('crombolo-sha256')?.toLowerCase()
     if (!declared || !/^[0-9a-f]{64}$/.test(declared))
@@ -258,6 +300,54 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
           ...(body.blockers ? { items: body.blockers } : {}),
         })
       }
+      if (what === 'changes/from-site' && request.method === 'PUT') {
+        if (!options.atLeast('content')) return options.notAtLevel('content', 'changes')
+        if (!options.may(principal, RemotePermissions.ApplyChanges))
+          return forbidden(
+            'You may not stage changes here',
+            'Staging a site as a change needs "Apply changes" (Crombolo.Remote.ApplyChanges).',
+          )
+        const source = (url.searchParams.get('source') ?? '').trim()
+        const into = (url.searchParams.get('into') ?? '').trim()
+        if (!source || source.length > 255 || !into || into.length > 255)
+          return problem(400, {
+            code: 'source-required',
+            title: 'Name the source and the workspace, as source and into',
+          })
+        const base = url.searchParams.get('base') ?? undefined
+        if (base !== undefined && base !== 'now' && !UUID.test(base))
+          return problem(400, {
+            code: 'bad-base',
+            title: 'Name the base as now, or as a change key',
+          })
+        const answered = await receiveSite(request, (dir) =>
+          transfer.stageSite(
+            {
+              dir,
+              source,
+              into,
+              ...(base ? { base } : {}),
+              prune: url.searchParams.get('prune') === 'true',
+              check: url.searchParams.get('check') === 'true',
+            },
+            principal,
+            (change) =>
+              !carriesCode(change) || options.may(principal, RemotePermissions.InstallCode),
+          ),
+        )
+        if (answered instanceof Response) return answered
+        if (!answered.ok)
+          return problem(answered.status, {
+            code: answered.code,
+            title: answered.title,
+            ...(answered.detail ? { detail: answered.detail } : {}),
+          })
+        const { ok: _, workspace, ...rest } = answered
+        return Response.json(
+          { workspace: workspace?.key ?? null, ...rest },
+          { status: rest.conflicts.length > 0 ? 409 : 200 },
+        )
+      }
       if (what === 'changes' && request.method === 'PUT') {
         if (!options.atLeast('content')) return options.notAtLevel('content', 'changes')
         if (!options.may(principal, RemotePermissions.ApplyChanges))
@@ -274,9 +364,10 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
           )
         // Story 386: what applying it here would do, staged and set aside again.
         if (url.searchParams.get('check') === 'true') {
-          const outcome = await transfer.stage([received], principal)
+          const outcome = await transfer.stage([received], principal, undefined, true)
           const workspaces = new WorkspaceRepository(options.db)
-          if (outcome.workspace) await workspaces.discard(outcome.workspace.id)
+          if (outcome.workspace)
+            await workspaces.discard(outcome.workspace.id, principal.id, { quiet: true })
           return Response.json({
             skipped: outcome.skipped,
             conflicts: outcome.conflicts,

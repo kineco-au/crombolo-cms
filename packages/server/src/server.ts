@@ -68,6 +68,7 @@ import {
 } from '@crombolo/backoffice-host'
 import { servedContract } from '@crombolo/contracts'
 import {
+  ADMIN_GROUP_ALIAS,
   CACHE_KEEP_FOR_ALIAS,
   CHOICE_SOURCE_KINDS,
   type ChoiceSourceKind,
@@ -379,6 +380,7 @@ import {
   workspaceHosts,
 } from './workspace-access.ts'
 import { createWorkspaceChecks } from './workspace-checks.ts'
+import { withConflictWatch } from './workspace-conflicts.ts'
 import {
   createWorkspaceProcesses,
   PROCESS_FAILURES_REPORTED,
@@ -1937,8 +1939,8 @@ export async function createServer(
         logger('media').warn('A discarded workspace left files: {error}', { error: String(error) }),
       )
     },
-    open: (workspace, principal, path, request) =>
-      workspaceOpenUrl(workspace, principal, path, request),
+    open: (workspace, principal, path, request, asAdministrator) =>
+      workspaceOpenUrl(workspace, principal, path, request, asAdministrator),
     links: () => workspaceLinks,
   })
   // Story 386: a workspace's diff, conflicts and checks, for the command line.
@@ -1991,6 +1993,9 @@ export async function createServer(
   /** The remote's route a Management API change request is, if it is one. */
   const managementChange = (pathname: string, method: string): string | undefined => {
     if (pathname === changesPath) return method === 'PUT' ? 'changes' : undefined
+    // Story 399: a site bundle staged as a change.
+    if (pathname === `${changesPath}/from-site`)
+      return method === 'PUT' ? 'changes/from-site' : undefined
     const bundle = /^\/([0-9a-f-]{36})\/bundle$/i.exec(pathname.slice(changesPath.length))
     if (pathname.startsWith(`${changesPath}/`) && bundle && method === 'GET')
       return `changes/${bundle[1]}/bundle`
@@ -2084,7 +2089,11 @@ export async function createServer(
 
   async function fetch(request: Request): Promise<Response> {
     // A request dispatched from inside another (an extension's call) shares its audit context.
-    return currentAuditContext() ? traced(request) : withAuditContext(() => traced(request))
+    if (currentAuditContext()) return traced(request)
+    // Story 400: the Shared files a request writes are checked against open workspaces as it ends.
+    return withAuditContext(() =>
+      withConflictWatch(core.operations.conflicts, db, () => traced(request)),
+    )
   }
 
   async function traced(request: Request): Promise<Response> {
@@ -2310,6 +2319,7 @@ export async function createServer(
     principal: Principal,
     path: string,
     request?: Request,
+    asAdministrator = false,
   ): Promise<string | undefined> {
     const standing = await previewUser(db, { key: principal.id })
     if (!standing) return undefined
@@ -2319,6 +2329,7 @@ export async function createServer(
       stamp: standing.stamp,
       id: crypto.randomUUID(),
       expires: Date.now() + WORKSPACE_HANDOFF_SECONDS * 1000,
+      ...(asAdministrator ? { admin: true } : {}),
     })
     const url = new URL(
       path.startsWith('/') ? path : `/${path}`,
@@ -2366,9 +2377,17 @@ export async function createServer(
         .where('id', '=', access.user)
         .execute()
       const key = user[0] ? normaliseUuid(String(user[0].key)) : ''
-      return workspace.ownerKey === key || workspace.memberKeys.includes(key)
-        ? workspace
-        : undefined
+      if (workspace.ownerKey === key || workspace.memberKeys.includes(key)) return workspace
+      // Story 401: an administrator who asked to read it, while they still are one.
+      if (!access.admin) return undefined
+      const admin = await db.q
+        .selectFrom('user_group_member as m')
+        .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+        .select('g.alias')
+        .where('m.user_id', '=', access.user)
+        .where('g.alias', '=', ADMIN_GROUP_ALIAS)
+        .executeTakeFirst()
+      return admin ? workspace : undefined
     }
     const link = await new WorkspaceLinkRepository(db).byId(access.link)
     if (!link || link.workspaceId !== workspace.id || link.withdrawnAt) return undefined
@@ -2414,6 +2433,7 @@ export async function createServer(
       user: claims.user,
       stamp: claims.stamp,
       expires: Date.now() + WORKSPACE_COOKIE_SECONDS * 1000,
+      ...(claims.admin ? { admin: true } : {}),
     }
     return (await stillAllowed(access)) ? access : undefined
   }

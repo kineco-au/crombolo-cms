@@ -294,7 +294,7 @@ describe(`merging a workspace over HTTP (${dialectUnderTest})`, () => {
 
 describe(`a site that requires a workspace (${dialectUnderTest})`, () => {
   test('refuses a direct change, and takes one in the person’s own workspace', async () => {
-    const { h, send, page, save, titleOf } = await site()
+    const { h, send, page, save, titleOf, opened } = await site()
     const home = await page('Home', 'Welcome')
     const about = await page('About', 'About us')
     h.server.config.workspacesRequired = true
@@ -310,7 +310,7 @@ describe(`a site that requires a workspace (${dialectUnderTest})`, () => {
     expect((await save(h, home, 'Directly')).status).toBe(409)
     expect((await save(h, home, 'Sale on', 'mine')).status).toBe(200)
     const own = await h.json<{ workspace: { key: string; name: string } }>(`${WORKSPACES}/mine`)
-    expect(own.workspace).toMatchObject({ name: 'Changes by Administrator' })
+    expect(own.workspace).toMatchObject({ name: 'Changes by Administrator', personal: true })
     expect(await titleOf(h, home)).toBe('Welcome')
     expect(await titleOf(h, home, 'mine')).toBe('Sale on')
 
@@ -329,6 +329,17 @@ describe(`a site that requires a workspace (${dialectUnderTest})`, () => {
     expect(await titleOf(h, about, 'mine')).toBe('About the new us')
     const still = await h.json<{ workspace: { key: string } }>(`${WORKSPACES}/mine`)
     expect(still.workspace.key).toBe(own.workspace.key)
+
+    // Story 398: a host listing them tells a person's own from a named one.
+    const sale = await opened(h, 'Spring sale')
+    const all = await h.json<{ items: Array<{ key: string; personal: boolean }> }>(
+      `${WORKSPACES}?all=true`,
+    )
+    const personal = Object.fromEntries(all.items.map((w) => [w.key, w.personal]))
+    expect(personal).toEqual({ [own.workspace.key]: true, [sale.key]: false })
+    expect(await h.json<{ personal: boolean }>(`${WORKSPACES}/${sale.key}`)).toMatchObject({
+      personal: false,
+    })
   })
 
   test('a site cannot require workspaces it has not turned on', async () => {

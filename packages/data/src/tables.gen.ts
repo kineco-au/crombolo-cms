@@ -179,6 +179,16 @@ export interface CoreTables {
     subject_name: string | null
     subject_type: string
   }
+  change_source: {
+    name: string
+    snapshot: string
+    updated_at: Timestamp
+  }
+  change_source_staged: {
+    snapshot: string
+    source: string
+    workspace_id: Generated<number>
+  }
   cli_token: {
     created_at: Timestamp
     expires_at: Timestamp
@@ -1031,6 +1041,11 @@ export interface CoreTables {
     tell_others: Default<Bool>
     updated_at: Timestamp
     visibility: Generated<string>
+  }
+  workspace_conflict_raised: {
+    item: string
+    raised_at: Timestamp
+    workspace_id: Generated<number>
   }
   workspace_document: {
     base_event_id: number | null

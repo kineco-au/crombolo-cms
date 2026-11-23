@@ -13,6 +13,9 @@ export const siteFlags = {
     summary: 'the hosted site’s environment, named whenever --profile is',
     helpValue: '<id>',
   }),
+  'include-private': Flags.boolean({
+    summary: 'an administrator: read a workspace you are not in, a person’s own included',
+  }),
 }
 
 export const workspaceArg = Args.string({

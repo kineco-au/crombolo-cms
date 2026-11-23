@@ -242,7 +242,7 @@ describe(`a workspace's types over HTTP (${dialectUnderTest})`, () => {
   })
 
   test('the same lines changed in Shared are a conflict, answered in the workspace', async () => {
-    const { send, opened, readType, typeKey, pageFile } = await site()
+    const { db, send, opened, readType, typeKey, pageFile } = await site()
     const sale = await opened('Spring sale')
     const own = (await readType(typeKey, sale.key)) as TypeModel
     expect(
@@ -254,6 +254,18 @@ describe(`a workspace's types over HTTP (${dialectUnderTest})`, () => {
       (await send('PUT', `${V1}/document-type/${typeKey}`, { ...shared, name: 'Plain page' }))
         .status,
     ).toBe(200)
+    // Story 400: the workspace hears that Shared has come into conflict with it.
+    const conflicted = await db.q
+      .selectFrom('content_event')
+      .select('facts')
+      .where('kind', '=', 'workspace-conflicted')
+      .execute()
+    expect(conflicted.map((e) => JSON.parse(String(e.facts)).webhook)).toEqual([
+      expect.objectContaining({
+        key: sale.key,
+        items: [{ kind: 'file', path: 'content-types/page.toml', name: 'content-types/page.toml' }],
+      }),
+    ])
 
     const refused = await send('POST', `${WORKSPACES}/${sale.key}/merge`, {})
     expect(refused.status).toBe(409)

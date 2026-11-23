@@ -666,6 +666,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--take",
           "type": "integer",
           "default": 20,
@@ -673,6 +678,103 @@
         }
       ],
       "errors": ["usage", "internal", "auth", "not_found"]
+    },
+    {
+      "name": "changes stage",
+      "description": "stage a site bundle, or a site's checkout, into a workspace there as a change, measured from its source's last merge",
+      "effects": "non_idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "workspace",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "pages",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "files",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "conflicts",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "leftOut",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": true,
+          "description": "a site bundle (.tgz or its folder), or a site's checkout"
+        },
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
+          "name": "--into",
+          "type": "string",
+          "required": true,
+          "description": "the workspace it goes into, by name or key; one by that name is opened if none is"
+        },
+        {
+          "name": "--source",
+          "type": "string",
+          "required": true,
+          "description": "where it comes from, as the site remembers it: its base is what was last merged from here"
+        },
+        {
+          "name": "--base",
+          "type": "string",
+          "description": "what it is measured from the first time: now, or a change's key"
+        },
+        {
+          "name": "--prune",
+          "type": "boolean",
+          "description": "delete what the base had and it lacks, each accepted by name at the merge"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what staging it would do, and stage nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found", "refused"],
+      "outcomes": ["conflicts_found"]
     },
     {
       "name": "components check",
@@ -9790,6 +9892,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--to-workspace",
           "type": "string",
           "description": "reopen its work in a workspace of this name"
@@ -16495,6 +16602,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--path",
           "type": "string",
           "default": "/",
@@ -16557,6 +16669,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--all",
           "type": "boolean",
           "description": "render every affected page, not a sample"
@@ -16599,6 +16716,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
       "errors": ["usage", "internal", "auth", "not_found"],
@@ -16658,6 +16780,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--against",
           "type": "string",
           "default": "shared",
@@ -16705,6 +16832,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--yes",
           "type": "boolean",
           "description": "discard it, rather than only saying what would go"
@@ -16748,6 +16880,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--since",
           "type": "string",
           "description": "only those since this time"
@@ -16783,6 +16920,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         },
         {
           "name": "--all",
@@ -16838,6 +16980,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--dry-run",
           "type": "boolean",
           "description": "say what it would do, changing nothing"
@@ -16891,6 +17038,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
       "errors": ["usage", "internal", "auth", "refused", "not_found"]
@@ -16929,6 +17081,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         },
         {
           "name": "--failing",
@@ -16995,6 +17152,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--from",
           "type": "string",
           "required": true,
@@ -17058,6 +17220,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         },
         {
           "name": "--to",
@@ -17128,6 +17295,11 @@
           "description": "the hosted site’s environment, named whenever --profile is"
         },
         {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
           "name": "--html",
           "type": "boolean",
           "description": "print the page too"
@@ -17177,6 +17349,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         },
         {
           "name": "--mine",
@@ -17241,6 +17418,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
       "errors": ["usage", "internal", "auth", "not_found", "refused"]
@@ -17287,6 +17469,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
       "errors": ["usage", "internal", "auth", "not_found"]
@@ -17325,6 +17512,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
       "errors": ["usage", "internal", "auth", "not_found"]
@@ -17369,6 +17561,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
       "errors": ["usage", "internal", "auth", "not_found", "refused"]
@@ -17401,6 +17598,11 @@
           "name": "--env",
           "type": "string",
           "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
         },
         {
           "name": "--all",

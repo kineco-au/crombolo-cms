@@ -25,7 +25,8 @@ export const WORKSPACE_COOKIE_SECONDS = 8 * 60 * 60
 
 /** What the cookie carries: a member, or a link. */
 export type WorkspaceAccess =
-  | { workspace: string; user: number; stamp: string; expires: number }
+  /** `admin`: opened by an administrator not in it, who asked to (story 401). */
+  | { workspace: string; user: number; stamp: string; expires: number; admin?: boolean }
   | { workspace: string; link: number; expires: number }
 
 const hmac = (key: string, text: string) =>
@@ -65,7 +66,14 @@ function read(
 /** A member's handoff: their user id and stamp, the workspace, and a single-use id. */
 export function signHandoff(
   secret: string,
-  claims: { workspace: string; user: number; stamp: string; id: string; expires: number },
+  claims: {
+    workspace: string
+    user: number
+    stamp: string
+    id: string
+    expires: number
+    admin?: boolean
+  },
 ): string {
   return sign(secret, 'handoff', claims)
 }
@@ -76,7 +84,14 @@ export function readHandoff(secret: string, token: string, now = Date.now()) {
     typeof claims.user === 'number' &&
     typeof claims.stamp === 'string' &&
     typeof claims.id === 'string'
-    ? (claims as { workspace: string; user: number; stamp: string; id: string; expires: number })
+    ? (claims as {
+        workspace: string
+        user: number
+        stamp: string
+        id: string
+        expires: number
+        admin?: boolean
+      })
     : undefined
 }
 

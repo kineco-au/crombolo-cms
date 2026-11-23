@@ -859,6 +859,10 @@ level is `content`:
   permissions (403 `forbidden`, naming each in `items`).
 - **A conflict, a pending change that cannot go, or a finding not accepted** is 409
   `conflict`, each named in `items`; nothing is written. `accept` names findings by id.
+- **A workspace, as the remote's `workspaces` routes answer it,** is the back office's
+  view ([workspaces](workspaces.md#over-http)), `personal` included (story 398): `true`
+  for a person's own unnamed workspace, `false` for a named one. An administrator reads
+  one they are not in with `includePrivate=true`, as in the back office (story 401).
 
 ## Changes (`changes`, optional)
 
@@ -877,6 +881,7 @@ in the environment's listing says whether the caller may.
 | `GET <api>/environments/{id}/changes/since?at=` | every page edited since `at` (ISO), as one change |
 | `PUT <api>/environments/{id}/changes` `?accept=` | applies the change in the body (`Crombolo-Sha256` required): `{ ok, skipped, changeId }`, or 409 `{ conflicts, workspace }` |
 | `PUT <api>/environments/{id}/changes?stage=true` `&into=` | stages it, in a new workspace or `into` a staged one: `{ workspace, skipped, conflicts }` |
+| `PUT <api>/environments/{id}/changes/from-site` `?source=&into=&base=&prune=&check=` | stages a site bundle as a change, measured from the source's last merge (story 399, [changes](changes.md#a-site-bundle-staged-as-a-change-story-399)): `{ workspace, skipped, conflicts, pages, files, leftOut }` |
 
 - **A body that does not match its hash,** or is not a whole change bundle, is 400.
 - **A refused apply changes nothing** and answers the workspace holding the change,
