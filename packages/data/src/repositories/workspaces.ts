@@ -534,6 +534,20 @@ export class WorkspaceRepository {
       })
   }
 
+  /** Story 407: how many items each workspace has in conflict, as last found; none where it has none. */
+  async conflictCounts(ids: readonly number[]): Promise<Map<number, number>> {
+    const out = new Map<number, number>()
+    if (ids.length === 0) return out
+    for (const row of await this.#db.q
+      .selectFrom('workspace_conflict_raised')
+      .select(['workspace_id', (eb) => eb.fn.countAll<number>().as('n')])
+      .where('workspace_id', 'in', [...ids])
+      .groupBy('workspace_id')
+      .execute())
+      out.set(Number(row.workspace_id), Number(row.n))
+    return out
+  }
+
   /**
    * Story 400: what a person settled in the workspace, a page by its key or a file by its
    * path, so a conflict there later is raised again. `keepFiles` are files still in conflict.

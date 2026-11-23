@@ -313,6 +313,23 @@ Each workspace answers its key, name, owner and members, its privacy, its state,
 workspace, `false` for one opened by name, so a host listing them can leave out the
 editors' own changes. The remote protocol's workspace routes answer the same.
 
+Each also answers `conflicted` and `conflicts` (story `407`): whether it is in conflict
+with Shared and over how many items, so a board of workspaces needs no merge preview
+per workspace and need not have caught the event. It is what was last found, the rows
+the conflict event keeps (`workspace_conflict_raised`, below), read in one query for
+the whole list; a fresh answer is still the merge preview. `crombolo workspaces` and
+`workspace list` show the count beside a workspace that has one.
+
+**A workspace's errors are the whole site's (story `408`).** `GET /{key}/errors?since=`
+answers what went wrong rendering the workspace's pages, oldest first, as
+`{ at, node, page, says }`: each page that failed in a `check` or a `pages`, and each
+that failed when asked for through `render`. They are rows (`workspace_error`, migration
+096), written by the node that rendered and read by whichever node answers, so a site
+with several nodes gives one list and a restart loses none. The newest 200 are kept for
+a workspace, and none once it is merged or discarded. A note that cannot be written is
+logged and changes nothing the page answers. A page that fails while someone browses
+the workspace's site is not noted.
+
 Someone else's workspace answers 404, as one that is not there. An administrator may
 list and discard any, to clear one left behind, and reads one they are not in only when
 they ask to (story `401`): with `includePrivate=true` (the command line's
@@ -393,8 +410,11 @@ change; the back office sends it on every request (`own-workspace.js`), so an ed
 change lands there. Publishing a page there merges that page alone, at once, where the
 person may make each of its changes; otherwise it stays published there and the answer
 says why. The merge raises `Crombolo.ChangePublished`, as a publish in Shared does, with
-`From: "own-workspace"` (story `397`, [`webhooks.md`](webhooks.md)). Media, schema and files are not held by a workspace yet (`390`, `376`, `377`),
-so they are still changed directly.
+`From: "own-workspace"` (story `397`, [`webhooks.md`](webhooks.md)). The same refusal covers everything a workspace holds: media and Library items (`390`),
+types and data types (`376`), views, stylesheets and scripts (`377`), and languages, the
+dictionary, blueprints, forms and workflows (`392`). What a workspace does not hold is
+still changed directly: the recycle bins, Library and blueprint folders, copies, a
+dictionary import, and what is not content, such as members, users and form entries.
 
 ## Its life as events (story 400)
 
@@ -433,7 +453,9 @@ protocol's own routes in the command's process, or with `--profile <site> --env 
 hosted site's environment: `open`, `list`, `status`, `discard`, `share`/`unshare` (by email),
 `diff` (`--against shared|base|<env>`), `sync`, `conflicts`, `resolve`, `check` (`--all`),
 `errors`, `pages`, `render`, `address`, `merge` (several names as one, `--dry-run`,
-`--accept-lossy`), `push --to` and `pull --from`; with `workspaces`, `changes` and `revert`.
+`--accept-lossy`), `push --to` and `pull --from`; with `workspaces`, `changes` and `revert`. What is
+merged is checked together by `changes check --since <change>` (story `406`,
+[`changes.md`](changes.md#shared-checked-since-a-change-story-406)).
 
 - **Every command says where it acts** first, `<site> › <env> › workspace <name>` or `… (shared)`,
   and its `-o json` carries it as `where`. Nothing asks: `--yes` does what a dry run shows.

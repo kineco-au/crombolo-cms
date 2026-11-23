@@ -195,7 +195,7 @@ import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from '
 import { bundleRouteGroups } from './bundles.ts'
 import { busyResponse } from './busy.ts'
 import { handleComponentTemplates } from './component-templates-api.ts'
-import { checkTypes, listEmailTemplates, siteLayouts } from './components.ts'
+import { checkComponents, checkTypes, listEmailTemplates, siteLayouts } from './components.ts'
 import {
   type CromboloConfig,
   contentLocked,
@@ -352,6 +352,7 @@ import {
   type ServerEventHub,
 } from './server-events.ts'
 import { AttemptLimiter, createSetupRoutes } from './setup.ts'
+import { createSharedCheck } from './shared-check.ts'
 import { siteSearchFor } from './site-search.ts'
 import {
   genericStatusPage,
@@ -1942,6 +1943,11 @@ export async function createServer(
     onClosed: (key) => {
       workspaceProcesses?.stop(key)
       workspaceSites.forget(key)
+      void workspaceChecks.closed(key).catch((error: unknown) =>
+        logger('workspaces').warn('A closed workspace kept its errors: {error}', {
+          error: String(error),
+        }),
+      )
     },
     // Story 390: a discarded workspace's files go, those nothing else names, after it.
     onDiscardedFiles: (urls) => {
@@ -1956,6 +1962,7 @@ export async function createServer(
   // Story 386: a workspace's diff, conflicts and checks, for the command line.
   const workspaceChecks = createWorkspaceChecks({
     db,
+    nodeId: schema.nodeId,
     merge: () => core.operations.merge,
     schema: () => workspaceSchema,
     async render(workspace, path) {
@@ -2049,10 +2056,37 @@ export async function createServer(
     readOnly: () => config.environmentValuesReadOnly || contentLocked(config),
   })
   // Story 381: every change to the site, and its revert.
+  // Story 406: Shared's own pages and views, checked since a change.
+  const sharedCheck = createSharedCheck({
+    db,
+    async upToDate() {
+      await poller.poll()
+      await snapshots.refresh()
+    },
+    async render(path) {
+      const result = await sharedRenderer.render(path)
+      if (result.status === 'ok') return { status: 'ok', html: result.html }
+      if (result.status === 'error') return { status: 'error', error: result.error.message }
+      return { status: result.status }
+    },
+    async page(key) {
+      const found = await sharedCache.byKey(key)
+      return found?.url ? { url: found.url, name: found.name } : undefined
+    },
+    async problems() {
+      if (!existsSync(config.componentsDir)) return []
+      const report = await checkComponents({
+        componentsDir: config.componentsDir,
+        siteDir: config.siteDir,
+      })
+      return report.problems.map((p) => `${p.file}: ${p.message}`)
+    },
+  })
   const changesApi = createChangesApi(db, {
     schema: () => workspaceSchema,
     nodeState: core.schema.nodeState,
     onReverted: () => core.cache.invalidate(),
+    check: () => sharedCheck,
   })
   const previewLinkPath = `${paths.pluginPath}/api/preview-link`
   const selfAudited = [

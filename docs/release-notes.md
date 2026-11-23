@@ -6,6 +6,31 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.76.0 — 2026-11-23
+
+### Features
+
+- **What a site shares, checked as a whole since a change (406).** `POST
+  <backoffice>/crombolo/api/changes/check { since?, all? }` renders every page the
+  changes after `since` affect, or every published page, and reports each that fails
+  and each view that does not compile, in a workspace check's shape with `since` and
+  `upTo`. The remote protocol answers it at `changes/check`, and `crombolo changes check
+  --since <change>` asks it (`docs/changes.md`).
+- **A workspace's conflicts in its listing (407).** Each workspace in `GET workspaces`,
+  and one read alone, answers `conflicted` and `conflicts`, the items it was last found
+  in conflict with Shared over; `crombolo workspaces` shows the count
+  (`docs/workspaces.md`).
+- **A workspace's errors answered for the whole site (408).** `errors?since` is read from
+  rows every node writes, each with its `node`, so any node gives the same list and a
+  restart keeps it. A page that fails through `render` is noted too. The newest 200 are
+  kept, and none after a merge or discard (`docs/workspaces.md`).
+
+### Upgrade notes
+
+- **Migration 096** (`AddWorkspaceErrors`) adds the `workspace_error` table.
+- **A workspace's `errors` items carry `node`,** and are no longer lost at a restart; a
+  reader that kept its own copy to survive one need not.
+
 ## v0.75.0 — 2026-11-23
 
 ### Features

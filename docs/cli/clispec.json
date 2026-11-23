@@ -680,6 +680,86 @@
       "errors": ["usage", "internal", "auth", "not_found"]
     },
     {
+      "name": "changes check",
+      "description": "check what the site shares as a whole: every page the changes since one affect, and its views’ problems",
+      "effects": "read_only",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "where",
+          "type": "string"
+        },
+        {
+          "name": "ok",
+          "type": "boolean"
+        },
+        {
+          "name": "since",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "upTo",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "changes",
+          "type": "integer"
+        },
+        {
+          "name": "pages",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "failures",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "notChecked",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--profile",
+          "type": "string",
+          "description": "a hosted site, by its profile, rather than this folder’s"
+        },
+        {
+          "name": "--env",
+          "type": "string",
+          "description": "the hosted site’s environment, named whenever --profile is"
+        },
+        {
+          "name": "--include-private",
+          "type": "boolean",
+          "description": "an administrator: read a workspace you are not in, a person’s own included"
+        },
+        {
+          "name": "--since",
+          "type": "string",
+          "description": "the change to check from, by its id"
+        },
+        {
+          "name": "--all",
+          "type": "boolean",
+          "description": "render every published page"
+        }
+      ],
+      "errors": ["usage", "internal", "auth", "not_found"],
+      "outcomes": ["problems_found"]
+    },
+    {
       "name": "changes stage",
       "description": "stage a site bundle, or a site's checkout, into a workspace there as a change, measured from its source's last merge",
       "effects": "non_idempotent",

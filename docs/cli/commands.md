@@ -5433,6 +5433,37 @@ crombolo changes [<change>] [--profile <profile>] [--env <env>] [--include-priva
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`.
 
+### `crombolo changes check`
+
+Check what the site shares as a whole: every page the changes since one affect, and its views’ problems. Changes nothing.
+
+```
+crombolo changes check [--profile <profile>] [--env <env>] [--include-private] [--since <since>] [--all]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
+| `--env` | string | The hosted site’s environment, named whenever --profile is. |
+| `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
+| `--since` | string | The change to check from, by its id. |
+| `--all` | boolean | Render every published page. |
+
+**Output** (single, with `-o json`):
+
+- `where` (string)
+- `ok` (boolean)
+- `since` (string)
+- `upTo` (string)
+- `changes` (integer)
+- `pages` (array of object)
+- `failures` (array of object)
+- `notChecked` (array of string)
+
+**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+
+**Outcomes:** `problems_found`.
+
 ### `crombolo changes stage`
 
 Stage a site bundle, or a site's checkout, into a workspace there as a change, measured from its source's last merge. Each run acts again.

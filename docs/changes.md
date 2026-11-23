@@ -44,6 +44,39 @@ At `<backoffice>/crombolo/api/changes`, for people with Content:
 | `GET /versions?path=` | a file's versions: each change that touched it |
 | `GET /{id}/compare?path=` | that change's version of the file against the file now |
 | `POST /{id}/revert` `{ toWorkspace? }` | puts it back, as a change of its own (an administrator) |
+| `POST /check` `{ since?, all? }` | checks what the site shares as a whole (below) |
+
+### Shared checked since a change (story 406)
+
+A workspace's check covers that workspace. Once work is merged, two workspaces that
+each passed can break a page between them, so Shared has a check of its own:
+`POST /check { since }` renders every page affected by the changes after `since`, a
+change's id, as Shared serves it.
+
+- **What is rendered:** each page those changes changed, and up to three pages of each
+  type and each view whose file they changed, found as a workspace's affected pages
+  are. With no `since`, or `all: true`, every published page. Only published pages are
+  rendered, and no cache is read or written.
+- **As it is now:** a merge tells every node of its views, and a check asked at once
+  would render the ones before. The node answering first takes what it has been told
+  and reads the views again.
+- **"After" is by when a change was last added to,** not when it began: a person's
+  direct edits share a change for ten minutes, so one begun before `since` can gain
+  items after it. A change still open when it was taken as `since` is not itself
+  checked again.
+- **The answer** is a workspace check's shape, with what it covered:
+  `{ ok, since, upTo, changes, pages, failures, notChecked }`. A failure is a page that
+  did not render (`kind: "page"`) or a view that does not compile (`kind: "file"`),
+  looked for when a change touched `components/`. `upTo` is the newest change covered.
+- **No more than 500 pages** are rendered in one check; the rest are counted in
+  `notChecked`, with any file under `site/` that takes effect only when the site next
+  starts.
+- **A `since` the site does not hold** answers 404. A change applied from another site
+  is known by the key it travelled with as well as its id here.
+
+The remote protocol answers the same at `POST …/changes/check`, and the command line
+asks it: `crombolo changes check --since <change>`, or `--all`, exiting 20 when a check
+fails.
 
 ### Moving a change without the remote
 

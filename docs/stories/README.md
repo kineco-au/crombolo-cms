@@ -556,4 +556,7 @@ it.
 | `403` | A staged change needing what the site lacks is refused | must | S | done | 383, 399 |
 | `404` | A managed user's external login, linked by its directory, and nothing else writes users | must | S | done | 031, 389 |
 | `405` | User groups defined from outside the site | should | L | done | 338, 389 |
+| `406` | Shared checked as a whole since a change | should | M | done | 381, 383, 386 |
+| `407` | A workspace's conflicts in its listing | should | S | done | 384, 400 |
+| `408` | A workspace's errors answered for the whole site | should | M | done | 386, 396 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

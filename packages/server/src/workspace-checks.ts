@@ -11,9 +11,11 @@ import {
   type Db,
   UserRepository,
   type Workspace,
+  WorkspaceErrorRepository,
   WorkspaceFileRepository,
   WorkspaceRepository,
 } from '@crombolo/data'
+import { logger } from './logging.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
 import type { WorkspaceSchema } from './workspace-schema.ts'
 
@@ -31,6 +33,8 @@ export interface WorkspaceCheckOptions {
   render: (workspace: Workspace, path: string) => Promise<WorkspaceRendered>
   /** A page's address on the workspace's site. */
   urlOf: (workspace: Workspace, key: string) => Promise<string | undefined>
+  /** This node, named on each error it notes (story 408). */
+  nodeId?: string
 }
 
 /** One affected page, as it rendered. */
@@ -46,18 +50,94 @@ export interface PageResult {
   because: 'changed' | 'type' | 'template'
 }
 
-/** What a workspace's process logged, newest last, per workspace on this node. */
-const ERRORS_KEPT = 200
+/** How many pages of a changed type or view are looked at, and the number that means all of them. */
+export const PAGES_SAMPLED = 3
+export const EVERY_PAGE = 100_000
+
+export interface AffectedPage {
+  key: string
+  name: string
+  because: PageResult['because']
+}
+
+/**
+ * The pages of Shared that a set of changes affects: each page changed, and up to
+ * `sample` pages of each type and each view whose file changed. A type is named by
+ * the alias its file says, a view by its file's path under `components/`.
+ */
+export async function pagesAffectedBy(
+  db: Db,
+  changed: Iterable<{ key: string; name: string }>,
+  files: ReadonlyArray<{ path: string; text: string }>,
+  sample: number,
+): Promise<AffectedPage[]> {
+  const out = new Map<string, AffectedPage>()
+  for (const page of changed)
+    out.set(page.key, { key: page.key, name: page.name, because: 'changed' })
+  const types = new Set(
+    files
+      .filter((f) => f.path.startsWith('schema/content-types/'))
+      .map((f) => /^alias\s*=\s*"([^"]+)"/m.exec(f.text)?.[1])
+      .filter((a): a is string => Boolean(a)),
+  )
+  const templates = new Set(
+    files
+      .map((f) => /^components\/(.+)\.tsx?$/.exec(f.path)?.[1])
+      .filter((a): a is string => Boolean(a)),
+  )
+  const add = (
+    rows: Array<{ unique_id: string; text: string | null }>,
+    because: 'type' | 'template',
+  ) => {
+    for (const row of rows) {
+      const key = normaliseUuid(String(row.unique_id))
+      if (!out.has(key)) out.set(key, { key, name: String(row.text ?? key), because })
+    }
+  }
+  for (const alias of types)
+    add(
+      await db.q
+        .selectFrom('node as n')
+        .innerJoin('content as c', 'c.node_id', 'n.id')
+        .innerJoin('content_type as t', 't.node_id', 'c.content_type_id')
+        .select(['n.unique_id', 'n.text'])
+        .where('n.workspace_id', 'is', null)
+        .where('t.alias', '=', alias)
+        .limit(sample)
+        .execute(),
+      'type',
+    )
+  for (const alias of templates)
+    add(
+      await db.q
+        .selectFrom('node as n')
+        .innerJoin('content_version as cv', 'cv.node_id', 'n.id')
+        .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+        .innerJoin('template as tp', 'tp.node_id', 'dv.template_id')
+        .select(['n.unique_id', 'n.text'])
+        .where('n.workspace_id', 'is', null)
+        .where('cv.current', '=', db.dialect.boolValue(true) as boolean)
+        .where('tp.alias', '=', alias)
+        .limit(sample)
+        .execute(),
+      'template',
+    )
+  return [...out.values()]
+}
 
 export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
   const { db } = options
-  const errors = new Map<string, Array<{ at: string; page: string; says: string }>>()
+  const errors = new WorkspaceErrorRepository(db)
 
-  const note = (workspace: Workspace, page: string, says: string) => {
-    const list = errors.get(workspace.key) ?? []
-    list.push({ at: new Date().toISOString(), page, says })
-    if (list.length > ERRORS_KEPT) list.splice(0, list.length - ERRORS_KEPT)
-    errors.set(workspace.key, list)
+  /** Kept for every node to answer (story 408); a note that cannot be written is only logged. */
+  const note = async (workspace: { key: string }, page: string, says: string) => {
+    try {
+      await errors.note(workspace.key, { node: options.nodeId ?? 'node', page, says })
+    } catch (error) {
+      logger('workspaces').warn('A workspace’s error was not kept: {error}', {
+        error: String(error),
+      })
+    }
   }
 
   async function renderOne(workspace: Workspace, path: string) {
@@ -70,64 +150,20 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
     }
     const ms = Math.round(performance.now() - started)
     const ok = result.status === 'ok' || result.status === 'redirect' || result.status === 'outcome'
-    if (!ok) note(workspace, path, result.error ?? `answered ${result.status}`)
+    if (!ok) await note(workspace, path, result.error ?? `answered ${result.status}`)
     return { ...result, ok, ms }
   }
 
   /** The pages a workspace affects: those it changed, and a sample of each changed type's and template's. */
   async function affected(workspace: Workspace, all: boolean) {
-    const out = new Map<string, { key: string; name: string; because: PageResult['because'] }>()
-    for (const change of await new WorkspaceRepository(db).changes(workspace.id))
-      if (change.kind === 'changed' || change.kind === 'made')
-        out.set(change.key, { key: change.key, name: change.name, because: 'changed' })
-    const files = await new WorkspaceFileRepository(db).changes(workspace.id)
-    // A type by the alias its file says; a template by its file's name, as the site names it.
-    const types = files
-      .filter((f) => f.path.startsWith('schema/content-types/'))
-      .map((f) => /^alias\s*=\s*"([^"]+)"/m.exec(f.now ?? f.base ?? '')?.[1])
-      .filter((a): a is string => Boolean(a))
-    const templates = files
-      .map((f) => /^components\/([^/]+)\.tsx?$/.exec(f.path)?.[1])
-      .filter((a): a is string => Boolean(a))
-    const sample = all ? 100_000 : 3
-    const add = (
-      rows: Array<{ unique_id: string; text: string | null }>,
-      because: 'type' | 'template',
-    ) => {
-      for (const row of rows) {
-        const key = normaliseUuid(String(row.unique_id))
-        if (!out.has(key)) out.set(key, { key, name: String(row.text ?? key), because })
-      }
-    }
-    for (const alias of types)
-      add(
-        await db.q
-          .selectFrom('node as n')
-          .innerJoin('content as c', 'c.node_id', 'n.id')
-          .innerJoin('content_type as t', 't.node_id', 'c.content_type_id')
-          .select(['n.unique_id', 'n.text'])
-          .where('n.workspace_id', 'is', null)
-          .where('t.alias', '=', alias)
-          .limit(sample)
-          .execute(),
-        'type',
-      )
-    for (const alias of templates)
-      add(
-        await db.q
-          .selectFrom('node as n')
-          .innerJoin('content_version as cv', 'cv.node_id', 'n.id')
-          .innerJoin('document_version as dv', 'dv.id', 'cv.id')
-          .innerJoin('template as tp', 'tp.node_id', 'dv.template_id')
-          .select(['n.unique_id', 'n.text'])
-          .where('n.workspace_id', 'is', null)
-          .where('cv.current', '=', db.dialect.boolValue(true) as boolean)
-          .where('tp.alias', '=', alias)
-          .limit(sample)
-          .execute(),
-        'template',
-      )
-    return [...out.values()]
+    const changed = (await new WorkspaceRepository(db).changes(workspace.id))
+      .filter((change) => change.kind === 'changed' || change.kind === 'made')
+      .map((change) => ({ key: change.key, name: change.name }))
+    const files = (await new WorkspaceFileRepository(db).changes(workspace.id)).map((f) => ({
+      path: f.path,
+      text: f.now ?? f.base ?? '',
+    }))
+    return pagesAffectedBy(db, changed, files, all ? EVERY_PAGE : PAGES_SAMPLED)
   }
 
   /** Each affected page rendered on the workspace's site. */
@@ -212,10 +248,21 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
       }
     },
 
-    /** What the workspace's renders on this node said went wrong. */
-    errors(workspace: Workspace, since?: Date) {
-      return (errors.get(workspace.key) ?? []).filter((e) => !since || new Date(e.at) >= since)
+    /** What rendering the workspace's pages said went wrong, on every node, oldest first. */
+    async errors(workspace: Workspace, since?: Date) {
+      return (await errors.of(workspace.key, since)).map((e) => ({
+        at: e.at.toISOString(),
+        node: e.node,
+        page: e.page,
+        says: e.says,
+      }))
     },
+
+    /** A render asked for by name that failed is one of its errors too. */
+    note,
+
+    /** A merged or discarded workspace keeps none. */
+    closed: (key: string) => errors.clear(key),
 
     /**
      * How the workspace differs: `shared`, what a merge would change; `base`, what it

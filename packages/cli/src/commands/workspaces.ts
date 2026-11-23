@@ -25,12 +25,20 @@ export default class Workspaces extends BaseCommand {
     const { flags } = await this.parse(Workspaces)
     return onSite(this, flags, undefined, async (site) => {
       const { items } = await site.json<{
-        items: Array<{ key: string; name: string; state: string; updatedAt: string }>
+        items: Array<{
+          key: string
+          name: string
+          state: string
+          updatedAt: string
+          conflicts?: number
+        }>
       }>('GET', `workspaces${flags.all ? '?all=true' : ''}`)
       const open = items.filter((w) => w.state === 'open')
       if (open.length === 0) this.say('  No open workspaces.')
       for (const w of open)
-        this.say(`  ${w.name.padEnd(32)} last written ${w.updatedAt.slice(0, 16)}`)
+        this.say(
+          `  ${w.name.padEnd(32)} last written ${w.updatedAt.slice(0, 16)}${w.conflicts ? `  ${w.conflicts} in conflict` : ''}`,
+        )
       return { items: open }
     })
   }

@@ -1,6 +1,6 @@
 {
   "name": "@crombolo/crombolo",
-  "version": "0.75.0",
+  "version": "0.76.0",
   "crombolo": {
     "migrations": "compatible"
   },

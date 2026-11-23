@@ -8,7 +8,12 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management'
-import { ComponentRepository, ContentTypeRepository, WORKSPACE_EVENT_ALIASES } from '@crombolo/data'
+import {
+  ComponentRepository,
+  ContentTypeRepository,
+  WORKSPACE_EVENT_ALIASES,
+  WorkspaceRepository,
+} from '@crombolo/data'
 import { webhookPayload } from '../packages/server/src/webhooks.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
@@ -216,6 +221,42 @@ describe(`a workspace's life, raised (${dialectUnderTest})`, () => {
     expect(answered.status).toBe(200)
     await s.save(home, { title: 'Once more' })
     expect(await s.of('Crombolo.WorkspaceConflicted')).toHaveLength(2)
+  }, 30_000)
+
+  test('the list says which workspaces are in conflict and over how many items (story 407)', async () => {
+    const s = await site()
+    const home = await s.page('Home', 'Welcome')
+    const about = await s.page('About', 'Who we are')
+    const sale = await s.opened('Spring sale')
+    const quiet = await s.opened('Nothing yet')
+    type Listed = { key: string; conflicted: boolean; conflicts: number }
+    const listed = async () => {
+      const { items } = (await (await s.send('GET', WORKSPACES)).json()) as { items: Listed[] }
+      return new Map(
+        items.map((w) => [w.key, { conflicted: w.conflicted, conflicts: w.conflicts }]),
+      )
+    }
+    expect((await listed()).get(sale.key)).toEqual({ conflicted: false, conflicts: 0 })
+
+    await s.save(home, { title: 'Sale on' }, sale.key)
+    await s.save(about, { title: 'Sale people' }, sale.key)
+    await s.save(home, { title: 'Hello world' })
+    await s.save(about, { title: 'Hello people' })
+    expect((await listed()).get(sale.key)).toEqual({ conflicted: true, conflicts: 2 })
+    expect((await listed()).get(quiet.key)).toEqual({ conflicted: false, conflicts: 0 })
+    const one = (await (await s.send('GET', `${WORKSPACES}/${sale.key}`)).json()) as Listed
+    expect(one).toMatchObject({ conflicted: true, conflicts: 2 })
+
+    const answered = await s.send('POST', `${WORKSPACES}/${sale.key}/conflicts`, {
+      page: home,
+      answers: { 'title||': 'mine' },
+    })
+    expect(answered.status).toBe(200)
+    expect((await listed()).get(sale.key)).toEqual({ conflicted: true, conflicts: 1 })
+
+    expect((await s.send('DELETE', `${WORKSPACES}/${sale.key}`)).status).toBeLessThan(300)
+    expect((await listed()).has(sale.key)).toBe(false)
+    expect(await new WorkspaceRepository(s.db).conflictCounts([1, 2, 3, 4])).toEqual(new Map())
   }, 30_000)
 })
 

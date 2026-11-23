@@ -283,6 +283,25 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
         return problem(404, { code: 'not-found', title: 'There is no such route' })
       }
 
+      // Story 406: Shared checked since a change, as the back office's route answers it.
+      if (what === 'changes/check' && request.method === 'POST') {
+        if (!options.atLeast('read')) return options.notAtLevel('read', 'checks')
+        if (!options.may(principal, RemotePermissions.Pull))
+          return forbidden(
+            'You may not check this site’s changes',
+            'It needs Crombolo.Remote.Pull.',
+          )
+        const routes = options.changeRoutes?.()
+        if (!routes) return problem(404, { code: 'not-found', title: 'There is no such route' })
+        const answered = await routes.handle(request, principal, '/check')
+        if (answered.ok) return answered
+        const body = (await answered.json().catch(() => ({}))) as { message?: string }
+        return problem(answered.status, {
+          code: answered.status === 404 ? 'not-found' : 'refused',
+          title: body.message ?? 'It cannot be checked',
+        })
+      }
+
       const reverting = /^changes\/([0-9a-f-]{36})\/revert$/i.exec(what)?.[1]
       if (reverting && request.method === 'POST') {
         if (!options.atLeast('content')) return options.notAtLevel('content', 'changes')

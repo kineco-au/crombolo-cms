@@ -4,7 +4,8 @@
  * change with each file's text before and after and its pages; a file's
  * versions, each a change that touched it, compared with the file now; and a
  * revert, which is a change of its own, refused where something later touched
- * the same file or page, and which can reopen the work as a workspace.
+ * the same file or page, and which can reopen the work as a workspace. `POST
+ * /check { since?, all? }` checks Shared as a whole since a change (story 406).
  */
 import type { Principal } from '@crombolo/api-management/domain'
 import { normaliseUuid } from '@crombolo/core'
@@ -19,6 +20,7 @@ import {
 } from '@crombolo/data'
 import { revertRun } from '@crombolo/transfer'
 import { recordAudit } from './adapters/audit.ts'
+import type { SharedCheck } from './shared-check.ts'
 import type { WorkspaceSchema } from './workspace-schema.ts'
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
@@ -34,6 +36,8 @@ export function createChangesApi(
     nodeState?: NodeSchemaState
     /** Told after a revert that changed what is served. */
     onReverted?: () => void | Promise<void>
+    /** Story 406: Shared checked as a whole since a change. */
+    check?: () => SharedCheck | undefined
   },
 ) {
   const changes = new ChangeRepository(db)
@@ -214,6 +218,17 @@ export function createChangesApi(
         const skip = Math.max(0, Number(url.searchParams.get('skip') ?? 0) || 0)
         const take = Math.min(200, Math.max(1, Number(url.searchParams.get('take') ?? 50) || 50))
         return json(await changes.list(skip, take))
+      }
+      // Story 406: every page the changes since one affect, and the views' problems.
+      if (parts[0] === 'check' && parts.length === 1 && request.method === 'POST') {
+        const check = options.check?.()
+        if (!check) return refused('There is no such route.', 404)
+        const asked = (await request.json().catch(() => ({}))) as Record<string, unknown>
+        const since = typeof asked.since === 'string' && asked.since ? asked.since : undefined
+        if (since && !/^[0-9a-f-]{36}$/i.test(since))
+          return refused('Name the change to check from by its id.', 400)
+        const result = await check.check(since, asked.all === true)
+        return result ? json(result) : refused('There is no such change here.', 404, { since })
       }
       if (parts[0] === 'versions' && parts.length === 1 && request.method === 'GET') {
         const path = url.searchParams.get('path') ?? ''

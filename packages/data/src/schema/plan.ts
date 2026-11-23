@@ -102,6 +102,7 @@ import { usersLocalisationMigration } from './users-localisation.ts'
 import { valuesMigration } from './values.ts'
 import { webhooksMigration } from './webhooks.ts'
 import { workspaceConflictsMigration } from './workspace-conflicts.ts'
+import { workspaceErrorsMigration } from './workspace-errors.ts'
 import { workspaceLinksMigration } from './workspace-links.ts'
 import { workspaceMergeMigration } from './workspace-merge.ts'
 import { workspacePrivacyMigration } from './workspace-privacy.ts'
@@ -205,4 +206,5 @@ export const cromboloPlan = new MigrationPlan([
   workspaceConflictsMigration,
   changeSourcesMigration,
   groupStartKeysMigration,
+  workspaceErrorsMigration,
 ])

@@ -240,6 +240,9 @@ export interface WorkspaceView {
   mine: boolean
   /** Story 398: a person's own unnamed workspace, rather than a named one. */
   personal: boolean
+  /** Story 407: whether it is in conflict with Shared, and over how many items, as last found. */
+  conflicted: boolean
+  conflicts: number
   state: 'open' | 'merged'
   mergedAt: string | null
   createdAt: string
@@ -259,7 +262,7 @@ function privacyOf(asked: Record<string, unknown>): {
   }
 }
 
-const viewOf = (workspace: Workspace, principal: Principal): WorkspaceView => ({
+const viewOf = (workspace: Workspace, principal: Principal, conflicts = 0): WorkspaceView => ({
   key: workspace.key,
   visibility: workspace.visibility,
   tellOthers: workspace.tellOthers,
@@ -269,6 +272,8 @@ const viewOf = (workspace: Workspace, principal: Principal): WorkspaceView => ({
   memberKeys: workspace.memberKeys,
   mine: workspace.ownerKey === normaliseUuid(principal.id),
   personal: workspace.personal,
+  conflicted: conflicts > 0,
+  conflicts,
   state: workspace.state,
   mergedAt: workspace.mergedAt?.toISOString() ?? null,
   createdAt: workspace.createdAt.toISOString(),
@@ -600,6 +605,14 @@ export function createWorkspacesApi(
     return json(outcome)
   }
 
+  /** A workspace as its routes answer it, with what it has in conflict (story 407). */
+  const viewed = async (workspace: Workspace, principal: Principal) =>
+    viewOf(
+      workspace,
+      principal,
+      (await workspaces.conflictCounts([workspace.id])).get(workspace.id) ?? 0,
+    )
+
   return {
     async handle(
       request: Request,
@@ -615,7 +628,7 @@ export function createWorkspacesApi(
         const locked = options.locked?.() === true
         return json({
           required: on && !locked && options.required?.() === true,
-          workspace: own ? viewOf(own, principal) : null,
+          workspace: own ? await viewed(own, principal) : null,
           // Story 384: whether the switch shows at all, and whether Merge is offered.
           enabled: on,
           mayMerge: on && mayMerge(principal),
@@ -643,7 +656,9 @@ export function createWorkspacesApi(
             : (await workspaces.all()).filter(
                 (w) => w.visibility === 'editors' && w.state === 'open' && !mayUse(w, principal),
               )
-          return json({ items: [...mine, ...shown].map((w) => viewOf(w, principal)) })
+          const listed = [...mine, ...shown]
+          const counts = await workspaces.conflictCounts(listed.map((w) => w.id))
+          return json({ items: listed.map((w) => viewOf(w, principal, counts.get(w.id) ?? 0)) })
         }
         if (request.method === 'POST') {
           if (options.locked?.())
@@ -662,7 +677,7 @@ export function createWorkspacesApi(
           // Its copy of the schema files, the base its changes to them merge from (story 376).
           await options.schema?.()?.snapshot(opened.id)
           await audit(principal, 'Open', opened, `Opened "${name}"`, client)
-          return json(viewOf(opened, principal), 201)
+          return json(await viewed(opened, principal), 201)
         }
         return new Response(null, { status: 405 })
       }
@@ -767,7 +782,7 @@ export function createWorkspacesApi(
       const owner = found.ownerKey === normaliseUuid(principal.id)
 
       if (!sub) {
-        if (request.method === 'GET') return json(viewOf(found, principal))
+        if (request.method === 'GET') return json(await viewed(found, principal))
         if (request.method === 'PATCH') {
           if (!owner) return refused('Only its owner changes a workspace.', 403)
           const asked = await body()
@@ -776,13 +791,13 @@ export function createWorkspacesApi(
           await workspaces.setPrivacy(found.id, privacy)
           if (asked.name === undefined && Object.keys(privacy).length > 0) {
             await audit(principal, 'Privacy', found, `Privacy of "${found.name}" changed`, client)
-            return json(viewOf((await workspaces.byKey(found.key)) as Workspace, principal))
+            return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
           }
           const name = nameOf(asked)
           if (!name) return refused('A workspace needs a name of up to 255 characters.', 400)
           await workspaces.rename(found.id, name)
           await audit(principal, 'Rename', found, `Renamed "${found.name}" to "${name}"`, client)
-          return json(viewOf((await workspaces.byKey(found.key)) as Workspace, principal))
+          return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
         }
         if (request.method === 'DELETE') {
           if (!owner && !principal.isAdmin)
@@ -835,7 +850,7 @@ export function createWorkspacesApi(
         if (sub === 'errors' && request.method === 'GET') {
           const since = query.get('since') ? new Date(query.get('since') as string) : undefined
           return json({
-            items: checks.errors(
+            items: await checks.errors(
               found,
               since && !Number.isNaN(since.getTime()) ? since : undefined,
             ),
@@ -924,7 +939,12 @@ export function createWorkspacesApi(
       // Story 377: one page as the workspace's views render it, before it has an address (379).
       if (sub === 'render' && !member && request.method === 'GET' && options.render) {
         const path = new URL(request.url).searchParams.get('path') ?? '/'
-        return json(await options.render({ id: found.id, key: found.key }, path))
+        const rendered = await options.render({ id: found.id, key: found.key }, path)
+        // Story 408: a page that fails when asked for is one of the workspace's errors.
+        const { status, error } = (rendered ?? {}) as { status?: string; error?: string }
+        if (status && !['ok', 'redirect', 'outcome'].includes(status))
+          await options.checks?.().note(found, path, error ?? `answered ${status}`)
+        return json(rendered)
       }
       if (schema && sub === 'update' && !member && request.method === 'POST') {
         if (found.state === 'merged') return refused('This workspace was merged already.', 409)
@@ -1051,7 +1071,7 @@ export function createWorkspacesApi(
             return refused('Its owner is in it already.', 400)
           if (await workspaces.addMember(found.id, userKey))
             await audit(principal, 'Share', found, `Shared with ${normaliseUuid(userKey)}`, client)
-          return json(viewOf((await workspaces.byKey(found.key)) as Workspace, principal))
+          return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
         }
         if (member && request.method === 'DELETE') {
           if (!(await workspaces.removeMember(found.id, member)))

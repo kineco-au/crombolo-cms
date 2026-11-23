@@ -205,6 +205,24 @@ describe('workspaces from the command line', () => {
     expect(await titleIn(siteA(), HOME())).toBe('Edited in Shared')
   }, 120_000)
 
+  test('changes check renders what the site shares, and refuses a change it does not hold', () => {
+    const { items } = json<{ items: Array<{ id: string }> }>(siteA(), 'changes')
+    const checked = json<{ ok: boolean; since: string; pages: Array<{ url: string }> }>(
+      siteA(),
+      'changes',
+      'check',
+      '--since',
+      items.at(-1)?.id as string,
+    )
+    expect(checked.ok).toBe(true)
+    expect(checked.since).toBe(items.at(-1)?.id as string)
+    expect(checked.pages.map((p) => p.url)).toEqual(['/'])
+    const whole = json<{ ok: boolean; pages: unknown[] }>(siteA(), 'changes', 'check', '--all')
+    expect(whole.pages).toHaveLength(1)
+    const unknown = cli(siteA(), ['changes', 'check', '--since', crypto.randomUUID()])
+    expect(unknown.code).toBe(5)
+  }, 120_000)
+
   test('a workspace pushed to another site waits there to be merged; that site’s changes are pulled back', async () => {
     // The other site begins as this one is now, so the change applies there cleanly.
     rmSync(siteB(), { recursive: true, force: true })

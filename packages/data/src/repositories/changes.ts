@@ -453,6 +453,44 @@ export class ChangeRepository {
     return this.#view(rows[0], counts.items.get(id) ?? 0, counts.pages.get(id) ?? 0)
   }
 
+  /**
+   * The changes added to since this one was last added to, oldest first (story 406);
+   * undefined where the site holds no such change. One applied from another site is
+   * known by the key it travelled with too.
+   */
+  async addedToSince(id: string): Promise<Change[] | undefined> {
+    const wanted = normaliseUuid(id)
+    const applied = await this.#db.q
+      .selectFrom('applied_change')
+      .select('run_id')
+      .where('change_key', '=', wanted)
+      .execute()
+    const base = (
+      await this.#db.q
+        .selectFrom('content_transfer_run')
+        .select(['id', 'started_at', 'finished_at'])
+        .where('id', 'in', [wanted, ...applied.map((a) => String(a.run_id))])
+        .execute()
+    )[0]
+    if (!base) return undefined
+    const rows = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .selectAll()
+      .where('id', '<>', String(base.id))
+      .where(
+        (eb) => eb.fn.coalesce('finished_at', 'started_at'),
+        '>=',
+        base.finished_at ?? base.started_at,
+      )
+      .orderBy((eb) => eb.fn.coalesce('finished_at', 'started_at'))
+      .orderBy('id')
+      .execute()
+    const counts = await this.#counts(rows.map((r) => String(r.id)))
+    return rows.map((r) =>
+      this.#view(r, counts.items.get(String(r.id)) ?? 0, counts.pages.get(String(r.id)) ?? 0),
+    )
+  }
+
   async #texts(hashes: readonly (string | null)[]): Promise<Map<string, string>> {
     const wanted = [...new Set(hashes.filter((h): h is string => Boolean(h)))]
     if (wanted.length === 0) return new Map()

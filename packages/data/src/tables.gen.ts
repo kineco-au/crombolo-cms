@@ -1073,6 +1073,14 @@ export interface CoreTables {
     published_name: string | null
     workspace_id: Generated<number>
   }
+  workspace_error: {
+    id: Generated<number>
+    node_id: string
+    noted_at: Timestamp
+    page: string
+    says: string
+    workspace_key: string
+  }
   workspace_file: {
     base_hash: string | null
     class: string | null
