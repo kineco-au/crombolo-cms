@@ -248,6 +248,7 @@ What does not work on Windows yet:
 bun run start:local           # the reference site in apps/site, on SQLite, port 8080
 bun run docker:up             # or Postgres and one node in containers, on the same port
 bun run docker:down           # stop them; docker:reset also discards the database
+bun run docker:clean          # after test runs: stopped test containers and unused anonymous volumes
 bun run db:up                 # or just Postgres, on localhost:5433, for a host run
 ```
 

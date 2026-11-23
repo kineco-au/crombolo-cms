@@ -20,6 +20,7 @@
     "db:up": "docker compose up -d --wait db",
     "dev": "bun run --cwd apps/site dev",
     "docker:build": "docker compose build",
+    "docker:clean": "docker container prune -f --filter label=com.docker.compose.project=crombolo && docker volume prune -f",
     "docker:down": "docker compose --profile test down --remove-orphans",
     "docker:install": "docker compose run --rm --no-deps -w /app cms bun install",
     "docker:logs": "docker compose logs -f cms",
