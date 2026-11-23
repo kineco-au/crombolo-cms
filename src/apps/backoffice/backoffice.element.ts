@@ -1,5 +1,5 @@
 import { UmbBackofficeContext } from './backoffice.context.js';
-import { css, html, customElement } from '@umbraco-cms/backoffice/external/lit';
+import { css, html, customElement, nothing, state } from '@umbraco-cms/backoffice/external/lit';
 import {
 	UmbBackofficeEntryPointExtensionInitializer,
 	UmbEntryPointExtensionInitializer,
@@ -17,17 +17,24 @@ export class UmbBackofficeElement extends UmbLitElement {
 	 */
 	public extensionRegistry = umbExtensionsRegistry;
 
+	/** Crombolo: whether the backoffice entry points have started, so an editor's first read goes out as they set it up. */
+	@state()
+	private _started = false;
+
 	constructor() {
 		super();
 		new UmbBackofficeContext(this);
-		new UmbBackofficeEntryPointExtensionInitializer(this, umbExtensionsRegistry);
+		const entryPoints = new UmbBackofficeEntryPointExtensionInitializer(this, umbExtensionsRegistry);
 		new UmbEntryPointExtensionInitializer(this, umbExtensionsRegistry);
+		this.observe(entryPoints.loaded, (loaded) => {
+			if (loaded) this._started = true;
+		});
 	}
 
 	override render() {
 		return html`
 			<umb-backoffice-header></umb-backoffice-header>
-			<umb-backoffice-main></umb-backoffice-main>
+			${this._started ? html`<umb-backoffice-main></umb-backoffice-main>` : nothing}
 			<!-- Crombolo's side panels (story 182), beside main and outside its router. -->
 			<crombolo-side-panel-host></crombolo-side-panel-host>
 			<slot></slot>
