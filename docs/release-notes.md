@@ -23,7 +23,9 @@ point at `docs/stories/`.
   checkout with no database, into a workspace on a site:
   `PUT <backoffice>/crombolo/api/changes/from-site` or `crombolo changes stage`. The site
   measures the change from the source's last merge, so an editor's later edit to what the
-  bundle left alone is kept, and deletes nothing unless asked (`docs/changes.md`).
+  bundle left alone is kept, and deletes nothing unless asked. Its files, dictionary,
+  pages, media and Library items travel; one that changes a component needs Install code
+  (`docs/changes.md`).
 - **An administrator reads any workspace, when they ask to (401).** With
   `includePrivate=true` (`--include-private`), an administrator reads a workspace they
   are not in, a person's own included, on every read route, and opens its site. Writes
@@ -35,6 +37,14 @@ point at `docs/stories/`.
   table.
 - **Migration 094** (`AddChangeSources`) adds the `change_source` and
   `change_source_staged` tables.
+- **The workspace events are opt-in:** a webhook hears them only once its events include
+  them. A host that filters on `Personal` leaves out editors' own workspaces.
+
+### Releasing
+
+- **A tag no longer runs CI again.** The Release pipeline runs the load test and
+  benchmarks, then publishes; a release is tagged on a commit whose CI on `main` passed,
+  with the full Postgres suite run locally beside it (`AGENTS.md`, "Releasing").
 
 ## v0.73.2 — 2026-11-23
 

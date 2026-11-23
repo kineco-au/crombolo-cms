@@ -292,10 +292,12 @@ describe('the release workflow', () => {
     expect(workflow).toContain('does not match')
   })
 
-  test('cannot publish without a green build', () => {
-    // The build and the load test are the whole gate: without them a red suite still ships.
+  test('cannot publish without the load test, and does not run CI again', () => {
+    // A tag goes on a commit main's CI passed, with Postgres run locally beside it
+    // (AGENTS.md, "Releasing"): the release itself gates on the load test alone.
     const publish = workflow.slice(workflow.indexOf('\n    publish:'))
-    expect(publish).toMatch(/needs:\s*\[ci, load\]/)
+    expect(publish).toMatch(/needs:\s*\[load\]/)
+    expect(workflow).not.toContain('workflows/ci.yml')
     expect(workflow).toContain('bun run test:load')
     expect(workflow).toContain('bun run release:publish')
   })

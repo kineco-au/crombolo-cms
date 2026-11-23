@@ -134,7 +134,6 @@ describe('the release load matrix', () => {
   })
 
   test('requires the entire load matrix before publishing', () => {
-    expect(workflow.jobs.publish.needs).toContain('load')
-    expect(workflow.jobs.publish.needs).toContain('ci')
+    expect(workflow.jobs.publish.needs).toEqual(['load'])
   })
 })
