@@ -381,7 +381,8 @@ change to a page: a page write naming no workspace is refused with 409. The head
 change; the back office sends it on every request (`own-workspace.js`), so an editor's
 change lands there. Publishing a page there merges that page alone, at once, where the
 person may make each of its changes; otherwise it stays published there and the answer
-says why. Media, schema and files are not held by a workspace yet (`390`, `376`, `377`),
+says why. The merge raises `Crombolo.ChangePublished`, as a publish in Shared does, with
+`From: "own-workspace"` (story `397`, [`webhooks.md`](webhooks.md)). Media, schema and files are not held by a workspace yet (`390`, `376`, `377`),
 so they are still changed directly.
 
 ## Known gaps

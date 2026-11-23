@@ -3,7 +3,8 @@
  * change it applied to the served copy; once it has, schema is built in a named
  * workspace, and what the served copy does not have is not offered for making
  * content outside one. A publish names the changes it needs, and who made it; a
- * schedule is passed on as a publish is; and a host leaves a person a notice.
+ * schedule is passed on as a publish is; and a host leaves a person a notice. Story 397:
+ * a publish in a person's own workspace is passed on too.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
@@ -222,6 +223,7 @@ async function site(config: Partial<CromboloConfig> = {}) {
     report,
     publish,
     newest,
+    announced,
     announcedBy,
     offeredAtRoot,
     close,
@@ -409,6 +411,49 @@ describe(`what is live, where a site is made (${dialectUnderTest})`, () => {
     ])
   }, 30_000)
 
+  test('a publish in a person’s own workspace is passed on; a named workspace’s merge is not', async () => {
+    const s = await site()
+    s.h.server.config.workspacesRequired = true
+    expect((await s.report((await s.newest())?.key as string)).status).toBe(200)
+    const edit = async (title: string, workspace: string) => {
+      const inside = { 'crombolo-workspace': workspace }
+      const copy = await s.send('GET', `${V1}/document/${HOME}`, undefined, inside)
+      const document = (await copy.json()) as Record<string, unknown>
+      const values = [{ alias: 'title', culture: null, segment: null, value: title }]
+      const saved = await s.send(
+        'PUT',
+        `${V1}/document/${HOME}`,
+        { ...document, values },
+        { 'if-match': copy.headers.get('etag') as string, ...inside },
+      )
+      expect(saved.status, await saved.clone().text()).toBe(200)
+      const published = await s.send(
+        'PUT',
+        `${V1}/document/${HOME}/publish`,
+        { publishSchedules: [{ culture: null }] },
+        inside,
+      )
+      expect(published.status, await published.clone().text()).toBe(200)
+    }
+
+    const change = await s.announcedBy(() => edit('Sale on', 'mine'))
+    expect(change).toEqual({
+      key: (await s.newest())?.key,
+      name: 'Published "Home"',
+      by: 'person',
+      needs: [],
+      from: 'own-workspace',
+    })
+
+    const workspace = await s.send('POST', `${PLUGIN}/workspaces`, { name: 'Autumn release' })
+    const { key } = (await workspace.json()) as { key: string }
+    await edit('Autumn', key)
+    const before = (await s.announced()).length
+    const merged = await s.send('POST', `${PLUGIN}/workspaces/${key}/merge`, {})
+    expect(merged.status, await merged.clone().text()).toBe(200)
+    expect(await s.announced()).toHaveLength(before)
+  }, 30_000)
+
   test('a publish by a tool acting for a person says so', async () => {
     const s = await site({
       backofficeIdentityProviders: [
@@ -563,6 +608,7 @@ describe('what the served copy lacks, taken out of what is offered', () => {
         by: 'tool' as const,
         tool: { id: 'agent-7', name: 'Release bot' },
         needs: [{ key: 'c0', name: 'Autumn', items: [{ kind: 'documentType', alias: 'event' }] }],
+        from: 'own-workspace' as const,
       },
     }
     expect(webhookPayload(facts, 'minimal')).toEqual({
@@ -573,6 +619,7 @@ describe('what the served copy lacks, taken out of what is offered', () => {
         By: 'tool',
         Tool: { Id: 'agent-7', Name: 'Release bot' },
         Needs: [{ Key: 'c0', Name: 'Autumn', Items: [{ Kind: 'documentType', Alias: 'event' }] }],
+        From: 'own-workspace',
       },
     })
   })

@@ -41,6 +41,8 @@ export type DocumentEvent =
 export interface EventSink {
   record(tx: Db, event: DocumentEvent, actor: Actor): Promise<void>
   afterCommit?(event: DocumentEvent, actor: Actor): void
+  /** Story 397: a publish in a person's own workspace merged its page, recorded as `changeId`. */
+  ownPublished?(tx: Db, published: { changeId: string; key: string }, actor: Actor): Promise<void>
 }
 
 /** A sink that hears nothing: for tests and tools that announce nothing. */
@@ -50,6 +52,9 @@ export const SILENT: EventSink = { record: async () => {} }
 export const both = (...sinks: EventSink[]): EventSink => ({
   async record(tx, event, actor) {
     for (const sink of sinks) await sink.record(tx, event, actor)
+  },
+  async ownPublished(tx, published, actor) {
+    for (const sink of sinks) await sink.ownPublished?.(tx, published, actor)
   },
   afterCommit(event, actor) {
     for (const sink of sinks) sink.afterCommit?.(event, actor)

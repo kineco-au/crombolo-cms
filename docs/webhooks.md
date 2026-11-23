@@ -23,7 +23,7 @@ through the Management API's webhook operations.
 | `Umbraco.ContentRolledBack` | rolling a page back to an earlier version |
 | `Umbraco.MediaSave` | creating or saving a media item |
 | `Umbraco.MediaDelete` | deleting a media item |
-| `Crombolo.ChangePublished` | a person's publish, or setting or clearing a page's schedule, finishing their change (stories 388, 395): the page's facts, and `Change: { Key, Name, By, Tool?, Needs? }` for a host to take and apply elsewhere. `By` is `person`, or `tool` for a sign-in exchanged with an actor, named in `Tool: { Id, Name }`; `Needs`, once a host reports what the served copy holds, lists each change not yet there that the page's type, template or blocks need, as `{ Key, Name, Items: [{ Kind, Alias }] }` |
+| `Crombolo.ChangePublished` | a person's publish, or setting or clearing a page's schedule, finishing their change, and a publish in their own workspace merging that page (stories 388, 395, 397): the page's facts, and `Change: { Key, Name, By, Tool?, Needs?, From? }` for a host to take and apply elsewhere. `By` is `person`, or `tool` for a sign-in exchanged with an actor, named in `Tool: { Id, Name }`; `Needs`, once a host reports what the served copy holds, lists each change not yet there that the page's type, template or blocks need, as `{ Key, Name, Items: [{ Kind, Alias }] }`; `From` is `own-workspace` for the merge of a publish in the person's own workspace, and absent for a publish straight in Shared. A named workspace's merge raises none |
 
 The aliases are Umbraco's, so the backoffice's event picker and an imported
 site mean the same thing. An event is raised only when the change really

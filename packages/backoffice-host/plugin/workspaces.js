@@ -6,7 +6,8 @@
  * required, Shared is looked at only. The switch at the head of Content is
  * `workspace-switch.js`. With workspaces off, none of this shows.
  */
-import { inWorkspace, workspacesApi } from './workspace-client.js'
+import { umbHttpClient } from '@umbraco-cms/backoffice/http-client'
+import { onceKnown, workspacesApi } from './workspace-client.js'
 
 export const WORKSPACE_SIGN = {
   type: 'entitySign',
@@ -52,10 +53,10 @@ export const SHARED_READ_ONLY = {
 }
 
 export const onInit = async (_host, extensionRegistry) => {
-  const mine = await workspacesApi.mine().catch(() => undefined)
+  const asked = workspacesApi.mine().catch(() => undefined)
+  umbHttpClient.interceptors.request.use(onceKnown(asked))
+  const mine = await asked
   if (!mine?.enabled) return
-  const { umbHttpClient } = await import('@umbraco-cms/backoffice/http-client')
-  umbHttpClient.interceptors.request.use(inWorkspace(mine.required === true))
   extensionRegistry.register(WORKSPACE_SIGN)
   extensionRegistry.register(WORKSPACE_INFO)
   extensionRegistry.register(WORKSPACE_MOVE)

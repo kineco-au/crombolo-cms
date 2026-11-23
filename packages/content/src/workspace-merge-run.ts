@@ -397,6 +397,9 @@ export async function runWorkspaceMerge(
         }
         // Story 381: the merge is a change, its files and pages each with before and after.
         const changeId = await recordChange(tx, list, options, items, pages, merged)
+        const alone = options.only === undefined ? undefined : merged[0]
+        if (alone?.published)
+          await options.events.ownPublished?.(tx, { changeId, key: alone.key }, options.actor)
         outcome = {
           ok: true,
           merged,

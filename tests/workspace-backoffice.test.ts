@@ -133,6 +133,7 @@ import {
   headerFor,
   inWorkspace,
   menuFor,
+  onceKnown,
   PALETTE,
   WORKSPACE_HEADER,
 } from '../packages/backoffice-host/plugin/workspace-client.js'
@@ -170,6 +171,31 @@ describe('the switch, in the browser', () => {
     expect(headerFor(null, false)).toBeUndefined()
     expect(headerFor(null, true)).toBe('mine')
     expect(headerFor({ key: 'shared' } as never, true)).toBeUndefined()
+  })
+
+  test('a request waits for the server to say which workspace the tab works in', async () => {
+    const storage = memory()
+    chooseWorkspace({ key: 'abc', name: 'Sale' }, storage)
+    const api = 'http://local/umbraco/management/api/v1/document/x'
+    let answer: (mine: unknown) => void = () => {}
+    const asked = new Promise((resolve) => {
+      answer = resolve
+    })
+    let sent: Request | undefined
+    const sending = onceKnown(
+      asked,
+      storage,
+    )(new Request(api)).then((r: Request) => {
+      sent = r
+    })
+    await Promise.resolve()
+    expect(sent).toBeUndefined()
+    answer({ enabled: true, required: false })
+    await sending
+    expect(sent?.headers.get(WORKSPACE_HEADER)).toBe('abc')
+    // With workspaces off, or no answer, it goes as it is.
+    const off = await onceKnown(Promise.resolve(undefined), storage)(new Request(api))
+    expect(off.headers.has(WORKSPACE_HEADER)).toBe(false)
   })
 
   test('the menu offers Merge only to who may merge, and Share only to the owner', () => {

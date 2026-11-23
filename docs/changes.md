@@ -186,6 +186,9 @@ which ones it applied (story `395`), so editors there are offered only what is l
 - **Setting or clearing a schedule** closes the person's change and raises the event,
   as a publish does. The change carries the page's schedule, and applying it sets the
   same schedule there, which fires at its time.
+- **A publish in a person's own workspace** (story `397`), which merges that page alone
+  into Shared, raises the event for the merge's change, with `From: "own-workspace"`. A
+  named workspace's merge raises none: it waits for a release.
 - **The event says who made the change:** `By: "person"`, or `"tool"` for a sign-in
   exchanged with an actor (story `364`), named in `Tool`.
 - **A host leaves the person a notice** of how it went with

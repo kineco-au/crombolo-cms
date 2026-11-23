@@ -6,13 +6,38 @@ point at `docs/stories/`.
 
 ## Unreleased
 
-## v0.73.1 — 2026-11-23
+## v0.73.2 — 2026-11-23
+
+0.73.1 was not released: its fixes are here.
+
+### Features
+
+- **A publish in a person's own workspace is passed on (397).** On a site that requires a
+  workspace, an editor's publish merges that page into Shared and now raises
+  `Crombolo.ChangePublished` for the merge's change, as a publish in Shared does. Its
+  `Change` says `From: "own-workspace"`; a publish straight in Shared has no `From`. A
+  named workspace's merge still raises none (`docs/webhooks.md`).
 
 ### Fixes
 
 - **A page saves straight after it is created (172).** The back office now keeps
   the revision a new page was created at, so its first Save is no longer refused
   as missing the revision it was based on.
+- **A page opened straight from its address saves in a workspace (172, 384).** On a slow
+  load, the editor could read the page before the back office knew the tab's workspace,
+  so it read Shared's copy and its Save was refused as missing the revision. The back
+  office now opens its sections once it is set up, and waits for the workspace before
+  any request.
+
+### Upgrade notes
+
+- **No migrations.**
+- **A host subscribed to `Crombolo.ChangePublished`** on a site that requires a workspace
+  now hears each editor's publish. One that should take only some of them can tell them
+  apart by `Change.From`.
+- **A back office extension's `onInit` now holds the sections** until it finishes, as
+  Umbraco's app entry points already did. One that waits on something slow opens the
+  back office that much later.
 
 ## v0.73.0 — 2026-11-22
 

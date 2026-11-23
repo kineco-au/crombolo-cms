@@ -76,6 +76,11 @@ bun run vendor:backoffice
   - **What is deleted:** telemetry, profiling, the news feed and the Settings
     welcome.
   - **A column for side panels:** beside main, in the shell.
+  - **Sections open once the entry points have started:** the shell shows its
+    main area, where sections and editors live, only once every
+    `backofficeEntryPoint` has finished its `onInit`. So on a slow fresh load an
+    editor's first read already goes in the tab's workspace and is taken as its
+    own load (`workspaces.js`, `edit-conflicts.js`).
   - **A section's layout from a manifest:** `sectionLayout`, which Settings'
     landing page uses (see "Settings" below).
   - **What the theme reaches** (story 237): the header's hairline, its

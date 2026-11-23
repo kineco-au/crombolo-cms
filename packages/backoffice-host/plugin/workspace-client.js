@@ -93,6 +93,16 @@ export const inWorkspace = (required, storage) => (request) => {
 }
 
 /**
+ * A request sent once the server has said which workspace this tab works in (`asked`,
+ * the answer to `mine`), so none goes out before it: a fresh load straight into an
+ * editor would otherwise read Shared's copy of the page.
+ */
+export const onceKnown = (asked, storage) => async (request) => {
+  const mine = await asked
+  return mine?.enabled ? inWorkspace(mine.required === true, storage)(request) : request
+}
+
+/**
  * What the switch offers, in order. Merge only where the person may merge and the
  * workspace has changes; Share only to its owner. Pure.
  */

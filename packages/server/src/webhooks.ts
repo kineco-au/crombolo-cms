@@ -251,6 +251,8 @@ export interface WebhookFacts extends RaisedWebhookEvent {
       name: string | null
       items: Array<{ kind: string; alias: string }>
     }>
+    /** Story 397: published in the person's own workspace, merging that page alone. */
+    from?: 'own-workspace'
   }
 }
 
@@ -269,6 +271,7 @@ const changeOf = (change: NonNullable<WebhookFacts['change']>) => ({
         })),
       }
     : {}),
+  ...(change.from ? { From: change.from } : {}),
 })
 
 /** An event as the site's own handler receives it (story 298). Pure. */

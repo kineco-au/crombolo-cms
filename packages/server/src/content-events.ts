@@ -138,7 +138,16 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     if (scheduled || schedule.length > 0)
       await changes.scheduleOf(userKey, { key, kind: 'document' }, scheduleEntries(schedule))
     const closed = await changes.publishedBy(userKey, { key, kind: 'document' })
-    if (!closed) return
+    if (closed) await announceChange(tx, key, closed, actor)
+  }
+
+  /** `Crombolo.ChangePublished` for a page's change, as an outbox event in its transaction. */
+  async function announceChange(
+    tx: Db,
+    key: string,
+    closed: { key: string; name: string | null; from?: 'own-workspace' },
+    actor: Actor,
+  ) {
     const change = { ...closed, ...(await madeBy()), ...(await needsOf(tx, key)) }
     const hook = { alias: CHANGE_PUBLISHED, key }
     await new ContentEventRepository(tx).record({
@@ -156,6 +165,17 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
   }
 
   return {
+    async ownPublished(tx, published, actor) {
+      if (!options.changes) return
+      const change = await new ChangeRepository(tx).byId(published.changeId)
+      if (!change) return
+      await announceChange(
+        tx,
+        published.key,
+        { key: change.key, name: change.name, from: 'own-workspace' },
+        actor,
+      )
+    },
     async record(tx: Db, event, actor) {
       if (options.changes) await recordInChange(tx, event, actor as Actor)
       const entry = auditEntryFor(event, actor)
