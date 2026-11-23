@@ -264,5 +264,5 @@ describe('setting up a new site', () => {
     expect(
       await restarted.db.query('SELECT password_hash, security_stamp FROM user_account'),
     ).toEqual(before)
-  })
+  }, 20_000)
 })

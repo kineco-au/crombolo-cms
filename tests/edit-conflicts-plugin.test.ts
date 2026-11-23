@@ -49,6 +49,22 @@ describe('the revision an editor works from', () => {
     expect(revisions.revisionOf(KEY)).toBe('"3.7"')
   })
 
+  test('a page the editor creates is saved from the read its create makes', () => {
+    const revisions = createRevisionTracker()
+    const COLLECTION = 'http://local/umbraco/management/api/v1/document'
+    const made = new Response(null, {
+      status: 201,
+      headers: { 'umb-generated-resource': KEY.toUpperCase() },
+    })
+    revisions.onResponse(made, request(COLLECTION, 'POST'))
+    revisions.onResponse(read('"15.0"'), request(PAGE))
+    expect(revisions.revisionOf(KEY)).toBe('"15.0"')
+    expect(revisions.onRequest(request(PAGE, 'PUT')).headers.get('if-match')).toBe('"15.0"')
+    // Only that first read: a later one is anyone's.
+    revisions.onResponse(read('"16.1"'), request(PAGE))
+    expect(revisions.revisionOf(KEY)).toBe('"15.0"')
+  })
+
   test('a refused save is a conflict until the editor saves or loads again', () => {
     const revisions = createRevisionTracker()
     let heard = 0

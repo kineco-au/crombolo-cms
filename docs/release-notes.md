@@ -6,6 +6,14 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.73.1 — 2026-11-23
+
+### Fixes
+
+- **A page saves straight after it is created (172).** The back office now keeps
+  the revision a new page was created at, so its first Save is no longer refused
+  as missing the revision it was based on.
+
 ## v0.73.0 — 2026-11-22
 
 ### Features

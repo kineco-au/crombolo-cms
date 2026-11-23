@@ -7,17 +7,22 @@
  *
  * Only the editor's own load sets it: another read of the same page (a tree
  * action, the rollback dialog) must not quietly make a stale copy look current.
+ * A page the editor has just created is read back by the create itself, not by a
+ * load, so the first read after its create counts as the editor's own.
  */
 
 const PAGE_WRITE =
   /\/management\/api\/v1\/document\/([0-9a-f-]{36})(?:\/(update-and-publish|publish|patch))?$/i
 const PAGE_READ = /\/management\/api\/v1\/document\/([0-9a-f-]{36})$/i
+const PAGE_CREATE = /\/management\/api\/v1\/document(?:\/create-and-publish)?$/i
 
 export function createRevisionTracker() {
   /** The revision each open page was loaded at, by key. */
   const based = new Map()
   /** Pages whose editor is loading them now. */
   const loading = new Map()
+  /** Pages just created here, whose next read is the editor's own. */
+  const created = new Set()
   /** Pages a save was refused for, because someone else changed them. */
   const conflicts = new Set()
   const listeners = new Set()
@@ -59,10 +64,16 @@ export function createRevisionTracker() {
       if (request.method === 'GET') {
         const read = PAGE_READ.exec(path)
         const key = read?.[1].toLowerCase()
-        if (key && etag && response.ok && loading.has(key)) {
+        if (key && etag && response.ok && (loading.has(key) || created.has(key))) {
+          created.delete(key)
           based.set(key, etag)
           if (conflicts.delete(key)) changed()
         }
+        return response
+      }
+      if (request.method === 'POST' && response.ok && PAGE_CREATE.test(path)) {
+        const made = response.headers.get('umb-generated-resource')
+        if (made) created.add(made.toLowerCase())
         return response
       }
       const write = PAGE_WRITE.exec(path)
