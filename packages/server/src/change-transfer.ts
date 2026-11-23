@@ -20,6 +20,7 @@ import {
   type ContentKind,
   type Db,
   DbDate,
+  DictionaryRepository,
   DocumentRepository,
   type DocumentRepositoryOptions,
   SCHEDULE_PREFIX,
@@ -40,7 +41,11 @@ import {
   type PageSchedule,
 } from '@crombolo/transfer'
 import { fileClass } from './adapters/change-recording.ts'
-import { WORKSPACE_DICTIONARY, writeDictionaryLines } from './adapters/workspace-dictionary.ts'
+import {
+  readDictionaryLines,
+  WORKSPACE_DICTIONARY,
+  writeDictionaryLines,
+} from './adapters/workspace-dictionary.ts'
 import type { MediaFileStore } from './media-files.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
 import { readUdt, type UdtItem } from './udt.ts'
@@ -113,6 +118,55 @@ export function siteDictionaryLines(udt: string): string | undefined {
   return writeDictionaryLines(flat)
 }
 
+/**
+ * Story 402: a bundle's dictionary as this site would hold it. An item whose key the site
+ * has not got is matched to the site's item of the same name, as `dictionary import`
+ * matches a file's; a translation for a language the site lacks is dropped, and named in
+ * `dropped`. Pure.
+ */
+export function fitDictionary(
+  lines: string,
+  site: ReadonlyArray<{ key: string; name: string }>,
+  languages: ReadonlySet<string>,
+): { lines: string; dropped: string[] } {
+  const keys = new Set(site.map((i) => normaliseUuid(i.key)))
+  const byName = new Map(site.map((i) => [i.name, normaliseUuid(i.key)]))
+  const items = readDictionaryLines(lines)
+  const renamed = new Map<string, string>()
+  for (const item of items) {
+    const key = normaliseUuid(item.key)
+    const named = byName.get(item.name)
+    renamed.set(key, !keys.has(key) && named ? named : key)
+  }
+  const dropped: string[] = []
+  const fitted = items.map((item) => ({
+    key: renamed.get(normaliseUuid(item.key)) as string,
+    name: item.name,
+    parentKey: item.parentKey
+      ? (renamed.get(normaliseUuid(item.parentKey)) ?? normaliseUuid(item.parentKey))
+      : null,
+    translations: item.translations.filter((t) => {
+      if (languages.has(t.isoCode.toLowerCase())) return true
+      dropped.push(`dictionary: ${item.name} (${t.isoCode})`)
+      return false
+    }),
+  }))
+  return { lines: writeDictionaryLines(fitted), dropped }
+}
+
+/**
+ * Story 402: the dictionary staged, measured item by item: what the base has and the
+ * bundle lacks keeps the base's line, unless `prune`, so nothing is deleted unasked. Pure.
+ */
+export function stagedDictionary(bundle: string, base: string | null, prune: boolean): string {
+  if (prune || base === null) return bundle
+  const items = readDictionaryLines(bundle)
+  const carried = new Set(items.map((i) => normaliseUuid(i.key)))
+  for (const item of readDictionaryLines(base))
+    if (!carried.has(normaliseUuid(item.key))) items.push(item)
+  return writeDictionaryLines(items)
+}
+
 /** A bundle's node as the state a change carries. Pure. */
 export function siteStateOf(node: BundleNode): ChangePageState {
   const invariant = node.variants.find((v) => v.culture === null) ?? node.variants[0]
@@ -150,6 +204,8 @@ export interface StageOutcome {
   /** Changes this site already holds, which were skipped. */
   skipped: string[]
   conflicts: ChangeConflict[]
+  /** Story 403: refused before anything was staged; `conflicts` names what it needs. */
+  refused?: boolean
 }
 
 export type ApplyOutcome =
@@ -533,6 +589,11 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const conflicts: ChangeConflict[] = []
     if (todo.length === 0) return { workspace: into, skipped, conflicts }
 
+    // Story 403: what a page needs that neither this site, the workspace nor the change has.
+    const lacking = await lackingIn(todo, into)
+    if (lacking.length > 0)
+      return { workspace: undefined, skipped, conflicts: lacking, refused: true }
+
     const coming = new Set(todo.map((b) => normaliseUuid(b.change.key)))
     const known = await changes.held(todo.flatMap((b) => b.change.depends))
     const workspaces = new WorkspaceRepository(db)
@@ -594,6 +655,93 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     return { workspace: (await workspaces.byKey(workspace.key)) ?? workspace, skipped, conflicts }
   }
 
+  /**
+   * Story 403: each type and block element type a change's new pages use that this site does
+   * not have, the workspace does not hold, and the change does not carry. A template is not
+   * refused: a page whose template key is unknown here is staged as one is today.
+   */
+  async function lackingIn(
+    todo: ReadonlyArray<{ change: ChangeBundle }>,
+    into: Workspace | undefined,
+  ): Promise<ChangeConflict[]> {
+    const out: ChangeConflict[] = []
+    const typeRows = await db.q
+      .selectFrom('content_type as t')
+      .innerJoin('node as n', 'n.id', 't.node_id')
+      .select(['n.unique_id', 't.alias', 'n.workspace_id'])
+      .execute()
+    const here = typeRows.filter(
+      (r) => r.workspace_id === null || (into !== undefined && Number(r.workspace_id) === into.id),
+    )
+    const typeKeys = new Set(here.map((r) => normaliseUuid(String(r.unique_id))))
+    const typeAliases = new Set(here.map((r) => String(r.alias).toLowerCase()))
+    for (const { change } of todo) {
+      const named = change.name ?? change.key
+      const carried = new Set(
+        change.files.flatMap((f) =>
+          /^schema\/(content|media|member)-types\//.test(f.path) && f.after
+            ? [(/^alias\s*=\s*"([^"]+)"/m.exec(f.after)?.[1] ?? '').toLowerCase()]
+            : [],
+        ),
+      )
+      const carriesTypes = carried.size > 0
+      const needs = (page: ChangeBundlePage, what: string) =>
+        out.push({
+          change: change.key,
+          item: page.key,
+          says: `"${named}": "${page.after?.name ?? page.key}" needs ${what}, which this site does not have.`,
+        })
+      for (const page of change.pages) {
+        if (page.action === 'delete' || !page.after) continue
+        if (await repo(page.kind).byKey(page.key)) continue
+        const alias = page.contentTypeAlias.toLowerCase()
+        if (
+          !typeKeys.has(normaliseUuid(page.contentTypeKey)) &&
+          !typeAliases.has(alias) &&
+          !carried.has(alias)
+        )
+          needs(
+            page,
+            `the ${page.kind === 'media' ? 'media' : 'document'} type "${page.contentTypeAlias}"`,
+          )
+        if (carriesTypes) continue
+        const blocks = new Set(
+          [
+            ...JSON.stringify(page.after.values).matchAll(
+              /contentTypeKey\\?"\s*:\s*\\?"([0-9a-f-]{36})/gi,
+            ),
+          ].map((m) => normaliseUuid(m[1] as string)),
+        )
+        for (const key of blocks)
+          if (!typeKeys.has(key)) needs(page, `a block's element type (${key})`)
+      }
+    }
+    return out
+  }
+
+  /** Story 403: the page's type as this site keys it: by its key, or else by its alias. */
+  async function typeKeyHere(page: ChangeBundlePage, workspace: Workspace): Promise<string> {
+    const rows = await db.q
+      .selectFrom('content_type as t')
+      .innerJoin('node as n', 'n.id', 't.node_id')
+      .select(['n.unique_id', 't.alias', 'n.workspace_id'])
+      .where((eb) =>
+        eb.or([
+          eb('n.unique_id', '=', normaliseUuid(page.contentTypeKey)),
+          eb('t.alias', '=', page.contentTypeAlias),
+        ]),
+      )
+      .execute()
+    const usable = rows.filter(
+      (r) => r.workspace_id === null || Number(r.workspace_id) === workspace.id,
+    )
+    const byKey = usable.find(
+      (r) => normaliseUuid(String(r.unique_id)) === normaliseUuid(page.contentTypeKey),
+    )
+    const found = byKey ?? usable.find((r) => String(r.alias) === page.contentTypeAlias)
+    return found ? String(found.unique_id) : page.contentTypeKey
+  }
+
   async function stagePage(
     workspace: Workspace,
     page: ChangeBundlePage,
@@ -632,7 +780,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       }
       await here.create({
         key: page.key,
-        contentTypeKey: page.contentTypeKey,
+        contentTypeKey: await typeKeyHere(page, workspace),
         componentKey: page.componentKey,
         parentKey: page.parentKey,
         values: after.values,
@@ -752,6 +900,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     run: { userId?: number; accepted?: readonly string[] },
   ): Promise<ApplyOutcome> {
     const staged = await stage(bundles, principal)
+    if (staged.refused)
+      return { ok: false, skipped: staged.skipped, conflicts: staged.conflicts, workspace: null }
     const workspace = staged.workspace
     if (!workspace) return { ok: true, skipped: staged.skipped, changeId: null }
     const workspaces = new WorkspaceRepository(db)
@@ -996,6 +1146,28 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         'Give base=now to measure from the site as it is, or base=<change key> to measure from the site as that change left it.',
       )
 
+    // Story 402: the dictionary as this site holds one, then measured item by item. The
+    // source's next base is the bundle as fitted, not what is staged.
+    let remembered: SiteSnapshot = after
+    if (after.files[WORKSPACE_DICTIONARY] !== undefined) {
+      const fitted = fitDictionary(
+        after.files[WORKSPACE_DICTIONARY],
+        await new DictionaryRepository(db).all(),
+        new Set(
+          (await db.q.selectFrom('language').select('iso_code').execute()).map((r) =>
+            String(r.iso_code).toLowerCase(),
+          ),
+        ),
+      )
+      leftOut.push(...fitted.dropped)
+      remembered = { ...after, files: { ...after.files, [WORKSPACE_DICTIONARY]: fitted.lines } }
+      after.files[WORKSPACE_DICTIONARY] = stagedDictionary(
+        fitted.lines,
+        base.files[WORKSPACE_DICTIONARY] ?? null,
+        input.prune === true,
+      )
+    }
+
     // The change: what differs between the base and the bundle.
     const files: ChangeBundleFile[] = []
     for (const key of new Set([...Object.keys(after.files), ...Object.keys(base.files)])) {
@@ -1090,7 +1262,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const outcome = await stage([{ change, media }], principal, into)
     if (outcome.workspace) {
       if (!into) await workspaces.rename(outcome.workspace.id, named?.name ?? input.into)
-      await sources.staged(outcome.workspace.id, input.source, JSON.stringify(after))
+      await sources.staged(outcome.workspace.id, input.source, JSON.stringify(remembered))
     }
     return { ok: true, ...outcome, ...told }
   }

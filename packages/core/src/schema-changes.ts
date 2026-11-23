@@ -44,6 +44,8 @@ export const CHANGE_CLASSES = {
   'form-field-entries-orphaned': 'breaking',
   'workflow-removed': 'additive',
   'workflow-requests-withdrawn': 'breaking',
+  // Story 402: a dictionary item removed takes its translations with it.
+  'dictionary-item-removed': 'breaking',
 } as const satisfies Record<string, ChangeClass>
 
 export type ChangeKind = keyof typeof CHANGE_CLASSES

@@ -223,9 +223,10 @@ wrote it.
   item per line, with its key, parent and translations, in name order. Until the
   workspace first changes it, it reads Shared's rows. It merges three ways by item:
   items changed on one side each come through, and an item changed on both is a conflict,
-  settled by choosing one (`files/resolve`). The merge writes the result into Shared's
-  rows in its own transaction. Exporting and importing a dictionary file are done in
-  Shared.
+  settled by choosing one (`files/resolve`). An item the workspace removes is accepted
+  by name or kind at the merge (`dictionary-item-removed`, story `402`), as a deleted page
+  is. The merge writes the result into Shared's rows in its own transaction. Exporting
+  and importing a dictionary file are done in Shared.
 - **Blueprints** are held as pages are: one made there is a node of its own
   (`WorkspaceDocumentBlueprint`), and a change to Shared's is a version of the
   workspace's, its delete waiting for the merge. Their folders, moves and history are

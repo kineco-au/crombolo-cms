@@ -210,9 +210,37 @@ export function describeFileChange(
         return [item('workflow-removed', was.alias, `The workflow "${was.name}" is removed.`)]
     }
   }
+  if (path === DICTIONARY_FILE && before !== null && after !== null)
+    return dictionaryItems(path, before, after)
   if (before === null) return [item('file-added', path, `${path} is added.`)]
   if (after === null) return [item('file-removed', path, `${path} is removed.`)]
   return [item('file-changed', path, `${path} changes.`)]
+}
+
+/** Where a workspace keeps the dictionary (story 392): an item a line. */
+const DICTIONARY_FILE = 'content/dictionary.jsonl'
+
+/** Story 402: the dictionary's change, with each item it removes accepted by name. */
+function dictionaryItems(path: string, before: string, after: string): ChangeItem[] {
+  const read = (text: string) => {
+    const out = new Map<string, string>()
+    for (const line of text.split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const parsed = JSON.parse(line) as { key?: string; name?: string }
+        if (parsed.key) out.set(parsed.key.toLowerCase(), parsed.name ?? parsed.key)
+      } catch {}
+    }
+    return out
+  }
+  const now = read(after)
+  const removed = [...read(before)].filter(([key]) => !now.has(key))
+  return [
+    item('file-changed', path, `${path} changes.`),
+    ...removed.map(([, name]) =>
+      item('dictionary-item-removed', name, `The dictionary item "${name}" is removed.`),
+    ),
+  ]
 }
 
 /** Story 392: each language added, changed or removed. */

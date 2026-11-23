@@ -368,6 +368,12 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
           const workspaces = new WorkspaceRepository(options.db)
           if (outcome.workspace)
             await workspaces.discard(outcome.workspace.id, principal.id, { quiet: true })
+          // Story 403: a change needing what this site lacks is refused, here as when staged.
+          if (outcome.refused)
+            return Response.json(
+              { skipped: outcome.skipped, conflicts: outcome.conflicts, refused: true },
+              { status: 409 },
+            )
           return Response.json({
             skipped: outcome.skipped,
             conflicts: outcome.conflicts,

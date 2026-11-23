@@ -6,7 +6,14 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import { writeNpmTarball } from '@crombolo/server'
+import {
+  type DictionaryEntry,
+  dictionaryKey,
+  readDictionaryToml,
+  type UdtItem,
+  writeNpmTarball,
+  writeUdtAll,
+} from '@crombolo/server'
 import {
   BUNDLE_FORMAT_VERSION,
   type BundleFile,
@@ -50,7 +57,30 @@ export function checkoutSections(dir: string): BundleFile[] {
         })
       break
     }
+  // Story 402: the dictionary a person keeps by hand, carried as a whole site's is.
+  const toml = join(dir, 'dictionary.toml')
+  if (existsSync(toml))
+    out.push({ path: 'dictionary.udt', text: dictionaryUdtOf(readFileSync(toml, 'utf8')) })
   return out
+}
+
+/**
+ * A checkout's `dictionary.toml` as a bundle carries a dictionary: each item keyed as
+ * every site keys an item of that name, which the site matches to its own by name.
+ */
+export function dictionaryUdtOf(text: string): string {
+  const { entries, problems } = readDictionaryToml(text)
+  if (problems.length > 0)
+    throw new Error(
+      `dictionary.toml cannot be read: ${problems.map((p) => `${p.path.join('.')}: ${p.message}`).join('; ')}`,
+    )
+  const udt = (entry: DictionaryEntry): UdtItem => ({
+    key: dictionaryKey(entry.name),
+    name: entry.name,
+    translations: entry.translations,
+    children: entry.children.map(udt),
+  })
+  return writeUdtAll(entries.map(udt))
 }
 
 /** A checkout as a whole-site bundle of its files, packed. */

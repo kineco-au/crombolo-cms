@@ -8,8 +8,15 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
-import { packCheckout } from '../packages/cli/src/support/site-bundle.ts'
-import { siteFileKey, siteStateOf } from '../packages/server/src/change-transfer.ts'
+import type { ChangeBundle, ChangeBundlePage } from '@crombolo/transfer'
+import { dictionaryUdtOf, packCheckout } from '../packages/cli/src/support/site-bundle.ts'
+import {
+  fitDictionary,
+  siteFileKey,
+  siteStateOf,
+  stagedDictionary,
+} from '../packages/server/src/change-transfer.ts'
+import { packChange } from '../packages/server/src/remote-changes.ts'
 import { exportSite } from '../packages/server/src/site-file.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, ORIGIN, signedInServer, V1 } from './support/harness.ts'
@@ -146,7 +153,29 @@ async function site() {
     const merged = await send('POST', `${WORKSPACES}/${workspace}/merge`, {})
     expect(merged.status, await merged.clone().text()).toBe(200)
   }
-  return { h, root, page, read, edit, checkout, stage, merge }
+  /** A change, packed, sent as a host sends one. */
+  const putChange = async (change: ChangeBundle, query: string) => {
+    const bytes = packChange(change, new Map())
+    const response = await h.server.fetch(
+      new Request(`${ORIGIN}${BACKOFFICE}/crombolo/api/changes?${query}`, {
+        method: 'PUT',
+        body: bytes as BodyInit,
+        headers: {
+          'content-type': 'application/gzip',
+          'crombolo-sha256': new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),
+          authorization: `Bearer ${tokenOf(h)}`,
+        },
+      }),
+    )
+    return {
+      status: response.status,
+      body: (await response.json()) as {
+        workspace?: string | null
+        conflicts: Array<{ says: string }>
+      },
+    }
+  }
+  return { h, root, page, read, edit, checkout, stage, merge, putChange, typeKey, componentKey }
 }
 
 const titleOf = (doc: { values: Array<{ alias: string; value: unknown }> }) =>
@@ -228,6 +257,90 @@ describe(`a site bundle staged as a change (${dialectUnderTest})`, () => {
     expect(staged.body.workspace).toEqual(expect.any(String))
   }, 60_000)
 
+  test('an item the bundle lacks is kept unless prune (story 402)', async () => {
+    const s = await site()
+    await s.page('Home', 'Welcome')
+    const make = async (name: string, translation: string) => {
+      const made = await s.h.post(`${V1}/dictionary`, {
+        name,
+        parent: null,
+        translations: [{ isoCode: 'en-US', translation }],
+      })
+      expect(made.status).toBe(201)
+      return made.headers.get('umb-generated-resource') as string
+    }
+    const greeting = await make('Greeting', 'Hello')
+    const bundle = await s.checkout()
+    expect(
+      (
+        await s.h.put(`${V1}/dictionary/${greeting}`, {
+          name: 'Greeting',
+          translations: [{ isoCode: 'en-US', translation: 'Hi' }],
+        })
+      ).status,
+    ).toBe(200)
+    const footer = await make('Footer', 'Made here')
+
+    const kept = await s.stage(bundle, 'source=ci&into=CI&base=now')
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200)
+    await s.merge(kept.body.workspace as string)
+    expect((await s.h.call(`${V1}/dictionary/${footer}`)).status).toBe(200)
+    const back = (await (await s.h.call(`${V1}/dictionary/${greeting}`)).json()) as {
+      translations: Array<{ translation: string }>
+    }
+    expect(back.translations[0]?.translation).toBe('Hello')
+
+    const pruned = await s.stage(bundle, 'source=ci&into=CI&base=now&prune=true')
+    expect(pruned.body.files.map((f) => f.path)).toEqual(['content/dictionary.jsonl'])
+    const merge = (accept: string[]) =>
+      s.h.call(`${WORKSPACES}/${pruned.body.workspace}/merge`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accept }),
+      })
+    const refused = await merge([])
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain('dictionary-item-removed:Footer')
+    expect((await merge(['dictionary-item-removed:Footer'])).status).toBe(200)
+    expect((await s.h.call(`${V1}/dictionary/${footer}`)).status).toBe(404)
+  }, 60_000)
+
+  test("a checkout's dictionary.toml is matched by name, and a language the site lacks is left out", async () => {
+    const s = await site()
+    await s.page('Home', 'Welcome')
+    const made = await s.h.post(`${V1}/dictionary`, {
+      name: 'Greeting',
+      parent: null,
+      translations: [{ isoCode: 'en-US', translation: 'Hello' }],
+    })
+    const greeting = made.headers.get('umb-generated-resource') as string
+    const checkout = mkdtempSync(join(s.root, 'checkout-'))
+    for (const dir of ['schema/content-types', 'components'])
+      mkdirSync(join(checkout, dir), { recursive: true })
+    writeFileSync(join(checkout, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+    writeFileSync(join(checkout, 'schema', 'content-types', 'page.toml'), PAGE_TOML)
+    writeFileSync(join(checkout, 'components', 'page.tsx'), 'export default () => <main />\n')
+    writeFileSync(
+      join(checkout, 'dictionary.toml'),
+      '[Greeting]\n"en-US" = "Hi there"\n"fr-FR" = "Bonjour"\n',
+    )
+    const staged = await s.stage(packCheckout(checkout, 'riverside'), 'source=ci&into=CI&base=now')
+    expect(staged.status, JSON.stringify(staged.body)).toBe(200)
+    expect(staged.body.leftOut).toContain('dictionary: Greeting (fr-FR)')
+    await s.merge(staged.body.workspace as string)
+    const items = (await (await s.h.call(`${V1}/dictionary?skip=0&take=50`)).json()) as {
+      items: Array<{ id: string; name: string }>
+    }
+    expect(items.items.filter((i) => i.name === 'Greeting').map((i) => i.id)).toEqual([greeting])
+    const now = (await (await s.h.call(`${V1}/dictionary/${greeting}`)).json()) as {
+      translations: Array<{ isoCode: string; translation: string }>
+    }
+    expect(now.translations).toEqual([{ isoCode: 'en-US', translation: 'Hi there' }])
+
+    writeFileSync(join(checkout, 'dictionary.toml'), 'Greeting = "not a table"\n')
+    expect(() => packCheckout(checkout, 'riverside')).toThrow('dictionary.toml cannot be read')
+  }, 60_000)
+
   test('its dictionary is staged as the workspace keeps one, and merged by item', async () => {
     const s = await site()
     await s.page('Home', 'Welcome')
@@ -267,6 +380,124 @@ describe(`a site bundle staged as a change (${dialectUnderTest})`, () => {
     expect(refused.status).toBe(403)
     expect(refused.body.message).toBe('You may not stage this site here')
   }, 60_000)
+})
+
+describe(`a staged change needing what the site lacks (story 403, ${dialectUnderTest})`, () => {
+  const made = (
+    page: Partial<ChangeBundlePage> & { contentTypeKey: string; contentTypeAlias: string },
+  ) =>
+    ({
+      key: crypto.randomUUID(),
+      name: 'From elsewhere',
+      kind: 'merge',
+      madeBy: null,
+      createdAt: new Date().toISOString(),
+      source: 'elsewhere',
+      depends: [],
+      files: [],
+      media: [],
+      pages: [
+        {
+          key: crypto.randomUUID(),
+          kind: 'document',
+          action: 'create',
+          parentKey: null,
+          componentKey: null,
+          before: null,
+          after: { name: 'Gig', values: [], published: false },
+          lastChange: null,
+          ...page,
+        },
+      ],
+    }) as ChangeBundle
+
+  test('is refused with a 409 naming it, staged or checked, and nothing is staged', async () => {
+    const s = await site()
+    const change = made({ contentTypeKey: crypto.randomUUID(), contentTypeAlias: 'event' })
+    for (const query of ['stage=true', 'check=true', '']) {
+      const refused = await s.putChange(change, query)
+      expect(refused.status, query).toBe(409)
+      expect(JSON.stringify(refused.body), query).toContain(
+        '\\"Gig\\" needs the document type \\"event\\", which this site does not have.',
+      )
+    }
+    const listed = (await (await s.h.call(WORKSPACES)).json()) as { items: unknown[] }
+    expect(listed.items).toEqual([])
+  }, 60_000)
+
+  test('a block element type the site lacks is refused too', async () => {
+    const s = await site()
+    const block = crypto.randomUUID()
+    const blocks = await s.putChange(
+      made({
+        contentTypeKey: s.typeKey,
+        contentTypeAlias: 'page',
+        after: {
+          name: 'Gig',
+          published: false,
+          values: [
+            {
+              alias: 'title',
+              culture: null,
+              segment: null,
+              value: JSON.stringify({ contentData: [{ contentTypeKey: block }] }),
+            },
+          ],
+        },
+      }),
+      'stage=true',
+    )
+    expect(blocks.status).toBe(409)
+    expect(JSON.stringify(blocks.body)).toContain(`a block's element type (${block})`)
+  }, 60_000)
+
+  test('a type this site has by its alias, under another key, is staged with this site’s', async () => {
+    const s = await site()
+    const staged = await s.putChange(
+      made({ contentTypeKey: crypto.randomUUID(), contentTypeAlias: 'page' }),
+      'stage=true',
+    )
+    expect(staged.status, JSON.stringify(staged.body)).toBe(200)
+    expect(staged.body.workspace).toEqual(expect.any(String))
+  }, 60_000)
+})
+
+describe("a bundle's dictionary, fitted and measured (story 402)", () => {
+  const line = (key: string, name: string, translations: Record<string, string> = {}) =>
+    JSON.stringify({
+      key,
+      name,
+      parentKey: null,
+      translations: Object.entries(translations).map(([isoCode, translation]) => ({
+        isoCode,
+        translation,
+      })),
+    })
+  const A = '00000000-0000-4000-8000-00000000000a'
+  const B = '00000000-0000-4000-8000-00000000000b'
+  const C = '00000000-0000-4000-8000-00000000000c'
+
+  test('an item is matched to the site’s by name, and a language it lacks is dropped', () => {
+    const fitted = fitDictionary(
+      `${line(A, 'Greeting', { 'en-US': 'Hi', 'fr-FR': 'Salut' })}\n`,
+      [{ key: B, name: 'Greeting' }],
+      new Set(['en-us']),
+    )
+    expect(fitted.dropped).toEqual(['dictionary: Greeting (fr-FR)'])
+    expect(JSON.parse(fitted.lines.trim())).toMatchObject({ key: B, name: 'Greeting' })
+  })
+
+  test('what the base has and the bundle lacks is kept, unless prune', () => {
+    const bundle = `${line(A, 'Greeting')}\n`
+    const base = `${line(A, 'Greeting')}\n${line(C, 'Footer')}\n`
+    expect(stagedDictionary(bundle, base, false)).toContain('Footer')
+    expect(stagedDictionary(bundle, base, true)).not.toContain('Footer')
+    expect(stagedDictionary(bundle, null, false)).toBe(bundle)
+  })
+
+  test("a checkout's dictionary.toml becomes a bundle's, keyed by name", () => {
+    expect(dictionaryUdtOf('[Greeting]\n"en-US" = "Hello"\n')).toContain('Greeting')
+  })
 })
 
 describe('a site bundle, read as a change', () => {

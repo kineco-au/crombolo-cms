@@ -130,7 +130,15 @@ describe(`the dictionary in a workspace (${dialectUnderTest})`, () => {
     ).toBe(200)
     expect(await read(child.id, sale.key)).toBeUndefined()
     expect(await read(child.id)).toBe('Save')
-    expect((await send('POST', `${WORKSPACES}/${sale.key}/merge`, {})).status).toBe(200)
+    // Story 402: a delete is accepted by name or kind, as a page's is.
+    expect((await send('POST', `${WORKSPACES}/${sale.key}/merge`, {})).status).toBe(409)
+    expect(
+      (
+        await send('POST', `${WORKSPACES}/${sale.key}/merge`, {
+          accept: ['dictionary-item-removed'],
+        })
+      ).status,
+    ).toBe(200)
     expect(await read(parent.id)).toBeUndefined()
     expect(await read(child.id)).toBeUndefined()
   })

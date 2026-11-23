@@ -117,6 +117,12 @@ Management API's (above, "Moving a change without the remote").
   merge applies it, recording the change under its own key with every change it holds
   in `applied_change` (migration 088), so a change is applied once. Several can be
   staged into one (`&into=`) and applied together.
+- **Refused when it needs what the site lacks** (story `403`): a new page whose content
+  type is neither here (by key or alias), in the workspace it goes into, nor carried by
+  the change, or whose blocks name an element type this site has not got, is refused
+  before anything is staged (409), each named ("needs the document type "event", which
+  this site does not have"). Staging, applying and `check` alike. A page whose type is
+  here under its alias but another key is staged with this site's.
 - **Applied** (`PUT changes`), it is staged and merged at once. A conflict leaves the
   workspace open to edit, holding the change, and changes nothing in Shared; a finding
   (`382`) is counted against the target and refused until accepted there (`?accept=`).
@@ -140,6 +146,11 @@ the site. The site works out the change itself, measured from a base.
   (as the workspace keeps one, `content/dictionary.jsonl`, merged by item), and its
   pages, media items (with their files), Library items and blueprints. Its code,
   `public/` and Library folders are left out and listed (`leftOut`).
+- **The dictionary is measured item by item** (story `402`): an item whose key the site
+  has not got is matched to the site's item of the same name; a translation for a
+  language the site lacks is dropped and listed (`dictionary: Greeting (fr-FR)`); and an
+  item the base has and the bundle lacks is kept unless `prune`, when its removal is
+  accepted at the merge (`dictionary-item-removed`).
 - **The base is a source's last merge.** `source` names where it comes from. When a
   change staged from it merges, the site keeps the bundle's items as they were in it
   (`change_source`, migration 094), and the next staging from the source measures from
@@ -158,7 +169,19 @@ the site. The site works out the change itself, measured from a base.
 - **From the command line:** `crombolo changes stage <path> --into --source [--base]
   [--prune] [--dry-run]`. The path is a site bundle's `.tgz`, its folder, or a site's
   checkout, which is built into a whole-site bundle of its files first: its schema,
-  components, stylesheets and scripts, with no pages and no database.
+  components, stylesheets and scripts, and its `dictionary.toml` when it keeps one (as
+  `crombolo dictionary export --out dictionary.toml` writes it), with no pages and no
+  database.
+
+### Levelling a site first
+
+A site whose Shared holds schema or content made before workspaces were on has no change
+that carries it, so changes moved from it later can refer to what never travelled. Bring
+the target level first with the whole site as one change: export it
+(`crombolo site export --out site.tgz`) and stage it on the target with
+`changes/from-site?source=baseline&into=Baseline&base=now`, then look at it and merge it.
+Changes move as usual after that. A change that still needs what the target lacks is
+refused, naming it (story `403`).
 
 ### Pending workspaces
 

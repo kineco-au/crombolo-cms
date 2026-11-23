@@ -552,4 +552,6 @@ it.
 | `399` | A site bundle staged as a change | should | L | done | 382, 383, 392, 394 |
 | `400` | A workspace's life raised as events | could | M | done | 380, 384, 388, 398 |
 | `401` | An administrator reads any workspace, when they ask to | should | S | done | 384, 386 |
+| `402` | A staged dictionary keeps what the bundle leaves out | must | S | done | 399 |
+| `403` | A staged change needing what the site lacks is refused | must | S | done | 383, 399 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

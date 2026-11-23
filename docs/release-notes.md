@@ -6,6 +6,27 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.74.1 — 2026-11-23
+
+### Fixes
+
+- **A staged dictionary keeps what the bundle leaves out (402).** In 0.74.0, staging a
+  site bundle (`changes/from-site`, `crombolo changes stage`) deleted every dictionary
+  item Shared had and the bundle lacked, even without `prune`. Now such an item is kept
+  unless `prune`; an item is matched to the site's by name when its key is unknown; and a
+  translation for a language the site lacks is dropped and listed in `leftOut`. A
+  checkout carries its `dictionary.toml`.
+- **A staged change that needs what the site lacks is refused (403).** Staging or applying
+  a change whose new page uses a content type the site does not have, or a block element
+  type it does not have, answered 500. It is refused with 409 now, naming each, before
+  anything is staged. A type the site has under the same alias but another key is used.
+
+### Upgrade notes
+
+- **A dictionary item removed in a workspace is accepted at the merge** (402), by name
+  (`dictionary-item-removed:<name>`) or kind (`dictionary-item-removed`), as a deleted
+  page is. A merge that removes one is refused until it is.
+
 ## v0.74.0 — 2026-11-23
 
 ### Features
