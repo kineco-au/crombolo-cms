@@ -204,6 +204,13 @@ export interface UsersSetting {
 export const usersManaged = (config: { users?: UsersSetting }) =>
   (config.users?.managedBy.length ?? 0) > 0
 
+/** Who defines the site's user groups (story 405): `managedAt` takes `{alias}` or `{key}`. */
+export type GroupsSetting = UsersSetting
+
+/** Whether user groups are defined only outside the site (story 405). */
+export const groupsManaged = (config: { groups?: GroupsSetting }) =>
+  (config.groups?.managedBy.length ?? 0) > 0
+
 /** Whether the site takes its pages, media, types and code only by a change (story 388). */
 export const contentLocked = (config: Pick<CromboloConfig, 'contentEditing'>) =>
   config.contentEditing === 'locked'
@@ -510,6 +517,12 @@ export interface CromboloConfig {
    * `{email}`, `{key}` or `{userName}`. `CROMBOLO_USERS_MANAGED_BY`, `CROMBOLO_USERS_MANAGED_AT`.
    */
   users: UsersSetting
+  /**
+   * Story 405: user groups defined outside the site. With `managedBy` naming API clients,
+   * only they create, change or delete a group; `managedAt` is where one group is defined,
+   * with `{alias}` or `{key}`. `CROMBOLO_GROUPS_MANAGED_BY`, `CROMBOLO_GROUPS_MANAGED_AT`.
+   */
+  groups: GroupsSetting
   /** The most days a command-line token may last. `CROMBOLO_CLI_TOKEN_MAX_DAYS`, 90. */
   cliTokenMaxDays: number
   /**
@@ -1130,6 +1143,13 @@ export function loadConfig(
         .filter(Boolean),
       managedAt: setting('CROMBOLO_USERS_MANAGED_AT') || undefined,
     },
+    groups: {
+      managedBy: (setting('CROMBOLO_GROUPS_MANAGED_BY') ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+      managedAt: setting('CROMBOLO_GROUPS_MANAGED_AT') || undefined,
+    },
     cliTokenMaxDays: Math.floor(positiveNumber(setting('CROMBOLO_CLI_TOKEN_MAX_DAYS'), 90)),
     workspaces: setting('CROMBOLO_WORKSPACES') === 'true',
     workspacesRequired: setting('CROMBOLO_WORKSPACES_REQUIRED') === 'true',
@@ -1332,6 +1352,15 @@ export function loadConfig(
     throw new Error(
       `users.managedAt is "${merged.users.managedAt}": it is an http or https address, with {email}, {key} or {userName}.`,
     )
+  if (
+    !Array.isArray(merged.groups?.managedBy) ||
+    merged.groups.managedBy.some((id) => typeof id !== 'string' || !id.trim())
+  )
+    throw new Error('groups.managedBy in crombolo.config.ts is a list of API client ids.')
+  if (merged.groups.managedAt !== undefined && !/^https?:\/\//.test(merged.groups.managedAt))
+    throw new Error(
+      `groups.managedAt is "${merged.groups.managedAt}": it is an http or https address, with {alias} or {key}.`,
+    )
   if (merged.applyChangesBy !== 'any' && merged.applyChangesBy !== 'exchange')
     throw new Error(
       `applyChangesBy is "${String(merged.applyChangesBy)}": it is any or exchange (CROMBOLO_APPLY_CHANGES_BY).`,
@@ -1492,7 +1521,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.74.1'
+export const VERSION = '0.75.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

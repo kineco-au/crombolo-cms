@@ -13,8 +13,8 @@ import {
   migrate,
   readLedger,
   readState,
-  STATE_CHANGE_SOURCES,
   STATE_CONTENT_APPLIED,
+  STATE_GROUP_START_KEYS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -162,10 +162,11 @@ describe('upgrading from the previous release', () => {
       'AddWorkspaceProcesses',
       'AddWorkspaceConflictsRaised',
       'AddChangeSources',
+      'AddGroupStartKeys',
     ])
-    expect(await readState(db)).toBe(STATE_CHANGE_SOURCES)
+    expect(await readState(db)).toBe(STATE_GROUP_START_KEYS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.74.0', steps: 45 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.75.0', steps: 46 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

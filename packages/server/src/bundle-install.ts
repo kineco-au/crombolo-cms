@@ -96,7 +96,7 @@ import {
   swappedSections,
   swapSections,
 } from './bundle-sections.ts'
-import { type CromboloConfig, VERSION } from './config.ts'
+import { type CromboloConfig, groupsManaged, usersManaged, VERSION } from './config.ts'
 import { dictionaryToUdt, importDictionaryUdt, writeDictionaryUdt } from './dictionary-transfer.ts'
 import { syncDomainsFile } from './domains.ts'
 import { mediaStoreFor, placeBlobs } from './media-files.ts'
@@ -424,6 +424,9 @@ export async function transferOptions(
       hasBlob: async (key: string) => Boolean(await store.get(key)),
       backOfficePath: config.backOfficePath,
       ...(input.excludePeople ? { excludePeople: true } : {}),
+      // Stories 404 and 405: what the directory alone writes is not taken from a bundle.
+      ...(usersManaged(config) ? { usersManaged: true } : {}),
+      ...(groupsManaged(config) ? { groupsManaged: true } : {}),
     },
     under,
     problems: saved.problems,

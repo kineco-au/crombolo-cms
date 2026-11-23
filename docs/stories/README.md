@@ -554,4 +554,6 @@ it.
 | `401` | An administrator reads any workspace, when they ask to | should | S | done | 384, 386 |
 | `402` | A staged dictionary keeps what the bundle leaves out | must | S | done | 399 |
 | `403` | A staged change needing what the site lacks is refused | must | S | done | 383, 399 |
+| `404` | A managed user's external login, linked by its directory, and nothing else writes users | must | S | done | 031, 389 |
+| `405` | User groups defined from outside the site | should | L | done | 338, 389 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

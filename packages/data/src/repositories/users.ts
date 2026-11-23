@@ -24,6 +24,8 @@ export interface StartNodeSelection {
 export interface GroupStartNode {
   root: boolean
   key: string | null
+  /** Story 405: held by key, its item not on this site yet, so it gives no start here. */
+  waiting?: boolean
 }
 
 export interface UserRecord {
@@ -96,6 +98,8 @@ export interface UserGroupInput {
   startNodes: Record<StartNodeTree, GroupStartNode>
   permissions: string[]
   granular: GranularPermission[]
+  /** Story 405: a start node whose item is not here is kept by key, to apply when it arrives. */
+  holdStartNodes?: boolean
 }
 
 /** A group as a site's files declare it (story 228). */
@@ -710,12 +714,22 @@ const GROUP_COLUMNS = [
   'start_content_id',
   'start_media_id',
   'start_element_id',
+  'start_content_key',
+  'start_media_key',
+  'start_element_key',
 ] as const
 
 const GROUP_START_COLUMN: Record<StartNodeTree, string> = {
   document: 'start_content_id',
   media: 'start_media_id',
   element: 'start_element_id',
+}
+
+/** Story 405: where a start node is held by key while its item is not here. */
+const GROUP_START_KEY_COLUMN: Record<StartNodeTree, string> = {
+  document: 'start_content_key',
+  media: 'start_media_key',
+  element: 'start_element_key',
 }
 
 const groups = (db: Db) => db.q.selectFrom('user_group').select(GROUP_COLUMNS)
@@ -772,12 +786,37 @@ export class UserGroupRepository {
         .where('id', 'in', positive)
         .execute())
         nodes.set(Number(row.id), normaliseUuid(String(row.unique_id)))
+    // Story 405: held start nodes, and which of them have arrived since.
+    const heldKeys = [
+      ...new Set(
+        rows.flatMap((r) =>
+          TREES.flatMap((tree) => {
+            const held = r[GROUP_START_KEY_COLUMN[tree] as keyof typeof r]
+            return typeof held === 'string' && held ? [normaliseUuid(held)] : []
+          }),
+        ),
+      ),
+    ]
+    const arrived = new Set<string>()
+    if (heldKeys.length > 0)
+      for (const row of await this.#db.q
+        .selectFrom('node')
+        .select('unique_id')
+        .where('unique_id', 'in', heldKeys)
+        .where('workspace_id', 'is', null)
+        .execute())
+        arrived.add(normaliseUuid(String(row.unique_id)))
 
     return rows.map((row) => {
       const id = Number(row.id)
       const key = normaliseUuid(String(row.key))
       const start = (tree: StartNodeTree): GroupStartNode => {
         const value = row[GROUP_START_COLUMN[tree]]
+        const held = row[GROUP_START_KEY_COLUMN[tree] as keyof typeof row]
+        if ((value === null || value === undefined) && typeof held === 'string' && held) {
+          const key = normaliseUuid(held)
+          return { root: false, key, ...(arrived.has(key) ? {} : { waiting: true }) }
+        }
         if (value === null || value === undefined) return { root: false, key: null }
         const nodeId = Number(value)
         if (nodeId === ROOT_ID) return { root: true, key: null }
@@ -893,13 +932,20 @@ export class UserGroupRepository {
         media: null,
         element: null,
       }
+      const held: Record<StartNodeTree, string | null> = {
+        document: null,
+        media: null,
+        element: null,
+      }
       for (const tree of TREES) {
         const start = input.startNodes[tree]
         if (start.root) starts[tree] = ROOT_ID
         else if (start.key) {
           const ids = await users.nodeIds([start.key])
-          if (!ids) return { missingNode: tree }
-          starts[tree] = ids.get(normaliseUuid(start.key)) ?? null
+          // Story 405: one not here yet is held by key, giving no start until it arrives.
+          if (!ids && input.holdStartNodes) held[tree] = normaliseUuid(start.key)
+          else if (!ids) return { missingNode: tree }
+          else starts[tree] = ids.get(normaliseUuid(start.key)) ?? null
         }
       }
       const languageIds: number[] = []
@@ -925,6 +971,9 @@ export class UserGroupRepository {
         start_content_id: starts.document,
         start_media_id: starts.media,
         start_element_id: starts.element,
+        start_content_key: held.document,
+        start_media_key: held.media,
+        start_element_key: held.element,
       }
       const existing = await new UserGroupRepository(tx).byKey(key)
       if (existing)

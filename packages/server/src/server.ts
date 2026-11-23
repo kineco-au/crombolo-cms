@@ -114,6 +114,7 @@ import {
   SingleUseTokens,
   searchProvidersOf,
   TransferRunRepository,
+  UserGroupRepository,
   UserRepository,
   WorkspaceFileRepository,
   WorkspaceLinkRepository,
@@ -198,6 +199,7 @@ import { checkTypes, listEmailTemplates, siteLayouts } from './components.ts'
 import {
   type CromboloConfig,
   contentLocked,
+  groupsManaged,
   listeningBodyLimit,
   loadConfig,
   type ServerRole,
@@ -326,7 +328,7 @@ import {
   viteIslandManifest,
   viteOutDir,
 } from './islands.ts'
-import { managedHref } from './managed-users.ts'
+import { managedGroupHref, managedHref } from './managed-users.ts'
 import {
   hasMiddleware,
   isSitePath,
@@ -360,6 +362,7 @@ import {
 } from './status-pages.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { summariseUpgrades } from './upgrade-summary.ts'
+import { createUserLogins } from './user-logins.ts'
 import { createViewAs } from './view-as.ts'
 import { webhookStoreView } from './webhooks.ts'
 import {
@@ -1887,6 +1890,13 @@ export async function createServer(
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
   const usersManagedPath = `${paths.pluginPath}/api/users-managed`
+  // Story 404: a user's external logins, linked by the directory that manages users.
+  const userLoginsPath = `${paths.pluginPath}/api/users/`
+  const userLogins = createUserLogins({
+    db,
+    providers: () => config.backofficeIdentityProviders.map((p) => p.oidc.id),
+    managedBy: () => config.users?.managedBy ?? [],
+  })
   const workspacesPath = `${paths.pluginPath}/api/workspaces`
   const changesPath = `${paths.pluginPath}/api/changes`
   const environmentValuesPath = `${paths.pluginPath}/api/environment-values`
@@ -1968,6 +1978,7 @@ export async function createServer(
     media: mediaFiles,
     schema: () => workspaceSchema,
     merge: () => core.operations.merge,
+    groupsManaged: () => groupsManaged(config),
   })
   // Story 394: the remote's change routes, on the Management API for a bearer token.
   const managementChanges = createChangeRoutes({
@@ -3481,10 +3492,45 @@ export async function createServer(
       const managed = usersManaged(config)
       const template = managed ? config.users.managedAt : undefined
       const key = new URL(request.url).searchParams.get('user')
-      if (!key) return Response.json({ managed, linked: template !== undefined })
+      // Story 405: whether User Groups is the directory's, where each group is defined, and
+      // which of its start nodes wait for their items.
+      const groupsAreManaged = groupsManaged(config)
+      const groupTemplate = groupsAreManaged ? config.groups?.managedAt : undefined
+      const groupKey = new URL(request.url).searchParams.get('group')
+      if (groupKey) {
+        const group = await new UserGroupRepository(db).byKey(groupKey).catch(() => undefined)
+        return Response.json({
+          href: group && groupTemplate ? managedGroupHref(groupTemplate, group) : null,
+          waiting: group
+            ? (['document', 'media', 'element'] as const).filter((t) => group.startNodes[t].waiting)
+            : [],
+        })
+      }
+      if (!key)
+        return Response.json({
+          managed,
+          linked: template !== undefined,
+          groupsManaged: groupsAreManaged,
+          groupsLinked: groupTemplate !== undefined,
+        })
       if (!template || !hasSection(principal, 'users')) return Response.json({ href: null })
       const user = await new UserRepository(db).byKey(key).catch(() => undefined)
       return Response.json({ href: user ? managedHref(template, user) : null })
+    }
+
+    // Story 404: a user's links to their external sign-ins, for a token in Authorization alone.
+    if (
+      pathname.startsWith(userLoginsPath) &&
+      pathname.slice(userLoginsPath.length).includes('/logins')
+    ) {
+      if (!carriesBearer(request))
+        return Response.json(
+          { message: 'Linking a sign-in needs a sign-in token in Authorization, not a cookie.' },
+          { status: 401 },
+        )
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return userLogins.handle(request, principal, pathname.slice(userLoginsPath.length))
     }
 
     // Story 351: a person's command-line tokens, and an administrator's view of anyone's.

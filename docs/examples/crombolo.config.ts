@@ -36,6 +36,10 @@ export default defineConfig({
     managedBy: [], // CROMBOLO_USERS_MANAGED_BY: API clients a directory outside the site signs in as
     managedAt: 'https://people.example.com/users/{email}', // CROMBOLO_USERS_MANAGED_AT
   },
+  groups: {
+    managedBy: [], // CROMBOLO_GROUPS_MANAGED_BY: API clients that define the user groups outside the site
+    managedAt: 'https://people.example.com/groups/{alias}', // CROMBOLO_GROUPS_MANAGED_AT
+  },
   workspaces: true, // CROMBOLO_WORKSPACES: pages changed apart from Shared
   workspacesRequired: false, // CROMBOLO_WORKSPACES_REQUIRED: every page change made in a workspace
   applyChangesBy: 'any', // CROMBOLO_APPLY_CHANGES_BY: exchange, to stage or apply only by an exchanged sign-in

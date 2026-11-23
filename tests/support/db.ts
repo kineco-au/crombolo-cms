@@ -134,6 +134,10 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 095, a group's start nodes held by key (story 405): columns on a table that stays.
+  for (const column of ['start_content_key', 'start_media_key', 'start_element_key'])
+    await db.exec(`ALTER TABLE user_group DROP COLUMN ${column}`)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddGroupStartKeys'")
   // 094, where site bundles staged as changes came from (story 399): tables of their own.
   await db.exec('DROP TABLE IF EXISTS change_source')
   await db.exec('DROP TABLE IF EXISTS change_source_staged')

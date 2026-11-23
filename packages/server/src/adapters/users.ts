@@ -114,7 +114,7 @@ export interface UserPortOptions {
     | 'allowPasswordReset'
     | 'backOfficePath'
     | 'backofficeIdentityProviders'
-  > & { users?: UsersSetting }
+  > & { users?: UsersSetting; groups?: UsersSetting }
   mediaFiles: MediaFileStore
   nodes: NodeLookup
   /** The groups the site's files declare (story 228). */
@@ -655,9 +655,12 @@ export function createUserPorts(
         nodes,
         onPagePermissionsChanged: options.onPagePermissionsChanged,
         declared: options.declaredGroups,
+        // Story 405: a start node not here yet is held by key until it arrives.
+        holdStartNodes: (config.groups?.managedBy.length ?? 0) > 0,
       }),
     },
     config.users?.managedBy ?? [],
+    config.groups?.managedBy ?? [],
   )
   return { ...managed, userData: createUserDataPort(db) }
 }
@@ -804,6 +807,8 @@ function createUserGroupPort(
     nodes: NodeLookup
     onPagePermissionsChanged?: UserPortOptions['onPagePermissionsChanged']
     declared?: () => DeclaredGroups
+    /** Story 405: a start node naming an item not here is held by key, not refused. */
+    holdStartNodes?: boolean
   },
 ): UserGroupPort {
   const fileOf = (alias: string) => deps.declared?.().groups.get(alias.toLowerCase())
@@ -914,6 +919,7 @@ function createUserGroupPort(
       },
       permissions: input.fallbackPermissions,
       granular: fromPermissions(input.permissions),
+      ...(deps.holdStartNodes ? { holdStartNodes: true } : {}),
     })
     if (result === 'saved') return 'Success'
     if (result === 'missing-language') return 'LanguageNotFound'

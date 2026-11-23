@@ -320,6 +320,20 @@ const DECLARED = [
     description:
       "The directory's address for one user, with `{email}`, `{key}` or `{userName}` filled in: the Users section links each person there.",
   },
+  {
+    env: 'CROMBOLO_GROUPS_MANAGED_BY',
+    kind: 'list',
+    section: 'Sign-in and secrets',
+    description:
+      'The API clients that define the user groups, outside the site. Set, only they create, change or remove a group: its name, sections, levels, start nodes, languages and per-item permissions.',
+  },
+  {
+    env: 'CROMBOLO_GROUPS_MANAGED_AT',
+    kind: 'string',
+    section: 'Sign-in and secrets',
+    description:
+      'Where one group is defined, with `{alias}` or `{key}` filled in: the User Groups section links each group there.',
+  },
 
   // Back office and bundles
   {

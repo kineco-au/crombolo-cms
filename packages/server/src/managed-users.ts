@@ -23,8 +23,11 @@ export function managedUserPorts(
   db: Db,
   ports: { users: UserPort; groups: UserGroupPort },
   managedBy: readonly string[],
+  /** Story 405: the API clients that define the groups; none leaves them to the site. */
+  groupsManagedBy: readonly string[] = [],
 ): { users: UserPort; groups: UserGroupPort } {
-  if (managedBy.length === 0) return ports
+  const defined = groupsDefinedBy(ports, groupsManagedBy)
+  if (managedBy.length === 0) return defined
   const clients = new Set(managedBy)
   const repository = new UserRepository(db)
   const isDirectory = (principal: Principal) =>
@@ -39,7 +42,7 @@ export function managedUserPorts(
   }
   const others = (principal: Principal, key: string) =>
     self(principal, key) ? Promise.resolve(false) : refused(principal, [key])
-  const { users, groups } = ports
+  const { users, groups } = defined
   return {
     users: {
       ...users,
@@ -110,6 +113,49 @@ export function managedUserPorts(
     },
   }
 }
+
+/** What a refused group change says (story 405). */
+export const GROUPS_DEFINED_OUTSIDE =
+  "This site's user groups are defined outside it: create, change or remove them there."
+
+/**
+ * Story 405: a group's definition kept for the API clients that define groups; who is
+ * in a group stays 389's.
+ */
+function groupsDefinedBy(
+  ports: { users: UserPort; groups: UserGroupPort },
+  managedBy: readonly string[],
+): { users: UserPort; groups: UserGroupPort } {
+  if (managedBy.length === 0) return ports
+  const clients = new Set(managedBy)
+  const defines = (principal: Principal) =>
+    principal.viaClient !== undefined && clients.has(principal.viaClient)
+  const { groups } = ports
+  return {
+    users: ports.users,
+    groups: {
+      ...groups,
+      async create(principal, input) {
+        if (!defines(principal)) return { status: 'ManagedOutside' as const }
+        return groups.create(principal, input)
+      },
+      async update(principal, key, input): Promise<UserGroupStatus> {
+        if (!defines(principal)) return 'ManagedOutside'
+        return groups.update(principal, key, input)
+      },
+      async delete(principal, keys): Promise<UserGroupStatus> {
+        if (!defines(principal)) return 'ManagedOutside'
+        return groups.delete(principal, keys)
+      },
+    },
+  }
+}
+
+/** The directory's address for one group, `{alias}` and `{key}` filled in (story 405). */
+export const managedGroupHref = (template: string, group: { key: string; alias: string }) =>
+  template
+    .replaceAll('{alias}', encodeURIComponent(group.alias))
+    .replaceAll('{key}', encodeURIComponent(group.key))
 
 /** The directory's address for one user, `{email}`, `{key}` and `{userName}` filled in. */
 export const managedHref = (

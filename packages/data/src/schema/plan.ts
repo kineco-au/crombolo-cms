@@ -57,6 +57,7 @@ import { formWorkflowSecretsMigration } from './form-workflow-secrets.ts'
 import { formWorkflowsMigration } from './form-workflows.ts'
 import { formsMigration } from './forms.ts'
 import { groupPermissionsMigration } from './group-permissions.ts'
+import { groupStartKeysMigration } from './group-start-keys.ts'
 import { identityMigration } from './identity.ts'
 import { imageAltTextMigration } from './image-alt-text.ts'
 import { jobsMigration } from './jobs.ts'
@@ -203,4 +204,5 @@ export const cromboloPlan = new MigrationPlan([
   workspaceProcessesMigration,
   workspaceConflictsMigration,
   changeSourcesMigration,
+  groupStartKeysMigration,
 ])

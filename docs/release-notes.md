@@ -6,6 +6,33 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.75.0 — 2026-11-23
+
+### Features
+
+- **A managed user's sign-in, linked by the directory (404).** Where users are managed
+  from outside (`users.managedBy`), the directory links each user it makes to their
+  external sign-in: `PUT <backoffice>/crombolo/api/users/{key}/logins { provider,
+  subject }`, `GET` and `DELETE …/logins/{provider}`. The person then signs in through
+  the provider with the groups the directory set (`docs/configuration.md`).
+- **User groups defined outside the site (405).** With `groups.managedBy`
+  (`CROMBOLO_GROUPS_MANAGED_BY`) and `groups.managedAt`, only the named API clients
+  create, change or delete a user group; User Groups is read-only in the back office,
+  linking to where each is defined. A start node naming an item not here yet waits by
+  key, giving no start until the item arrives, and a bundle or change carrying a group's
+  definition is refused (`docs/configuration.md`).
+
+### Fixes
+
+- **A bundle carrying users is refused where users are managed (404).** A site import
+  or bundle apply wrote its users past `users.managedBy`; it is refused at its check now
+  (`users-managed`), and goes ahead with `--exclude-people`.
+
+### Upgrade notes
+
+- **Migration 095** (`AddGroupStartKeys`) adds `start_content_key`, `start_media_key` and
+  `start_element_key` to `user_group`, where a start node waits for its item.
+
 ## v0.74.1 — 2026-11-23
 
 ### Fixes

@@ -3,6 +3,8 @@
  * keeps no way to add, invite, remove, disable, enable or unlock a person, or to change
  * their groups, and each person links to the directory where the site names it. A
  * person is saved here only when they are an API user. The server refuses the rest too.
+ * Where groups are defined outside the site (story 405), User Groups is read-only too,
+ * each group linking to where it is defined.
  */
 
 const base = () =>
@@ -28,6 +30,36 @@ export const MANAGED_HIDDEN = [
   'Umb.EntityBulkAction.User.SetGroup',
   'Umb.WorkspaceAction.User.Save',
 ]
+
+/** Story 405: what changes a group's definition, where the groups are defined outside. */
+export const GROUPS_HIDDEN = [
+  'Umb.CollectionAction.UserGroup.Create',
+  'Umb.EntityAction.UserGroup.Delete',
+  'Umb.EntityBulkAction.UserGroup.Delete',
+  'Umb.WorkspaceAction.UserGroup.Save',
+]
+
+export const OPEN_GROUP_IN_DIRECTORY = {
+  type: 'entityAction',
+  kind: 'default',
+  alias: 'Crombolo.EntityAction.UserGroup.OpenInDirectory',
+  name: 'Crombolo Open User Group In Directory',
+  forEntityTypes: ['user-group'],
+  weight: 1100,
+  api: () => import('./users-managed-group-action.js'),
+  meta: { icon: 'icon-out', label: 'Open where this group is defined' },
+}
+
+/** Where the directory defines this group, or null. */
+export async function groupHref(key, fetcher = fetch) {
+  const response = await fetcher(`${MANAGED_ENDPOINT()}?group=${encodeURIComponent(key)}`, {
+    credentials: 'include',
+    headers: { accept: 'application/json' },
+  }).catch(() => undefined)
+  if (!response?.ok) return null
+  const { href } = await response.json().catch(() => ({}))
+  return typeof href === 'string' ? href : null
+}
 
 export const API_USER_CONDITION = {
   type: 'condition',
@@ -73,6 +105,14 @@ export async function directoryHref(key, fetcher = fetch) {
   return typeof href === 'string' ? href : null
 }
 
+/** What User Groups becomes where groups are defined outside the site (story 405). */
+export function applyGroupsManaged(extensionRegistry, { groupsManaged, groupsLinked }) {
+  if (!groupsManaged) return false
+  for (const alias of GROUPS_HIDDEN) extensionRegistry.exclude(alias)
+  if (groupsLinked) extensionRegistry.register(OPEN_GROUP_IN_DIRECTORY)
+  return true
+}
+
 /** What the Users section becomes on a site whose people the directory keeps. */
 export function applyManaged(extensionRegistry, { managed, linked }) {
   if (!managed) return false
@@ -88,5 +128,7 @@ export const onInit = async (_host, extensionRegistry) => {
     () => undefined,
   )
   if (!response?.ok) return
-  applyManaged(extensionRegistry, await response.json())
+  const answer = await response.json()
+  applyManaged(extensionRegistry, answer)
+  applyGroupsManaged(extensionRegistry, answer)
 }

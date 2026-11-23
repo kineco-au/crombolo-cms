@@ -110,6 +110,8 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_USERNAME_IS_EMAIL` | `true` / `false` | `true` | A back office user's login is their e-mail address. |
 | `CROMBOLO_USERS_MANAGED_BY` | list | — | The API clients a directory outside the site signs in as. Set, only they add, change, disable or remove back office users or change whom a group holds; each person keeps their own language, avatar, password and two-factor. |
 | `CROMBOLO_USERS_MANAGED_AT` | string | — | The directory's address for one user, with `{email}`, `{key}` or `{userName}` filled in: the Users section links each person there. |
+| `CROMBOLO_GROUPS_MANAGED_BY` | list | — | The API clients that define the user groups, outside the site. Set, only they create, change or remove a group: its name, sections, levels, start nodes, languages and per-item permissions. |
+| `CROMBOLO_GROUPS_MANAGED_AT` | string | — | Where one group is defined, with `{alias}` or `{key}` filled in: the User Groups section links each group there. |
 
 ### Back office and bundles
 
@@ -474,10 +476,52 @@ or `CROMBOLO_USERS_MANAGED_BY` (client ids, separated by commas) and
 - **An identity provider signs in only people who exist:** it makes no new user and
   changes no groups from its claims. A person the directory disabled is refused as any
   disabled user is.
+- **The directory links each person to their sign-in** (story 404), so a provider signs
+  them in the first time: `PUT <backoffice>/crombolo/api/users/{key}/logins
+  { provider, subject }` (the provider's id as `backofficeIdentityProviders` names it,
+  and the provider's subject for the person), `GET` to list a user's links, and
+  `DELETE …/logins/{provider}` to remove one. Only the directory's clients, with a
+  sign-in token in `Authorization`; without the setting, an administrator. A login
+  linked to someone else is refused (409). So the directory creates the user, sets its
+  groups, links its login, and the person signs in.
+- **A bundle carrying users is refused** (`users-managed`, at its check): a site import
+  or bundle apply with users writes no user here. `--exclude-people` leaves its people
+  out; a bundle carrying members and no users applies as before.
 - **The Users section** offers no way to add, invite, remove, disable, enable or unlock
   a person or to change their groups, and saves only API users. With `managedAt` set,
   each person's actions include "Open where this person is managed", the address with
   `{email}`, `{key}` or `{userName}` filled in.
+
+
+## User groups defined outside the site
+
+A host that keeps one definition of each user group for every environment names the API
+clients that define them (story 405), beside `users`:
+
+```ts
+export default defineConfig({
+  groups: {
+    managedBy: ['crombolo-back-office-directory'],
+    managedAt: 'https://people.example.com/groups/{alias}',
+  },
+})
+```
+
+or `CROMBOLO_GROUPS_MANAGED_BY` and `CROMBOLO_GROUPS_MANAGED_AT` (`{alias}` or `{key}`),
+read at boot. Either setting may be on without the other.
+
+- **Only those clients** create, change or delete a group, every part of it: name,
+  alias, icon, sections, each area's level and verbs, start nodes, languages and
+  per-item permissions. Everyone else is refused, administrators included ("Managed
+  outside this site"). Who is in a group stays `users`'.
+- **User Groups is read-only** in the back office: no create, save or delete, and each
+  group links to `managedAt`.
+- **An item not here yet:** a per-item permission names it by key and takes effect when
+  it arrives. A start node naming it is held by key: until the item arrives the group has
+  no start in that tree, so its people see none of it; when it does, it applies.
+  `<plugin>/api/users-managed?group=<key>` lists the trees still waiting.
+- **A bundle carrying a group's definition is refused** at its check (`groups-managed`),
+  as a change carrying one is; `--exclude-people` leaves its people out.
 
 ## E-mail
 

@@ -5,8 +5,18 @@
  * permissions stay the administrator's.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { SUPER_USER_KEY, UserGroupRepository, UserRepository } from '@crombolo/data'
-import { type CromboloConfig, loadConfig, managedHref, oidc } from '@crombolo/server'
+import {
+  type CromboloConfig,
+  checkBundleContent,
+  exportSite,
+  extractTarball,
+  loadConfig,
+  managedHref,
+  oidc,
+} from '@crombolo/server'
 import {
   applyManaged,
   MANAGED_HIDDEN,
@@ -218,7 +228,12 @@ describe(`users managed from outside the site (${dialectUnderTest})`, () => {
 
   test('the back office is told, and links each person to the directory', async () => {
     const { h, directory, editor } = await site()
-    expect(await h.json<unknown>(PLUGIN)).toEqual({ managed: true, linked: true })
+    expect(await h.json<unknown>(PLUGIN)).toEqual({
+      managed: true,
+      linked: true,
+      groupsManaged: false,
+      groupsLinked: false,
+    })
     const created = await directory('POST', `${V1}/user`, person('di@example.test', [editor]))
     const key = created.headers.get('umb-generated-resource') as string
     expect(await h.json<unknown>(`${PLUGIN}?user=${key}`)).toEqual({
@@ -228,7 +243,12 @@ describe(`users managed from outside the site (${dialectUnderTest})`, () => {
 
   test('with the setting off nothing changes', async () => {
     const { h, editor } = await site({ users: { managedBy: [] } })
-    expect(await h.json<unknown>(PLUGIN)).toEqual({ managed: false, linked: false })
+    expect(await h.json<unknown>(PLUGIN)).toEqual({
+      managed: false,
+      linked: false,
+      groupsManaged: false,
+      groupsLinked: false,
+    })
     expect((await h.post(`${V1}/user`, person('ed@example.test', [editor]))).status).toBe(201)
   })
 
@@ -280,6 +300,111 @@ describe(`users managed from outside the site (${dialectUnderTest})`, () => {
     expect(known.headers.get('location')).toBe('/')
     expect((await new UserRepository(h.server.db).byKey(key))?.groupKeys).toEqual([editor])
   })
+})
+
+describe(`a managed user's external login, linked by the directory (story 404, ${dialectUnderTest})`, () => {
+  const LOGINS = (key: string) => `${BACKOFFICE}/crombolo/api/users/${key}/logins`
+  const tokenOf = (h: Harness) => /umbAccessToken[^=]*=([^;]+)/.exec(h.cookie())?.[1] as string
+
+  test('the directory links a user it made, who then signs in with the groups it set', async () => {
+    const fake = await startFakeOidc('crombolo-backoffice')
+    fakes.push(fake)
+    const { h, directory, editor } = await site({
+      backofficeIdentityProviders: [
+        oidc({
+          id: 'fake',
+          name: 'Fake',
+          issuer: fake.issuer,
+          clientId: 'crombolo-backoffice',
+          autoCreate: true,
+          linkByEmail: false,
+          emailsVerified: true,
+          groups: { map: { 'writers-claim': 'writer' } },
+        }),
+      ],
+    })
+    const visit = (path: string, init: RequestInit = {}) =>
+      h.server.fetch(new Request(`${ORIGIN}${path}`, { redirect: 'manual', ...init }))
+    const signInAs = async (claims: Parameters<FakeOidc['as']>[0]) => {
+      fake.as(claims)
+      const started = await visit(`${V1}/security/back-office/external/fake?returnUrl=%2F`)
+      const flow = started.headers
+        .getSetCookie()
+        .map((c) => c.split(';')[0] as string)
+        .find((c) => c.startsWith('crombolo-external-user=')) as string
+      const atProvider = await fetch(started.headers.get('location') as string, {
+        redirect: 'manual',
+      })
+      const callback = new URL(atProvider.headers.get('location') as string)
+      return visit(`${callback.pathname}${callback.search}`, { headers: { cookie: flow } })
+    }
+    const created = await directory('POST', `${V1}/user`, person('gi@example.test', [editor]))
+    const key = created.headers.get('umb-generated-resource') as string
+
+    const linked = await directory('PUT', LOGINS(key), { provider: 'fake', subject: 'g-1' })
+    expect(linked.status, await linked.clone().text()).toBe(200)
+    expect(await linked.json()).toMatchObject({ items: [{ provider: 'fake', subject: 'g-1' }] })
+    const signedIn = await signInAs({
+      sub: 'g-1',
+      email: 'gi@example.test',
+      email_verified: true,
+      groups: ['writers-claim'],
+    })
+    expect(signedIn.status).toBe(302)
+    expect(signedIn.headers.get('location')).toBe('/')
+    expect((await new UserRepository(h.server.db).byKey(key))?.groupKeys).toEqual([editor])
+
+    // A login linked to someone else, an unknown provider, and anyone but the directory.
+    const other = await directory('POST', `${V1}/user`, person('ho@example.test', [editor]))
+    const otherKey = other.headers.get('umb-generated-resource') as string
+    expect(
+      (await directory('PUT', LOGINS(otherKey), { provider: 'fake', subject: 'g-1' })).status,
+    ).toBe(409)
+    expect(
+      (await directory('PUT', LOGINS(otherKey), { provider: 'nope', subject: 'x' })).status,
+    ).toBe(404)
+    const asAdmin = await h.server.fetch(
+      new Request(`${ORIGIN}${LOGINS(otherKey)}`, {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${tokenOf(h)}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'fake', subject: 'h-1' }),
+      }),
+    )
+    expect(asAdmin.status).toBe(403)
+    const byCookie = await h.call(LOGINS(otherKey))
+    expect(byCookie.status).toBe(401)
+
+    expect((await directory('GET', LOGINS(key))).status).toBe(200)
+    expect((await directory('DELETE', `${LOGINS(key)}/fake`)).status).toBe(204)
+    expect(await (await directory('GET', LOGINS(key))).json()).toEqual({ items: [] })
+  }, 30_000)
+
+  test('a bundle carrying users is refused while users are managed, and goes without its people', async () => {
+    const { h, directory, editor } = await site()
+    await directory('POST', `${V1}/user`, person('io@example.test', [editor]))
+    const root = mkdtempSync(join(process.cwd(), 'output', 'users-managed-bundle-'))
+    try {
+      const out = join(root, 'site.tgz')
+      await exportSite(h.server.db, h.server.config, {
+        out,
+        media: false,
+        withUsers: true,
+        passphrase: 'a long enough passphrase',
+      })
+      const dir = join(root, 'site')
+      await extractTarball(out, dir)
+      const input = { bundle: dir, passphrase: 'a long enough passphrase' }
+      const refused = await checkBundleContent(h.server.db, h.server.config, input)
+      expect(refused.check.outstanding.map((f) => f.code)).toContain('users-managed')
+      const without = await checkBundleContent(h.server.db, h.server.config, {
+        ...input,
+        excludePeople: true,
+      })
+      expect(without.check.findings.map((f) => f.code)).not.toContain('users-managed')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 })
 
 describe('the Users section of a managed site', () => {

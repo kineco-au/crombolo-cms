@@ -932,8 +932,11 @@ export interface CoreTables {
     key: string
     name: string
     start_content_id: number | null
+    start_content_key: string | null
     start_element_id: number | null
+    start_element_key: string | null
     start_media_id: number | null
+    start_media_key: string | null
     update_date: Timestamp
   }
   user_group_granular_permission: {

@@ -203,6 +203,10 @@ export interface CheckOptions {
   adoptUsers?: boolean
   /** The bundle's members, member groups, users and user groups are left out entirely. */
   excludePeople?: boolean
+  /** Story 404: the site's users are managed outside it, so a bundle carrying users is refused. */
+  usersManaged?: boolean
+  /** Story 405: the site's user groups are defined outside it, so a bundle carrying one is refused. */
+  groupsManaged?: boolean
 }
 
 /** What the import would do to one node. */
@@ -975,6 +979,29 @@ export async function checkBundle(
       })
     : undefined
   if (people) findings.push(...people.findings)
+  // Stories 404 and 405: what the directory alone writes here is not taken from a bundle.
+  const managedRefusal = (code: string, message: string) =>
+    findings.push({
+      kind: 'blocking',
+      code,
+      subjectType: 'bundle',
+      subjectKey: set.manifest.id,
+      subjectName: set.manifest.label ?? set.manifest.id,
+      propertyAlias: null,
+      culture: null,
+      message,
+      link: null,
+    })
+  if (options.usersManaged && (carriedPeople?.users.length ?? 0) > 0)
+    managedRefusal(
+      'users-managed',
+      "This site's users are managed outside it, so the bundle's users cannot be applied: leave its people out (--exclude-people).",
+    )
+  if (options.groupsManaged && (carriedPeople?.userGroups.length ?? 0) > 0)
+    managedRefusal(
+      'groups-managed',
+      "This site's user groups are defined outside it, so the bundle's user groups cannot be applied: leave its people out (--exclude-people).",
+    )
 
   return {
     bundleId: set.manifest.id,

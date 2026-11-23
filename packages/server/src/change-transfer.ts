@@ -234,6 +234,8 @@ export interface ChangeTransferOptions {
       }
     | undefined
   merge: () => WorkspaceMerging | undefined
+  /** Story 405: whether user groups are defined outside the site, so a change carrying one is refused. */
+  groupsManaged?: () => boolean
 }
 
 const fieldOf = (v: {
@@ -589,6 +591,23 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const conflicts: ChangeConflict[] = []
     if (todo.length === 0) return { workspace: into, skipped, conflicts }
 
+    // Story 405: a group's definition is the directory's, never a change's.
+    if (options.groupsManaged?.()) {
+      const carrying = todo.filter((b) =>
+        b.change.files.some((f) => f.path.startsWith('schema/user-groups/')),
+      )
+      if (carrying.length > 0)
+        return {
+          workspace: undefined,
+          skipped,
+          refused: true,
+          conflicts: carrying.map((b) => ({
+            change: b.change.key,
+            item: 'user groups',
+            says: `"${b.change.name ?? b.change.key}": this site's user groups are defined outside it, so the change cannot carry one.`,
+          })),
+        }
+    }
     // Story 403: what a page needs that neither this site, the workspace nor the change has.
     const lacking = await lackingIn(todo, into)
     if (lacking.length > 0)
