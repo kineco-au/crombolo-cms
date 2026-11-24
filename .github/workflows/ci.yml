@@ -206,7 +206,7 @@ jobs:
               env:
                   # Two processes on a runner's four CPUs, as `bun run test` would choose.
                   CROMBOLO_TEST_SHARDS: '2'
-                  # Each file's seconds, for `bun run test:weights <run>` to rebalance the shards.
+                  # Each file's seconds, for `bun run ci:weights <run>` to rebalance the shards.
                   CROMBOLO_TEST_TIMINGS: output/test-timings.json
               run: bun run test:ci:shard --shard ${{ matrix.shard }}/${{ matrix.shards }} --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }}
             - name: Keep each file's time

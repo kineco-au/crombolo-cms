@@ -138,14 +138,15 @@ async function main(argv: string[]): Promise<number> {
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      // `bun test` reports on stderr; each file timed as its results arrive.
+      // Each file timed as its results arrive, on whichever stream `bun test` reports them:
+      // stderr in a terminal, stdout on GitHub Actions.
       const [out, err, code] = await Promise.all([
-        new Response(run.stdout).text(),
+        readTimed(run.stdout),
         readTimed(run.stderr),
         run.exited,
       ])
-      Object.assign(timings, err.seconds)
-      const output = out + err.text
+      Object.assign(timings, out.seconds, err.seconds)
+      const output = out.text + err.text
       const seconds = ((performance.now() - started) / 1000).toFixed(0)
       console.log(
         `\n── shard ${i + 1}/${sets.length}: ${files.length} files, done at ${seconds}s ──`,
@@ -162,7 +163,7 @@ async function main(argv: string[]): Promise<number> {
     }),
     { pass: 0, fail: 0, skip: 0 },
   )
-  // For `bun run test:weights`: each file's seconds, where CI asks for them.
+  // For `bun run ci:weights`: each file's seconds, where CI asks for them.
   if (Bun.env.CROMBOLO_TEST_TIMINGS)
     writeFileSync(Bun.env.CROMBOLO_TEST_TIMINGS, `${JSON.stringify(timings, null, 2)}\n`)
   const failed = results.filter((r) => r.code !== 0).map((r) => r.shard)

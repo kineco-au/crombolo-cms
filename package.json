@@ -59,7 +59,7 @@
     "test:all": "bun run test:sqlite && bun run test:postgres",
     "test:browser": "playwright test -c tests/browser/playwright.config.ts",
     "test:ci": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test",
-    "test:weights": "bun run scripts/test-weights.ts",
+    "ci:weights": "bun run scripts/test-weights.ts",
     "test:ci:shard": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun run scripts/test-parallel.ts",
     "test:bench": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test ./tests/load/*.bench.ts --timeout 600000",
     "test:load": "CROMBOLO_SQLITE_FILE=:memory: CROMBOLO_ADMIN_PASSWORD=test-password CROMBOLO_COMPONENTS_DIR=output/test-views CROMBOLO_MEDIA_DIR=output/test-media CROMBOLO_LOGS_DIR=output/test-logs CROMBOLO_LOG_TO_CONSOLE=false bun test ./tests/load/*.load.ts --timeout 600000",

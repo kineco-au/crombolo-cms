@@ -41,7 +41,7 @@ each job runs `bun run test:ci:shard --shard <n>/4`, its share of the files spli
 again across two processes, so no job runs much past ten minutes (one SQLite job had
 grown past half an hour). The shares come from `tests/shard-weights.json`, each
 file's seconds on Postgres in CI: each Postgres job uploads what it timed
-(`test-timings-postgres-<n>`), and `bun run test:weights <run-id>` rewrites the
+(`test-timings-postgres-<n>`), and `bun run ci:weights <run-id>` rewrites the
 weights from a run, so the shards stay even as files are added.
 
 **The compose `db` allows 400 connections** (story 231). Six shards side by side,

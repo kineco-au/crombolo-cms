@@ -1,5 +1,5 @@
 /**
- * `bun run test:weights <run-id>`: `tests/shard-weights.json` from a CI run's Postgres
+ * `bun run ci:weights <run-id>`: `tests/shard-weights.json` from a CI run's Postgres
  * jobs, so `scripts/test-shard.ts` splits the suite by what each file takes now.
  *
  * Each job uploads the seconds `scripts/test-parallel.ts` timed per file
@@ -57,7 +57,7 @@ const gh = (args: string[]) => {
 
 async function main(runId: string | undefined): Promise<number> {
   if (!runId) {
-    console.error('Usage: bun run test:weights <run-id>, a CI run with --postgres-tests.')
+    console.error('Usage: bun run ci:weights <run-id>, a CI run with --postgres-tests.')
     return 2
   }
   const seconds: Record<string, number> = {}

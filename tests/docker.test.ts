@@ -74,10 +74,11 @@ describe('the test containers', () => {
     expect(servicesOf('docker:test:browser')).toEqual(['cms-test-browser'])
     // Both dialects, in the order `test:all` runs them.
     expect(servicesOf('docker:test:all')).toEqual(['cms-test-sqlite', 'cms-test'])
-    // Nothing in the test family is left without one, `test:ci` excepted: it takes
-    // its dialect from the environment, which in a container is the service.
+    // Nothing in the test family is left without one, `test:ci` and `test:ci:shard`
+    // excepted: they take their dialect from the environment, which in a container is
+    // the service.
     const hostCommands = Object.keys(scripts).filter(
-      (name) => /^test(:|$)/.test(name) && name !== 'test:ci',
+      (name) => /^test(:|$)/.test(name) && !/^test:ci(:|$)/.test(name),
     )
     for (const host of hostCommands) expect(servicesOf(`docker:${host}`).length).toBeGreaterThan(0)
   })
