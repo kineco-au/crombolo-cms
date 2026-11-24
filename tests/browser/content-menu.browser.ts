@@ -110,7 +110,7 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
   await strip(page).getByRole('link', { name: 'Structure' }).click()
 
   // Its tree sits under Structure's, and stays beside a form when one opens.
-  // A node of Structure's own menu, after Data Types and before Languages.
+  // A node of Structure's own menu, after Data Types; Languages are Translation's (story 419).
   const tree = page.locator('crombolo-definition-tree').first()
   await expect(tree.locator('uui-menu-item[label="Forms"]')).toBeVisible()
   const names = await page
@@ -118,7 +118,7 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
     .evaluateAll((items) => items.map((item) => item.getAttribute('label')))
   const at = (label: string) => names.indexOf(label)
   expect(at('Forms')).toBeGreaterThan(at('Data Types'))
-  expect(at('Languages')).toBeGreaterThan(at('Forms'))
+  expect(at('Languages')).toBe(-1)
   await tree.getByRole('link', { name: 'Forms', exact: true }).click()
   await expect(page).toHaveURL(/\/section\/content\/structure\/forms\/entries/)
   await expect(tree).toBeVisible()
@@ -223,7 +223,7 @@ test('Workflows is a node in Structure, below Forms, started from its tree', asy
     .evaluateAll((items) => items.map((item) => item.getAttribute('label')))
   const at = (label: string) => names.indexOf(label)
   expect(at('Workflows')).toBeGreaterThan(at('Forms'))
-  expect(at('Languages')).toBeGreaterThan(at('Workflows'))
+  expect(at('Languages')).toBe(-1)
   const tree = page
     .locator('crombolo-definition-tree')
     .filter({ has: page.locator('uui-menu-item[label="Workflows"]') })

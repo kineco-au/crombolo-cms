@@ -58,7 +58,9 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
     timeout: 30_000,
   })
   await expect(waiting).not.toContainText('You have no changes waiting')
-  await expect(approvalsLink).toHaveAttribute('aria-current', 'page')
+  // A tab of its own (story 419), marked while it is open; never in the strip.
+  await expect(tabs.filter({ hasText: 'Approvals' })).toHaveAttribute('active', '')
+  await expect(approvalsLink).toHaveCount(0)
   await expect(page.locator('umb-section-main-views uui-tab')).toHaveCount(0)
   await expect(page.locator('crombolo-workflow-designer')).toHaveCount(0)
 

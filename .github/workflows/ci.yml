@@ -124,19 +124,19 @@ jobs:
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
-            # SQLite always, in one job; Postgres for a release, or when the commit
-            # asks, in four. Postgres runs the suite about twice as slowly, and its
-            # one job had set the release's length (17 to 28 minutes), so it is
-            # split by measured time (scripts/test-shard.ts). Each shard is a run of
-            # its own, with its own database (tests/support/isolate.ts).
+            # SQLite always, Postgres for a release or when the commit asks, each in
+            # four jobs split by measured time (scripts/test-shard.ts), and each job
+            # across two processes (scripts/test-parallel.ts --shard), so no job runs
+            # much past ten minutes: SQLite in one job had grown past half an hour.
+            # Each process is isolated, with its own database (tests/support/isolate.ts).
             matrix: >-
                 ${{ fromJSON(
                   (inputs.postgres_tests ||
                    (github.event_name == 'push' &&
                     github.ref == 'refs/heads/main' &&
                     contains(github.event.head_commit.message, '--postgres-tests')))
-                  && '{"include":[{"dialect":"sqlite","shard":1,"shards":1},{"dialect":"postgres","shard":1,"shards":4},{"dialect":"postgres","shard":2,"shards":4},{"dialect":"postgres","shard":3,"shards":4},{"dialect":"postgres","shard":4,"shards":4}]}'
-                  || '{"include":[{"dialect":"sqlite","shard":1,"shards":1}]}') }}
+                  && '{"include":[{"dialect":"sqlite","shard":1,"shards":4},{"dialect":"sqlite","shard":2,"shards":4},{"dialect":"sqlite","shard":3,"shards":4},{"dialect":"sqlite","shard":4,"shards":4},{"dialect":"postgres","shard":1,"shards":4},{"dialect":"postgres","shard":2,"shards":4},{"dialect":"postgres","shard":3,"shards":4},{"dialect":"postgres","shard":4,"shards":4}]}'
+                  || '{"include":[{"dialect":"sqlite","shard":1,"shards":4},{"dialect":"sqlite","shard":2,"shards":4},{"dialect":"sqlite","shard":3,"shards":4},{"dialect":"sqlite","shard":4,"shards":4}]}') }}
         services:
             # Started for every leg; the sqlite leg simply never connects to it.
             db:
@@ -202,24 +202,21 @@ jobs:
             # on sqlite, 883 ms on Postgres here, and over 5 s on a runner. It had
             # been failing CI only, because this step was the one place the suite
             # ran against Postgres without the longer timeout.
-            - name: Run the suite${{ matrix.shards > 1 && format(', shard {0} of {1}', matrix.shard, matrix.shards) || '' }}
-              run: |
-                  files=""
-                  # The Next.js test stands in for `next/headers` with `mock.module`, which
-                  # some earlier file in one long-lived process stops reaching the package:
-                  # it then loads the real CommonJS module and fails. Run unsharded, the
-                  # suite leaves it out and the next step runs it alone, as every local
-                  # run does, each file in a process of its own.
-                  ignore="--path-ignore-patterns=tests/next-integration.test.ts"
-                  if [ "${{ matrix.shards }}" -gt 1 ]; then
-                    files=$(bun run scripts/test-shard.ts ${{ matrix.shard }} ${{ matrix.shards }})
-                    ignore=""
-                  fi
-                  # Unquoted on purpose: one argument per file.
-                  bun run test:ci --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }} $ignore $files
-            - name: Run the Next.js integration test in a process of its own
-              if: ${{ matrix.shards == 1 }}
-              run: bun run test:ci --timeout 5000 tests/next-integration.test.ts
+            - name: Run the suite, shard ${{ matrix.shard }} of ${{ matrix.shards }}
+              env:
+                  # Two processes on a runner's four CPUs, as `bun run test` would choose.
+                  CROMBOLO_TEST_SHARDS: '2'
+                  # Each file's seconds, for `bun run test:weights <run>` to rebalance the shards.
+                  CROMBOLO_TEST_TIMINGS: output/test-timings.json
+              run: bun run test:ci:shard --shard ${{ matrix.shard }}/${{ matrix.shards }} --timeout ${{ matrix.dialect == 'postgres' && 20000 || 5000 }}
+            - name: Keep each file's time
+              if: ${{ always() && matrix.dialect == 'postgres' }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: test-timings-postgres-${{ matrix.shard }}
+                  path: output/test-timings.json
+                  if-no-files-found: ignore
+                  retention-days: 30
 
     # The integration suites drive the real CLI as a pipeline would: a process per
     # step and two SQLite databases, for content transfer (a bundle written to disk

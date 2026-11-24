@@ -3,7 +3,9 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ROOT } from '../scripts/packages.ts'
+import { jobShard, readTimed } from '../scripts/test-parallel.ts'
 import { shards, testFiles } from '../scripts/test-shard.ts'
+import { mergeWeights, secondsFromLog } from '../scripts/test-weights.ts'
 
 describe('the test shards', () => {
   test('put every file in exactly one shard', () => {
@@ -139,5 +141,51 @@ describe('the release load matrix', () => {
     expect(publish.if).toContain("needs.load.result == 'success'")
     expect(publish.if).toContain("needs.load.result == 'skipped'")
     expect((job as unknown as { if: string }).if).toContain("'--skip-load-tests'")
+  })
+})
+
+// CI shards across jobs, then each job across its processes, timed per file for rebalancing.
+describe('a CI job’s share, across its processes', () => {
+  test('--shard names one job of several, and nothing else is taken for it', () => {
+    expect(jobShard(['--shard', '2/4', '--timeout', '5000'])).toEqual({
+      job: { shard: 2, total: 4 },
+      rest: ['--timeout', '5000'],
+    })
+    expect(jobShard(['--timeout', '5000'])).toEqual({ rest: ['--timeout', '5000'] })
+    expect(() => jobShard(['--shard', '5/4'])).toThrow('is not one of them')
+    expect(() => jobShard(['--shard', 'two'])).toThrow('<n>/<total>')
+  })
+
+  test('each file is timed from its header to the next, as bun prints them on GitHub', async () => {
+    const lines = ['##[group]tests/a.test.ts:\n', '(pass) one\n', 'tests/b.test.ts:\n', ' 2 pass\n']
+    let clock = 0
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const line of lines) controller.enqueue(new TextEncoder().encode(line))
+        controller.close()
+      },
+    })
+    const timed = await readTimed(stream, () => {
+      clock += 1000
+      return clock
+    })
+    expect(Object.keys(timed.seconds).sort()).toEqual(['tests/a.test.ts', 'tests/b.test.ts'])
+    expect(timed.text).toContain('(pass) one')
+  })
+
+  test('the weights from a run: a log read header to header, merged over what was there', () => {
+    const log = [
+      '2026-11-24T14:06:00.0Z ##[group]tests/a.test.ts:',
+      '2026-11-24T14:06:10.0Z ##[group]tests/b.test.ts:',
+      '2026-11-24T14:06:12.5Z  4 pass',
+    ].join('\n')
+    expect(secondsFromLog(log)).toEqual({ 'tests/a.test.ts': 10, 'tests/b.test.ts': 2.5 })
+    expect(
+      mergeWeights(
+        { 'tests/a.test.ts': 1, 'tests/c.test.ts': 3, 'tests/gone.test.ts': 9 },
+        { 'tests/a.test.ts': 10.04 },
+        ['tests/a.test.ts', 'tests/c.test.ts'],
+      ),
+    ).toEqual({ 'tests/a.test.ts': 10, 'tests/c.test.ts': 3 })
   })
 })

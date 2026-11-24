@@ -387,7 +387,8 @@ test('the Translation section: a dictionary item opens from its tree and saves i
 }) => {
   const KEY = unique('Greeting').replace(' ', '.')
   await signIn(page)
-  await goToSection(page, 'Translation')
+  // A place under Content, with no tab of its own (story 419).
+  await page.goto('/crombolo/section/content/translation')
   await expect(page.locator('umb-section-sidebar')).toBeVisible()
   const response = await page.request.post(`${API}/dictionary`, {
     data: { name: KEY, parent: null, translations: [{ isoCode: 'en-US', translation: 'Hello' }] },
