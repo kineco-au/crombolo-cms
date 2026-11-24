@@ -272,11 +272,11 @@ export function runsOnLocalhost(config: CromboloConfig): boolean {
   }
 }
 
-/** The body limit to listen with: raised for uploads when the remote or workspaces are on. */
+/** The body limit to listen with: raised for uploads and changes when the remote or workspaces are on. */
 export function listeningBodyLimit(config: CromboloConfig): number {
-  // Story 420: remote access only, now that workspaces are on everywhere; Bun's limit is
-  // every route's, not just the uploads'.
-  return config.remote.enabled
+  // Bun's limit is every route's: the server holds all but the uploads and the
+  // change routes to the usual one (story 422).
+  return config.remote.enabled || workspacesOn(config)
     ? Math.max(config.maxRequestBodyBytes, config.remote.maxUploadBytes)
     : config.maxRequestBodyBytes
 }

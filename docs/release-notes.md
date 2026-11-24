@@ -21,6 +21,14 @@ point at `docs/stories/`.
   `CROMBOLO_WORKSPACES=false` to turn them off. Editors still edit Shared directly unless
   `CROMBOLO_WORKSPACES_REQUIRED=true`, and so does the command line. `crombolo status` and the
   overview's System information say whether workspaces are on.
+- **A large change is taken wherever workspaces are on (422).** A change carries the media
+  it added, so a site with workspaces on, remote access or not, takes one up to
+  `CROMBOLO_REMOTE_MAX_UPLOAD_GB` (50 GB unless set) at the Management API's `PUT changes`
+  and `PUT changes/from-site`, streamed to a file. Every other route keeps
+  `CROMBOLO_MAX_REQUEST_BODY_MB`, refused from its headers, and a caller without Apply
+  changes is refused before any of the body is read. A site staged as a change
+  (`changes/from-site`) was held to 32 MB even with remote access on; it is taken the same
+  way, at the Management API and the remote.
 - **Settings pages read as pages.** A Settings tool's breadcrumb, title, subheading and tabs
   sit on the page itself, no longer as white bands that read as part of the white header.
 
@@ -45,10 +53,10 @@ point at `docs/stories/`.
   `CROMBOLO_WORKSPACES_REQUIRED=true`, where it goes into the person's own workspace. On a site
   that had workspaces on before, such a change used to go into the person's own workspace
   whether or not one was required; set `CROMBOLO_WORKSPACES_REQUIRED=true` to keep that.
-- **The request body limit is raised only with remote access** (420): a site accepts bodies
-  up to `CROMBOLO_REMOTE_MAX_UPLOAD_BYTES` only when `CROMBOLO_REMOTE_ACCESS` is on, where
-  workspaces alone used to raise it. A site without remote access keeps 32 MB on every route,
-  so a change bundle larger than that needs remote access to be uploaded.
+- **A site with workspaces listens with the larger body limit** (422), as one with remote
+  access does: only the change routes and the remote's uploads take more than
+  `CROMBOLO_MAX_REQUEST_BODY_MB`. With workspaces and remote access both off it listens
+  with `CROMBOLO_MAX_REQUEST_BODY_MB`, as before.
 - **Migration 098** (`AddWorkspacePlaces`) gives Content to each user group holding Library or
   Translation without it, and Translation to each holding Structure without it. A new site's
   Translators group holds Content beside Translation.

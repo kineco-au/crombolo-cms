@@ -942,7 +942,7 @@ Off by default:
 | `remote.environment` / `CROMBOLO_REMOTE_ENVIRONMENT` | this server's environment, default `production` |
 | `remote.protected` / `CROMBOLO_REMOTE_PROTECTED` | default true |
 | `remote.approvals` / `CROMBOLO_REMOTE_APPROVALS` | protected pushes wait for approval; needs `CROMBOLO_SECRET_KEY` |
-| `remote.maxUploadBytes` / `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | default 50 GB, for pushes and media uploads only |
+| `remote.maxUploadBytes` / `CROMBOLO_REMOTE_MAX_UPLOAD_GB` | default 50 GB, for pushes, media uploads and changes (`changes`, `changes/from-site`, here and at the Management API, which takes them wherever workspaces are on: story 422) only |
 
 **Access levels** (story 167). Each level takes everything the one before it
 does:

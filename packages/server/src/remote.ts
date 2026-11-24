@@ -1803,6 +1803,7 @@ export function createRemote(options: RemoteOptions): Remote {
         url.pathname === `${prefix}pushes` ||
         url.pathname === `${prefix}bundles` ||
         url.pathname === `${prefix}changes` ||
+        url.pathname === `${prefix}changes/from-site` ||
         url.pathname.startsWith(`${prefix}media/`) ||
         (mediaLibraryRoutes?.isUpload(url.pathname.slice(prefix.length), request.method) ?? false)
       )

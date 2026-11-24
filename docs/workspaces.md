@@ -342,6 +342,14 @@ the conflict event keeps (`workspace_conflict_raised`, below), read in one query
 the whole list; a fresh answer is still the merge preview. `crombolo workspaces` and
 `workspace list` show the count beside a workspace that has one.
 
+**A change may be as large as an upload (story `422`).** A change carries the media it
+added, so wherever workspaces are on, remote access or not, the site listens with
+`CROMBOLO_REMOTE_MAX_UPLOAD_GB` (50 GB unless set) and takes a change up to that size at
+the Management API's `PUT changes` and `PUT changes/from-site`, streamed to a file. Every
+other route is still held to `CROMBOLO_MAX_REQUEST_BODY_MB` (32 MB) from its headers,
+and a caller without Apply changes is refused before any of the body is read. With
+workspaces and remote access both off, the site listens with 32 MB.
+
 **A workspace's errors are the whole site's (story `408`).** `GET /{key}/errors?since=`
 answers what went wrong rendering the workspace's pages, oldest first, as
 `{ at, node, page, says }`: each page that failed in a `check` or a `pages`, and each

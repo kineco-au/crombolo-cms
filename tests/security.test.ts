@@ -364,7 +364,8 @@ describe('a locked-out account', () => {
 describe('the request body limit', () => {
   test('is set on the server, far below the 128 MB Bun would otherwise accept', async () => {
     expect(loadConfig().maxRequestBodyBytes).toBe(32 * 1024 * 1024)
-    const h = await site()
+    // Workspaces raise it for changes alone (story 422), so off here.
+    const h = await site({ workspaces: false })
     expect(h.server.serveOptions.maxRequestBodySize).toBe(32 * 1024 * 1024)
     expect(h.server.serveOptions.maxRequestBodySize).toBeLessThan(128 * 1024 * 1024)
   })

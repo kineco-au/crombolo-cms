@@ -10,7 +10,7 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { RemotePermissions } from '@crombolo/core'
 import {
@@ -509,4 +509,139 @@ describe('the setting and the audience for applying', () => {
     )
     expect(refused.status).toBe(403)
   })
+})
+
+// Story 422: wherever workspaces are on, a change is taken past the usual body limit, at
+// its two routes alone, and no one without Apply changes gets a byte of it read.
+describe(`a large change, remote access off (${dialectUnderTest})`, () => {
+  const ON_THE_WIRE = { requestIP: () => null }
+  const SMALL = 1024
+  const serve = (h: Harness) =>
+    h.server.serveOptions.fetch as unknown as (
+      request: Request,
+      server: typeof ON_THE_WIRE,
+    ) => Promise<Response>
+  const hashOf = (bytes: Uint8Array) => new Bun.CryptoHasher('sha256').update(bytes).digest('hex')
+  const sent = (h: Harness, token: string, path: string, body: BodyInit, headers = {}) =>
+    serve(h)(
+      new Request(`${ORIGIN}${path}`, {
+        method: 'PUT',
+        body,
+        headers: {
+          'content-type': 'application/gzip',
+          authorization: `Bearer ${token}`,
+          ...headers,
+        },
+      }),
+      ON_THE_WIRE,
+    )
+
+  test('the site listens with the larger limit, and with the usual one when workspaces are off', async () => {
+    const on = await site({ maxRequestBodyBytes: SMALL })
+    expect(on.h.server.serveOptions.maxRequestBodySize).toBe(16 * 1024 ** 2)
+    const off = await site({ maxRequestBodyBytes: SMALL, workspaces: false })
+    expect(off.h.server.serveOptions.maxRequestBodySize).toBe(SMALL)
+  }, 30_000)
+
+  test('a change larger than the usual limit is staged, its media with it', async () => {
+    const made = await madeThere()
+    const file = join(dirs[0] as string, `${made.sha}.tgz`)
+    writeFileSync(file, made.bytes)
+    const { change, media } = await unpackChange(file)
+    const url = '/media/large-change/photo.bin'
+    media.set(url, crypto.getRandomValues(new Uint8Array(8 * SMALL)))
+    const bytes = packChange({ ...change, media: [url] }, media)
+    expect(bytes.length).toBeGreaterThan(SMALL)
+
+    const target = await site({ maxRequestBodyBytes: SMALL })
+    const staged = await sent(
+      target.h,
+      tokenOf(target.h),
+      `${CHANGES}?stage=true`,
+      bytes as BodyInit,
+      {
+        'crombolo-sha256': hashOf(bytes),
+      },
+    )
+    expect(staged.status, await staged.clone().text()).toBe(200)
+    expect(((await staged.json()) as { workspace: string | null }).workspace).toBeString()
+    const root = target.h.server.config.mediaDir
+    expect(readFileSync(join(root, 'large-change', 'photo.bin')).length).toBe(8 * SMALL)
+  }, 60_000)
+
+  test('a site staged as a change is let past the usual limit too, remote access on or off', async () => {
+    const body = new Uint8Array(4 * SMALL).fill(1)
+    const headers = { 'crombolo-sha256': hashOf(body) }
+    for (const enabled of [false, true]) {
+      const target = await site({
+        maxRequestBodyBytes: SMALL,
+        remote: {
+          enabled,
+          environment: 'production',
+          protected: false,
+          approvals: false,
+          maxUploadBytes: 16 * 1024 ** 2,
+          access: 'all',
+        },
+      })
+      const token = tokenOf(target.h)
+      const paths = [`${CHANGES}/from-site?source=elsewhere&into=Promoted`]
+      if (enabled)
+        paths.push(
+          `${REMOTE_API_PATH}/environments/production/changes/from-site?source=elsewhere&into=Promoted`,
+        )
+      for (const path of paths) {
+        // Read whole and found not to be a site: past the limit, and to the route.
+        const answered = await sent(target.h, token, path, body, headers)
+        expect(answered.status, `${path} ${await answered.clone().text()}`).toBe(400)
+      }
+    }
+  }, 60_000)
+
+  test('every other route keeps the usual limit: 413 over it, 411 with no length', async () => {
+    const target = await site({ maxRequestBodyBytes: SMALL })
+    const big = new Uint8Array(4 * SMALL)
+    const elsewhere = await serve(target.h)(
+      new Request(`${ORIGIN}${V1}/document`, {
+        method: 'POST',
+        headers: { 'content-length': String(big.length) },
+        body: big,
+      }),
+      ON_THE_WIRE,
+    )
+    expect(elsewhere.status).toBe(413)
+    const chunked = await serve(target.h)(
+      new Request(`${ORIGIN}${WORKSPACES}`, {
+        method: 'POST',
+        headers: { 'transfer-encoding': 'chunked' },
+        body: big,
+      }),
+      ON_THE_WIRE,
+    )
+    expect(chunked.status).toBe(411)
+  }, 30_000)
+
+  test('without Apply changes, both routes refuse before reading the body', async () => {
+    const target = await site({ maxRequestBodyBytes: SMALL })
+    const writer = await signInAsGroup(target.h, 'writer')
+    for (const path of [`${CHANGES}?stage=true`, `${CHANGES}/from-site?source=s&into=w`]) {
+      let read = false
+      // A high-water mark of none: nothing is pulled until someone reads.
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            read = true
+            controller.enqueue(new Uint8Array(SMALL))
+            controller.close()
+          },
+        },
+        { highWaterMark: 0 },
+      )
+      const refused = await sent(target.h, tokenOf(writer), path, body, {
+        'crombolo-sha256': 'a'.repeat(64),
+      })
+      expect(refused.status, path).toBe(403)
+      expect(read, path).toBe(false)
+    }
+  }, 30_000)
 })

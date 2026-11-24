@@ -1142,7 +1142,7 @@ const DECLARED = [
     default: '50',
     section: 'Remote',
     description:
-      'The largest push or media file a client may upload, in gigabytes. Every other request keeps the usual body limit.',
+      'The largest push, media file or change a client may upload, in gigabytes: a change is taken up to this size wherever workspaces or remote access are on. Every other request keeps the usual body limit.',
   },
   {
     env: 'CROMBOLO_REMOTE_AGENTS_GUIDE',

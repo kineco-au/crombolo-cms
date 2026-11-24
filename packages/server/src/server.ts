@@ -5564,12 +5564,14 @@ export async function createServer(
         if (peer) peers.set(request, peer)
         const requestUrl = new URL(request.url)
         const pathname = requestUrl.pathname
-        // Listening with the remote's larger limit (story 107), so every other
-        // request is held to the usual one here.
+        // Listening with the larger limit (stories 107, 422), so every request but an
+        // upload or a change taken is held to the usual one here.
+        const moving = managementChange(pathname, request.method)
         if (
           listeningBodyLimit(config) > config.maxRequestBodyBytes &&
           !remote.isUpload(request, requestUrl) &&
-          managementChange(pathname, request.method) !== 'changes'
+          moving !== 'changes' &&
+          moving !== 'changes/from-site'
         ) {
           const length = Number(request.headers.get('content-length') ?? 0)
           if (length > config.maxRequestBodyBytes)

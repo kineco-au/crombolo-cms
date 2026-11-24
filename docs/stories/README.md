@@ -572,4 +572,5 @@ it.
 | `418` | A check passes a page that has nothing to render | must | S | done | 386, 406 |
 | `420` | Workspaces are on unless turned off | should | M | done | 375, 380 |
 | `421` | A change staged after another builds on it | must | S | done | 383, 399, 403 |
+| `422` | A large change is taken wherever workspaces are on | should | S | done | 383, 399, 420 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |
