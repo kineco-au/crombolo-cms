@@ -234,6 +234,10 @@ describe(`discovery (${dialectUnderTest})`, () => {
         // Story 374: the schema files, read and changed by the definition.
         'schema-files',
         'schema-edit',
+        // Stories 386 and 420: workspaces, on unless turned off, and changes.
+        'workspace-merge',
+        'workspaces',
+        'changes',
         // Story 241: installed bundles, managed as Settings → Bundles does.
         'bundle-manage',
       ],
@@ -260,7 +264,8 @@ describe(`discovery (${dialectUnderTest})`, () => {
           mediaLibrary: true,
           contentShow: true,
           schemaEdit: true,
-          applyChanges: false,
+          // Applying a change needs workspaces, which are on unless turned off (story 420).
+          applyChanges: true,
         },
       },
     ])

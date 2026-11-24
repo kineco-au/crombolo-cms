@@ -26,7 +26,9 @@ describe('what each place opens on the server', () => {
     ['structure', 'put', 'data-type/{id}'],
     ['structure', 'post', 'media-type'],
     ['structure', 'put', 'member-type/{id}'],
-    ['structure', 'post', 'language'],
+    // Story 419: languages are Translation's, beside the dictionary.
+    ['translation', 'post', 'language'],
+    ['translation', 'put', 'language/{isoCode}'],
     ['structure', 'post', 'document-type/folder'],
     ['structure', 'get', 'tree/document-type/root'],
     ['components', 'post', 'partial-view'],
@@ -45,6 +47,7 @@ describe('what each place opens on the server', () => {
     ['settings', 'post', 'document-type'],
     ['settings', 'post', 'partial-view'],
     ['settings', 'post', 'language'],
+    ['structure', 'post', 'language'],
     ['structure', 'post', 'partial-view'],
     ['components', 'post', 'document-type'],
     ['content', 'post', 'document-type'],
@@ -75,6 +78,17 @@ describe('the grants', () => {
     expect(placesRefusal(['media', 'Crombolo.Section.Components'])).toBe(
       'Media, Code are places under Content, so the group needs Content too.',
     )
+  })
+
+  test('Library and Translation are places under Content; Approvals is not (story 419)', () => {
+    expect(placesRefusal(['library'])).toBe(
+      'Library is a place under Content, so the group needs Content too.',
+    )
+    expect(placesRefusal(['Umb.Section.Translation'])).toBe(
+      'Translation is a place under Content, so the group needs Content too.',
+    )
+    expect(placesRefusal(['workflow'])).toBeUndefined()
+    expect(placesRefusal(['content', 'library', 'translation'])).toBeUndefined()
   })
 
   test('a group file naming a place without Content is a problem; workflow set-up is dropped', () => {

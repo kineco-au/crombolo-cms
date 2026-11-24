@@ -522,10 +522,10 @@ const DECLARED = [
   {
     env: 'CROMBOLO_WORKSPACES',
     kind: 'boolean',
-    default: 'false',
+    default: 'true',
     section: 'Schema',
     description:
-      'Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. Off, every workspace route is refused, and nothing else changes.',
+      'Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. On unless set to false; off, every workspace route is refused, and nothing else changes.',
   },
   {
     env: 'CROMBOLO_PURGE_AFTER_DAYS',

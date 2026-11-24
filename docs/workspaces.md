@@ -8,9 +8,18 @@ types, and `377` its components, stylesheets and scripts. The stories after them
 (`378`–`390`) add a process of its own, a workspace's own address, media and the back
 office's switch.
 
-Workspaces are off unless `CROMBOLO_WORKSPACES=true` (`workspaces: true` in
-`crombolo.config.ts`). Off, every workspace route answers 404 and a request naming a
-workspace is refused with 400, so nothing is silently written to Shared.
+Workspaces are on unless `CROMBOLO_WORKSPACES=false` (`workspaces: false` in
+`crombolo.config.ts`) turns them off (story 420): a site has them from the start, the demo
+sites and templates too, with nothing set. Any other value stops the site starting.
+Turning them on asks nothing more of editors: they edit Shared directly as before unless
+`CROMBOLO_WORKSPACES_REQUIRED=true`, and a workspace is there for whoever opens one. The
+command line follows the same rule: a local `crombolo content` change goes into Shared, or into
+the person's own workspace only where the site requires one (story 386's rule, narrowed by
+420 so no site's command line changes on upgrade). Off,
+every workspace route answers 404 and a request naming a workspace is refused with 400, so
+nothing is silently written to Shared; a locked site (`CROMBOLO_CONTENT=locked`) has them
+whatever the setting says. `crombolo status` and the overview's System information say
+which.
 
 ## What a workspace holds
 
@@ -491,7 +500,10 @@ merged is checked together by `changes check --since <change>` (story `406`,
 
 ## In the back office (story 384)
 
-- **The switch at the head of Content** (`workspace-switch.js`, in the strip of
+- **The strip under Content is what a workspace holds** (story 419): Pages, Media, Library,
+  Translation, Structure and Code, in the workspace's colour while one is open. Approvals,
+  Members, Users and Settings are outside it, and show no workspace.
+- **The switch at the head of Content** (`workspace-switch.js`, first in the strip of
   `content-strip.js`): where this tab is, Shared or a workspace in its colour (from its key,
   `colourOf`), and from there: switch (the open screen reloads in that workspace), New
   workspace, Changes, Merge into Shared (for who may merge, with the count), Share, Open at

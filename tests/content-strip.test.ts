@@ -1,10 +1,14 @@
 /**
- * Stories 289 and 385: the menu under Content offers each place a user holds,
- * each a grant of its own at an address under Content, and knows which place a
- * page belongs to.
+ * Stories 289, 385 and 419: the menu under Content offers each place a user holds,
+ * each a grant of its own at an address under Content, what a workspace holds, and
+ * knows which place a page belongs to. In a workspace it takes the workspace's colour.
  */
 import { describe, expect, test } from 'bun:test'
-import { activeItem, stripItems } from '../packages/backoffice-host/plugin/content-strip-items.js'
+import {
+  activeItem,
+  stripItems,
+  stripTint,
+} from '../packages/backoffice-host/plugin/content-strip-items.js'
 
 const CONTENT = 'Umb.Section.Content'
 const PAGES = 'Crombolo.Section.Pages'
@@ -14,16 +18,19 @@ const APPROVALS = 'Crombolo.Section.Workflow'
 const STRUCTURE = 'Crombolo.Section.Structure'
 const CODE = 'Crombolo.Section.Components'
 const FORMS = 'Crombolo.Section.Forms'
-const EVERY = [CONTENT, PAGES, MEDIA, APPROVALS, STRUCTURE, CODE, FORMS]
+const LIBRARY = 'Umb.Section.Library'
+const TRANSLATION = 'Umb.Section.Translation'
+const EVERY = [CONTENT, PAGES, MEDIA, LIBRARY, TRANSLATION, APPROVALS, STRUCTURE, CODE, FORMS]
 const labels = (user: Parameters<typeof stripItems>[0]) => stripItems(user).map((i) => i.label)
 
 describe('what the menu offers', () => {
-  test('every place, to an administrator, at its address under Content', () => {
+  test('every place a workspace holds, to an administrator, editing first; no Approvals', () => {
     const items = stripItems({ allowedSections: [...EVERY, SETTINGS], isAdmin: true })
     expect(items.map((i) => [i.label, i.path])).toEqual([
       ['Pages', 'section/content'],
       ['Media', 'section/content/media'],
-      ['Approvals', 'section/content/approvals'],
+      ['Library', 'section/content/library'],
+      ['Translation', 'section/content/translation'],
       ['Structure', 'section/content/structure'],
       ['Code', 'section/content/code'],
     ])
@@ -53,10 +60,9 @@ describe('what the menu offers', () => {
     )
   })
 
-  test('no Approvals while the site has no workflow and no request open', () => {
-    const admin = { allowedSections: EVERY, isAdmin: true }
-    expect(stripItems(admin, { approvals: false }).map((i) => i.label)).not.toContain('Approvals')
-    expect(stripItems(admin, { approvals: true }).map((i) => i.label)).toContain('Approvals')
+  test('in a workspace, the strip takes its colour; in Shared, none', () => {
+    expect(stripTint('#1f6f8b')).toContain('#1f6f8b')
+    expect(stripTint(null)).toBe('')
   })
 
   test('nothing, to someone with one place to open', () => {
@@ -72,8 +78,10 @@ describe('where a page belongs', () => {
     ['section/content/workspace/document/edit/1', 'Pages'],
     ['section/content/media', 'Media'],
     ['section/content/media/workspace/media/edit/1', 'Media'],
-    ['section/content/approvals', 'Approvals'],
-    ['section/content/approvals/view/in-flight', 'Approvals'],
+    ['section/content/library', 'Library'],
+    ['section/content/library/workspace/element/edit/1', 'Library'],
+    ['section/content/translation', 'Translation'],
+    ['section/content/translation/workspace/language/edit/en', 'Translation'],
     ['section/content/structure', 'Structure'],
     ['section/content/structure/workspace/document-type/edit/1', 'Structure'],
     ['section/content/structure/forms/entries', 'Structure'],
@@ -85,7 +93,7 @@ describe('where a page belongs', () => {
     expect(activeItem(path)).toBe(item)
   })
 
-  test.each(['home', 'section/settings', 'section/settings/dashboard/logs', 'section/library'])(
+  test.each(['home', 'section/settings', 'section/settings/dashboard/logs', 'section/approvals'])(
     '%s is none of them',
     (path) => {
       expect(activeItem(path)).toBeUndefined()

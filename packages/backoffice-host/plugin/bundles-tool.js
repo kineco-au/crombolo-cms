@@ -5,6 +5,7 @@
  */
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { settingsTabStyles } from './settings-tabs.js'
 
 /** The tabs, in order: each one's segment, its label, and its view. */
 export const BUNDLE_TABS = [
@@ -54,26 +55,21 @@ export default class CromboloBundlesToolElement extends UmbLitElement {
     `
   }
 
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    uui-tab-group {
-      /* UUI's tab group fills its container's height; here it is a strip. */
-      flex: none;
-      height: auto;
-      padding: 0 var(--uui-size-layout-1);
-      border-bottom: 1px solid var(--uui-color-border);
-      --uui-tab-divider: transparent;
-    }
-    umb-router-slot {
-      display: block;
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-  `
+  static styles = [
+    settingsTabStyles,
+    css`
+      :host {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      umb-router-slot {
+        display: block;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+    `,
+  ]
 }
 
 customElements.define('crombolo-bundles-tool', CromboloBundlesToolElement)

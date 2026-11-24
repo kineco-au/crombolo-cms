@@ -186,7 +186,8 @@ export const BUILT_IN_GROUPS = [
     name: 'Translators',
     icon: 'icon-globe',
     hasAccessToAllLanguages: true,
-    sections: ['translation'],
+    // Story 419: Translation is a place under Content, which it needs too.
+    sections: ['content', 'translation'],
   },
   {
     id: 5,

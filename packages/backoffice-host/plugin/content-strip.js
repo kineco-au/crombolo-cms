@@ -1,14 +1,14 @@
 /**
- * The menu under Content (story 289): Pages, Structure, Code and Workflows, for whoever may open them. A row of its own under the header, shown
+ * The menu under Content (story 289): the workspace switch, then Pages, Media, Library,
+ * Translation, Structure and Code, for whoever may open them: what a workspace holds
+ * (story 419), in the open workspace's colour. A row of its own under the header, shown
  * wherever one of them is open, and it keeps Content's tab marked while it shows.
  */
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { watchApprovals } from './approvals-active.js'
-import { activeItem, stripItems } from './content-strip-items.js'
-import { approvalsActive } from './workflow-client.js'
-import { workspacesApi } from './workspace-client.js'
+import { activeItem, stripItems, stripTint } from './content-strip-items.js'
+import { colourOf, currentWorkspace, workspacesApi } from './workspace-client.js'
 import './workspace-switch.js'
 
 const CONTENT = 'Umb.Section.Content'
@@ -31,9 +31,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
   #user
   /** Story 384: with workspaces on, the row shows for the switch whatever else it holds. */
   #workspaces = false
-  /** Approvals waits for the site's answer, and stays offered if it can't be had. */
-  #approvals = false
-  #unwatch
+  /** Story 419: the colour of the workspace this tab is in; none for Shared. */
+  #colour = null
 
   #follow = () => {
     this._active = activeItem(pathHere())
@@ -49,14 +48,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
   }
 
   #offer() {
-    this._items = stripItems(this.#user, { approvals: this.#approvals })
+    this._items = stripItems(this.#user)
     this.#sync()
-  }
-
-  #checkApprovals = async () => {
-    const answer = await approvalsActive()
-    this.#approvals = answer.ok ? answer.active === true : true
-    this.#offer()
   }
 
   #shown() {
@@ -77,15 +70,20 @@ export default class CromboloContentStripElement extends UmbLitElement {
   connectedCallback() {
     super.connectedCallback()
     this.#follow()
-    this.#checkApprovals()
     workspacesApi.mine().then(
       (mine) => {
         this.#workspaces = mine.enabled === true
+        // Switching reloads the screen, so the workspace is read once.
+        const chosen = currentWorkspace()
+        const here =
+          chosen?.key === 'shared'
+            ? null
+            : (chosen ?? (mine.required && mine.workspace ? mine.workspace : null))
+        this.#colour = this.#workspaces && here ? colourOf(here.key) : null
         this.#offer()
       },
       () => {},
     )
-    this.#unwatch = watchApprovals(this.#checkApprovals)
     window.addEventListener('changestate', this.#follow)
     window.addEventListener('popstate', this.#follow)
     // A route the router settles on without a state change of its own, such as Home.
@@ -94,7 +92,6 @@ export default class CromboloContentStripElement extends UmbLitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback()
-    this.#unwatch?.()
     window.removeEventListener('changestate', this.#follow)
     window.removeEventListener('popstate', this.#follow)
     window.removeEventListener('navigationend', this.#follow)
@@ -104,7 +101,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
 
   render() {
     if (!this.#shown()) return nothing
-    return html`<nav aria-label="Content">
+    return html`<nav aria-label="Content" style=${stripTint(this.#colour)}>
+      ${this.#workspaces ? html`<crombolo-workspace-switch></crombolo-workspace-switch>` : nothing}
       ${this._items.map(
         (item) =>
           html`<a
@@ -113,7 +111,6 @@ export default class CromboloContentStripElement extends UmbLitElement {
             >${item.label}</a
           >`,
       )}
-      ${this.#workspaces ? html`<crombolo-workspace-switch></crombolo-workspace-switch>` : nothing}
     </nav>`
   }
 
@@ -126,8 +123,8 @@ export default class CromboloContentStripElement extends UmbLitElement {
       height: 41px;
       padding: 0 var(--uui-size-space-5);
       overflow-x: auto;
-      background: var(--uui-color-surface);
-      border-bottom: 1px solid var(--uui-color-border);
+      background: var(--crombolo-strip-tint, var(--uui-color-surface));
+      border-bottom: 1px solid var(--crombolo-strip-edge, var(--uui-color-border));
     }
     a {
       padding: var(--uui-size-space-1) var(--uui-size-space-3);

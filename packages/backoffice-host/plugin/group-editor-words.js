@@ -18,7 +18,8 @@ const CONTENT = 'Umb.Section.Content'
 
 /**
  * The areas of the back office, as Access lists them, by section alias. The
- * places under Content (story 385) each need Content as well: `under` says so.
+ * places under Content (stories 385, 419), what a workspace holds, each need Content as
+ * well: `under` says so. Approvals is an area of its own.
  */
 export const AREAS = [
   {
@@ -34,15 +35,21 @@ export const AREAS = [
     under: CONTENT,
   },
   {
-    section: 'Crombolo.Section.Workflow',
-    label: 'Approvals',
-    line: 'Pages waiting for someone to approve them.',
+    section: 'Umb.Section.Library',
+    label: 'Library',
+    line: 'Shared pieces pages are built from: blocks, menus and promos.',
+    under: CONTENT,
+  },
+  {
+    section: 'Umb.Section.Translation',
+    label: 'Translation',
+    line: 'The dictionary of words templates show in each language, and the languages.',
     under: CONTENT,
   },
   {
     section: 'Crombolo.Section.Structure',
     label: 'Structure',
-    line: 'Content, media and member types, data types, languages and workflows. These change the whole site.',
+    line: 'Content, media and member types, data types and workflows. These change the whole site.',
     under: CONTENT,
   },
   {
@@ -58,9 +65,9 @@ export const AREAS = [
     under: CONTENT,
   },
   {
-    section: 'Umb.Section.Library',
-    label: 'Library',
-    line: 'Shared pieces pages are built from: blocks, menus and promos.',
+    section: 'Crombolo.Section.Workflow',
+    label: 'Approvals',
+    line: 'Pages waiting for someone to approve them.',
   },
   {
     section: 'Umb.Section.Members',
@@ -76,11 +83,6 @@ export const AREAS = [
     section: 'Umb.Section.Users',
     label: 'Users',
     line: 'The people who use the back office, and their groups.',
-  },
-  {
-    section: 'Umb.Section.Translation',
-    label: 'Translation',
-    line: 'The dictionary of words templates show in each language.',
   },
 ]
 

@@ -399,8 +399,9 @@ describe(`the endpoint (${dialectUnderTest})`, () => {
       new Request(`http://localhost${QUERY}`, { method: 'POST', body: '{}' }),
     )
     expect(anonymous.status).toBe(401)
-    const translator = await signInAsGroup(h, 'translator')
-    expect((await translator.post(QUERY, { entity: 'document' })).status).toBe(403)
+    // Sensitive data holds no section: Translators hold Content beside Translation (story 419).
+    const outsider = await signInAsGroup(h, 'sensitiveData')
+    expect((await outsider.post(QUERY, { entity: 'document' })).status).toBe(403)
   })
 })
 

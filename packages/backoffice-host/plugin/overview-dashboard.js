@@ -19,7 +19,9 @@ import {
   firstName,
   initials,
   STATES,
+  workspacesSettingOf,
 } from './overview-format.js'
+import { workspacesApi } from './workspace-client.js'
 
 const base = () =>
   (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')
@@ -37,6 +39,7 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
     _skip: { state: true },
     _error: { state: true },
     _server: { state: true },
+    _workspaces: { state: true },
   }
 
   /** The session had gone when it last asked, so signing back in is what to wait for. */
@@ -65,6 +68,13 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
     new UmbSysinfoRepository(this).requestServerInformation().then((server) => {
       this._server = server
     })
+    // Story 420: whether people may work in workspaces here.
+    workspacesApi.mine().then(
+      (mine) => {
+        this._workspaces = mine
+      },
+      () => {},
+    )
   }
 
   connectedCallback() {
@@ -156,6 +166,8 @@ export default class CromboloOverviewDashboardElement extends UmbLitElement {
         <dd>${this._server?.version ?? '…'}</dd>
         <dt>Code</dt>
         <dd>${codeSettingOf(this._server?.runtimeMode)}</dd>
+        <dt>Workspaces</dt>
+        <dd>${workspacesSettingOf(this._workspaces)}</dd>
       </dl>
       <div class="system-links">
         <a href="https://github.com/kineco-au/crombolo-cms" target="_blank" rel="noopener">

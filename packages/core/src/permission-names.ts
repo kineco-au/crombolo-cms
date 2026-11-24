@@ -132,17 +132,20 @@ export const permissionName = (verb: string): string =>
   PERMISSION_NAMES.find((p) => p.verb === verb)?.name ?? verb
 
 export const SECTION_NAMES: ReadonlyArray<{ name: keyof typeof SECTION_ALIASES; says: string }> = [
-  { name: 'content', says: 'The places under Content: each of the next six is one' },
+  {
+    name: 'content',
+    says: 'The places under Content, what a workspace holds: each of the next seven is one',
+  },
   { name: 'pages', says: 'The pages of the site' },
   { name: 'media', says: 'Images, documents and other files' },
-  { name: 'structure', says: 'Content, media and member types, data types and languages' },
-  { name: 'components', says: 'Templates, components, stylesheets and scripts' },
   { name: 'library', says: 'Items kept once and used on many pages' },
+  { name: 'translation', says: 'Dictionary items and languages: the words the site shows in each' },
+  { name: 'structure', says: 'Content, media and member types, and data types' },
+  { name: 'components', says: 'Templates, components, stylesheets and scripts' },
   { name: 'forms', says: 'Forms and their entries' },
+  { name: 'workflow', says: 'Approvals: pages waiting for someone to approve them' },
   { name: 'members', says: 'The people who sign in to the site' },
   { name: 'users', says: 'The people who work in the back office, and their groups' },
-  { name: 'translation', says: 'Dictionary items: words the site shows in each language' },
-  { name: 'workflow', says: 'Approvals: pages waiting for someone to approve them' },
   {
     name: 'settings',
     says: 'Redirects, logs, health, extensions, webhooks and the rest of the setup',

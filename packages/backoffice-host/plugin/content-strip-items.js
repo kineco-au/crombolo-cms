@@ -1,14 +1,16 @@
 /**
  * What the menu under Content offers (story 289), and which item a page belongs
  * to. Pure, so each is tested on its own. Each place is a grant of its own and
- * lives at an address under Content (story 385): Pages, Media, Approvals,
- * Structure and Code. Forms and Workflows are nodes in Structure; someone with
- * Forms and not Structure has Structure open on Forms alone.
+ * lives at an address under Content (story 385): Pages, Media, Library, Translation,
+ * Structure and Code, which is what a workspace holds (story 419). Forms and
+ * Workflows are nodes in Structure; someone with Forms and not Structure has
+ * Structure open on Forms alone. Approvals is a section of its own.
  */
 
 const PAGES = 'Crombolo.Section.Pages'
 const MEDIA = 'Umb.Section.Media'
-const APPROVALS = 'Crombolo.Section.Workflow'
+const LIBRARY = 'Umb.Section.Library'
+const TRANSLATION = 'Umb.Section.Translation'
 const STRUCTURE = 'Crombolo.Section.Structure'
 const CODE = 'Crombolo.Section.Components'
 /** Reading forms, which is what a group's Forms comes to. */
@@ -21,7 +23,8 @@ const STRUCTURE_ELSE = [{ path: 'section/content/forms', section: FORMS, verb: F
 const ITEMS = [
   { label: 'Pages', path: 'section/content', section: PAGES },
   { label: 'Media', path: 'section/content/media', section: MEDIA },
-  { label: 'Approvals', path: 'section/content/approvals', section: APPROVALS },
+  { label: 'Library', path: 'section/content/library', section: LIBRARY },
+  { label: 'Translation', path: 'section/content/translation', section: TRANSLATION },
   { label: 'Structure', path: 'section/content/structure', section: STRUCTURE, or: STRUCTURE_ELSE },
   { label: 'Code', path: 'section/content/code', section: CODE },
 ]
@@ -29,7 +32,8 @@ const ITEMS = [
 /** Each place's address under Content, by the item it is. */
 const PLACES = {
   media: 'Media',
-  approvals: 'Approvals',
+  library: 'Library',
+  translation: 'Translation',
   structure: 'Structure',
   forms: 'Structure',
   code: 'Code',
@@ -37,17 +41,13 @@ const PLACES = {
 
 /**
  * The items this user may open. One alone is no menu, so it offers none.
- * Approvals is offered only while the site has a workflow or a request is open,
- * as its section is (story 234).
  *
  * @param {{ allowedSections?: string[], fallbackPermissions?: string[], isAdmin?: boolean } | undefined} user
- * @param {{ approvals?: boolean }} [site]
  */
-export function stripItems(user, site = {}) {
+export function stripItems(user) {
   const allowed = user?.allowedSections ?? []
   const may = (verb) => user?.isAdmin === true || (user?.fallbackPermissions ?? []).includes(verb)
   const items = ITEMS.flatMap((item) => {
-    if (item.section === APPROVALS && site.approvals === false) return []
     if (allowed.includes(item.section)) return [item]
     const other = (item.or ?? []).find(
       (or) => allowed.includes(or.section) && (!or.verb || may(or.verb)),
@@ -66,4 +66,16 @@ export function activeItem(path) {
   const section = /^section\/content(?:\/([^/]+))?/.exec(path)
   if (!section) return undefined
   return PLACES[section[1] ?? ''] ?? 'Pages'
+}
+
+/**
+ * Story 419: the strip in a workspace's colour, so it shows what the workspace holds;
+ * none for Shared. Pure.
+ *
+ * @param {string | null | undefined} colour
+ */
+export function stripTint(colour) {
+  return colour
+    ? `--crombolo-strip-tint: color-mix(in srgb, ${colour} 12%, var(--uui-color-surface)); --crombolo-strip-edge: ${colour};`
+    : ''
 }

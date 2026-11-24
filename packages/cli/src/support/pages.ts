@@ -85,10 +85,14 @@ export async function withPages<T>(work: (site: PageSite) => Promise<T>): Promis
       db,
       config,
       lookup,
-      // Story 386: with workspaces on, a change here goes into the person's own workspace.
+      // Story 386: a change here goes into the person's own workspace where the site requires
+      // one, as the back office's does; otherwise into Shared (story 420, now that workspaces
+      // are on unless turned off).
       operations: (
         await siteDocumentOperations(db, config, {
-          ...(config.workspaces ? { ownWorkspaceOf: await ownerHere(db) } : {}),
+          ...(config.workspaces && config.workspacesRequired
+            ? { ownWorkspaceOf: await ownerHere(db) }
+            : {}),
         })
       ).operations,
       writer: valueWriter(lookup, siteValueRefs(db)),

@@ -158,7 +158,11 @@ Management API's (above, "Moving a change without the remote").
   move of a page moved there since, is a conflict. Its address serves it (`379`), and its
   merge applies it, recording the change under its own key with every change it holds
   in `applied_change` (migration 088), so a change is applied once. Several can be
-  staged into one (`&into=`) and applied together.
+  staged into one (`&into=`) and applied together. Each is staged over what the ones
+  before it left (story `421`): a change staged there counts as held for a later one's
+  `depends`, a page is looked for in the workspace before Shared, so one an earlier change
+  made is changed or deleted there rather than made twice, and staging a change already
+  staged there skips it. A page that cannot be staged is a conflict naming it.
 - **Refused when it needs what the site lacks** (story `403`): a new page whose content
   type is neither here (by key or alias), in the workspace it goes into, nor carried by
   the change, or whose blocks name an element type this site has not got, is refused

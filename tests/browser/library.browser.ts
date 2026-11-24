@@ -12,7 +12,7 @@ test('Create offers the site element types, not just Folder, and one saves and p
   page,
 }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/library')
+  await page.goto('/crombolo/section/content/library')
 
   const dialog = page.locator('umb-element-create-options-modal')
   await expect(async () => {

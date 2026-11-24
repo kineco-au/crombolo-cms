@@ -151,8 +151,9 @@ describe(`the Overview (${dialectUnderTest})`, () => {
   test('it needs someone signed in with the Content section', async () => {
     const anonymous = await h.server.fetch(new Request(`http://localhost${OVERVIEW}`))
     expect(anonymous.status).toBe(401)
-    const translator = await signInAsGroup(h, 'translator')
-    expect((await translator.call(OVERVIEW)).status).toBe(403)
+    // Sensitive data holds no section: Translators hold Content beside Translation (story 419).
+    const outsider = await signInAsGroup(h, 'sensitiveData')
+    expect((await outsider.call(OVERVIEW)).status).toBe(403)
   })
 })
 

@@ -133,6 +133,7 @@ not cover.
 | `322` | Settings is one grant again | should | M | done | 296 |
 | `338` | A user group is set up in levels, not checkboxes | should | XL | done | 302 |
 | `385` | Every place under Content has its own permission and address | should | XL | done | 289, 322 |
+| `419` | Content is what a workspace holds | should | L | done | 385, 392 |
 | `339` | Where a user may work comes only from their groups | could | M | done | 338 |
 | `342` | The schema is exported and imported from Settings | should | L | done | — |
 | `343` | The content mode is development or production | should | S | done | 337 |
@@ -569,4 +570,6 @@ it.
 | `416` | A staged change read by the site's editors | should | M | done | 383, 384, 386, 401 |
 | `417` | A change that only schedules says so | could | S | done | 411, 414 |
 | `418` | A check passes a page that has nothing to render | must | S | done | 386, 406 |
+| `420` | Workspaces are on unless turned off | should | M | done | 375, 380 |
+| `421` | A change staged after another builds on it | must | S | done | 383, 399, 403 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

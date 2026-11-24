@@ -1,5 +1,5 @@
 /**
- * Approvals is in the menu under Content, with no tab in the header: one list of
+ * Approvals is a section of its own, with a tab in the header (story 419): one list of
  * requests, pending by default, or word that no workflow is set up, and a tree of
  * what waits for the reader and what was decided. Workflows are set up in
  * Structure (story 234).
@@ -36,13 +36,13 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   page,
 }) => {
   await signIn(page)
-  await page.goto('/crombolo/section/content/approvals')
+  await page.goto('/crombolo/section/approvals')
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
   const waiting = page.locator('crombolo-approvals-list')
   await expect(waiting).toContainText('You have no changes waiting for approval', {
     timeout: 30_000,
   })
-  await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(0)
+  await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(1)
   const approvalsLink = page
     .locator('crombolo-content-strip')
     .getByRole('link', { name: 'Approvals' })
@@ -69,7 +69,7 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   page.once('dialog', (dialog) => dialog.accept())
   await designer.getByRole('button', { name: 'Delete' }).click()
   await expect(designer.getByText('Browser check')).toHaveCount(0)
-  await page.goto('/crombolo/section/content/approvals')
+  await page.goto('/crombolo/section/approvals')
   await expect(waiting).toContainText('You have no changes waiting for approval', {
     timeout: 30_000,
   })
@@ -121,7 +121,7 @@ test('the list pages through pending and decided, and the tree holds what is pen
     route.fulfill({ json: { items: [request('waiting', 'Mine to decide', 1)] } }),
   )
   await signIn(page)
-  await page.goto('/crombolo/section/content/approvals')
+  await page.goto('/crombolo/section/approvals')
   const list = page.locator('crombolo-approvals-list')
 
   // Pending by default, with no pages to turn.

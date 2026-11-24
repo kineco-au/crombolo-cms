@@ -232,9 +232,10 @@ bun start
 
 ### A change of your own, in a workspace
 
-Once there is more than you to look after the site, turn workspaces on
-(`CROMBOLO_WORKSPACES=true`) and work in one: a change you make goes into your own workspace
-until it is merged, and others' work does not get in its way. `bunx crombolo workspace open
+Once there is more than you to look after the site, work in a workspace: a change made
+there waits until it is merged, and others' work does not get in its way. Workspaces are on
+from the start (`CROMBOLO_WORKSPACES=false` turns them off); set
+`CROMBOLO_WORKSPACES_REQUIRED=true` and every change you make goes into your own. `bunx crombolo workspace open
 "Visit us"` opens one; change pages as before; `bunx crombolo workspace check "Visit us"`
 renders what it changed; and `bunx crombolo workspace merge "Visit us" --yes` brings it in.
 `workspace diff`, `workspace conflicts` and `workspace resolve` show and settle what differs

@@ -690,3 +690,107 @@ describe(`a staged change read by the site’s editors (${dialectUnderTest}, sto
     expect((await ask(editor, 'POST', `${at}/open`, { path: '/' })).status).toBe(404)
   }, 30_000)
 })
+
+// Story 421: a change staged after another, into one workspace, builds on it.
+describe(`changes staged one by one into one workspace (${dialectUnderTest}, story 421)`, () => {
+  const OFFERS = '6b2f1f0e-3c1d-4a8e-9f00-000000000421'
+
+  /** A source where each workspace merged is a change: made, then changed, then renamed, then deleted. */
+  async function promotion() {
+    const source = await site()
+    const step = async (name: string, work: (w: string) => Promise<void>) => {
+      const w = await source.opened(name)
+      await work(w.key)
+      await source.merge(w.key, ['page-deleted'])
+      const made = (await source.changes())[0] as { id: string; key: string }
+      return { key: made.key, bundle: await source.take(`changes/${made.id}/bundle`) }
+    }
+    const made = await step('Made', async (w) => {
+      await source.page(
+        'Offers',
+        { title: 'Offers', intro: 'First' },
+        { key: OFFERS, workspace: w },
+      )
+    })
+    const changed = await step('Changed', (w) => source.edit(OFFERS, { intro: 'Second' }, w))
+    const renamed = await step('Renamed', async (w) => {
+      const document = await source.read(OFFERS, w)
+      const saved = await source.send(
+        'PUT',
+        `${V1}/document/${OFFERS}`,
+        { ...document, variants: [{ culture: null, segment: null, name: 'Deals' }] },
+        { 'crombolo-workspace': w },
+      )
+      expect(saved.status, await saved.clone().text()).toBe(200)
+    })
+    const deleted = await step('Deleted', async (w) => {
+      expect(
+        (
+          await source.send('DELETE', `${V1}/document/${OFFERS}`, undefined, {
+            'crombolo-workspace': w,
+          })
+        ).status,
+      ).toBeLessThan(300)
+    })
+    await source.close()
+    return { made, changed, renamed, deleted }
+  }
+
+  test('each staged into the workspace the one before left, merged as one, each then held', async () => {
+    const { made, changed, renamed } = await promotion()
+    const target = await site()
+    const first = await target.put(made.bundle, '?stage=true')
+    expect(first.status, await first.clone().text()).toBe(200)
+    const { workspace } = (await first.json()) as { workspace: string }
+    for (const next of [changed, renamed]) {
+      const staged = await target.put(next.bundle, `?stage=true&into=${workspace}`)
+      expect(staged.status, await staged.clone().text()).toBe(200)
+      expect(((await staged.json()) as { conflicts: unknown[] }).conflicts).toEqual([])
+    }
+    expect(await target.fieldValue(OFFERS, 'intro', workspace)).toBe('Second')
+    expect(
+      ((await target.read(OFFERS, workspace)).variants as Array<{ name: string }>)[0]?.name,
+    ).toBe('Deals')
+
+    // Staged again, it is skipped and changes nothing.
+    const again = (await (
+      await target.put(changed.bundle, `?stage=true&into=${workspace}`)
+    ).json()) as { skipped: string[]; conflicts: unknown[] }
+    expect(again.skipped).toEqual([changed.key])
+    expect(again.conflicts).toEqual([])
+
+    await target.merge(workspace)
+    expect(await target.fieldValue(OFFERS, 'intro')).toBe('Second')
+    expect(await target.held([made.key, changed.key, renamed.key])).toEqual(
+      expect.arrayContaining([made.key, changed.key, renamed.key]),
+    )
+  }, 60_000)
+
+  test('a change whose dependency is neither held nor staged is told what it needs', async () => {
+    const { renamed } = await promotion()
+    const target = await site()
+    // Nothing of the earlier two is here, staged or held: the page it renames is not either.
+    const staged = await target.put(renamed.bundle, '?stage=true')
+    expect(staged.status).toBe(409)
+    expect(await staged.text()).toContain('which this site does not have')
+  }, 60_000)
+
+  test('a change deleting a page an earlier staged change made leaves the workspace without it', async () => {
+    const { made, changed, renamed, deleted } = await promotion()
+    const target = await site()
+    const { workspace } = (await (await target.put(made.bundle, '?stage=true')).json()) as {
+      workspace: string
+    }
+    for (const next of [changed, renamed, deleted]) {
+      const staged = await target.put(
+        next.bundle,
+        `?stage=true&into=${workspace}&accept=page-deleted`,
+      )
+      expect(staged.status, await staged.clone().text()).toBe(200)
+    }
+    const read = await target.send('GET', `${V1}/document/${OFFERS}`, undefined, {
+      'crombolo-workspace': workspace,
+    })
+    expect(read.status).toBe(404)
+  }, 60_000)
+})

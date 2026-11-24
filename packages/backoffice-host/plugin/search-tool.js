@@ -8,6 +8,7 @@ import { loadManifestElement } from '@umbraco-cms/backoffice/extension-api'
 import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { settingsTabStyles } from './settings-tabs.js'
 
 /** Umbraco's search indexes screen, loaded as its own dashboard, which this tool overwrites, would be. */
 async function indexesScreen() {
@@ -64,25 +65,21 @@ export default class CromboloSearchToolElement extends UmbLitElement {
     `
   }
 
-  static styles = css`
-    :host {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-    }
-    uui-tab-group {
-      flex: none;
-      height: auto;
-      padding: 0 var(--uui-size-layout-1);
-      border-bottom: 1px solid var(--uui-color-border);
-      --uui-tab-divider: transparent;
-    }
-    umb-router-slot {
-      display: block;
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-  `
+  static styles = [
+    settingsTabStyles,
+    css`
+      :host {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      umb-router-slot {
+        display: block;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+    `,
+  ]
 }
 
 customElements.define('crombolo-search-tool', CromboloSearchToolElement)

@@ -28,7 +28,7 @@ import {
   TransferRunRepository,
 } from '@crombolo/data'
 import { loadSchemaDirectory } from '@crombolo/schema'
-import { type CromboloConfig, describeDatabase, VERSION } from './config.ts'
+import { type CromboloConfig, describeDatabase, VERSION, workspacesOn } from './config.ts'
 import { BundleConfigurationError, pendingTablesSteps, tablesChainsFor } from './custom-tables.ts'
 import { type EmailAvailability, emailAvailability, resolveEmailPort } from './email.ts'
 import { siteEmail } from './email-settings.ts'
@@ -43,6 +43,8 @@ export interface SiteStatus {
     schema: string
     /** Where views are snapshotted so an edit needs no restart. */
     componentsCache: string
+    /** Story 420: whether people may open workspaces, and whether every edit is in one. */
+    workspaces: { on: boolean; required: boolean }
   }
   database: {
     dialect: string
@@ -139,6 +141,10 @@ export async function siteStatus(config: CromboloConfig): Promise<SiteStatus> {
       components: config.componentsDir,
       schema: config.schemaDir,
       componentsCache: config.componentsCacheDir,
+      workspaces: {
+        on: workspacesOn(config),
+        required: workspacesOn(config) && config.workspacesRequired,
+      },
     },
     database: {
       dialect: config.dialect,

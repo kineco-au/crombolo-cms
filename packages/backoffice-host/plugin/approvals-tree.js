@@ -18,7 +18,7 @@ export default class CromboloApprovalsTreeElement extends UmbLitElement {
   }
 
   #follow = () => {
-    if (location.pathname.includes('/section/content/approvals')) this.#load()
+    if (location.pathname.includes('/section/approvals')) this.#load()
     else this.requestUpdate()
   }
 

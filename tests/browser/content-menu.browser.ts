@@ -1,9 +1,8 @@
 /**
- * Stories 289 and 385: the menu under Content, which keeps Content's tab marked
- * across Pages, Media, Structure and Code, each at its address under Content
- * (Approvals, shown only once a workflow exists, is in
- * workflow-section.browser.ts), and the tree beside forms and workflows, with
- * folders.
+ * Stories 289, 385 and 419: the menu under Content, which keeps Content's tab marked
+ * across Pages, Media, Library, Translation, Structure and Code, each at its address
+ * under Content: what a workspace holds. Approvals is a section of its own, with a tab
+ * (workflow-section.browser.ts). And the tree beside forms and workflows, with folders.
  */
 import type { Page } from '@playwright/test'
 import { expect, goToSection, settle, signIn, test } from './fixtures.ts'
@@ -24,6 +23,8 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
   await settle(page)
   for (const [label, address] of [
     ['Media', /\/section\/content\/media$/],
+    ['Library', /\/section\/content\/library/],
+    ['Translation', /\/section\/content\/translation/],
     ['Structure', /\/section\/content\/structure$/],
     ['Code', /\/section\/content\/code$/],
     ['Pages', /\/section\/content/],
@@ -47,10 +48,13 @@ test('each place has no tab of its own, and its old address opens it where it is
   await goToSection(page, 'Content')
   await settle(page)
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
-  for (const place of ['Media', 'Forms', 'Structure', 'Code', 'Approvals'])
+  for (const place of ['Media', 'Library', 'Translation', 'Forms', 'Structure', 'Code'])
     await expect(tabs.filter({ hasText: place })).toHaveCount(0)
   for (const [old, now] of [
     ['/crombolo/section/media', /\/section\/content\/media(\/collection)?$/],
+    ['/crombolo/section/library', /\/section\/content\/library/],
+    ['/crombolo/section/translation', /\/section\/content\/translation/],
+    ['/crombolo/section/content/approvals', /\/section\/approvals/],
     ['/crombolo/section/settings/structure', /\/section\/content\/structure$/],
     ['/crombolo/section/settings/code', /\/section\/content\/code$/],
     ['/crombolo/section/settings/workflows', /\/section\/content\/structure\/workflows$/],
@@ -142,14 +146,14 @@ test('Forms is a node in Structure, and Content Types can start a form', async (
   await expect(page.locator('crombolo-forms-overview')).toBeVisible()
 })
 
-test('Forms and Approvals have no tab of their own in the header, and Settings no Build cards', async ({
+test('Forms has no tab of its own in the header, Approvals has one, and Settings no Build cards', async ({
   page,
 }) => {
   await signIn(page)
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
   await expect(tabs.first()).toBeVisible()
   await expect(tabs.filter({ hasText: 'Forms' })).toHaveCount(0)
-  await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(0)
+  await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(1)
 
   await goToSection(page, 'Settings')
   const landing = page.locator('crombolo-settings-landing')
@@ -356,7 +360,7 @@ test('the tree beside each place keeps the one width the reader chose', async ({
     ['/crombolo/section/content/structure', 'umb-section-sidebar:not([hidden])'],
     ['/crombolo/section/content/code', 'umb-section-sidebar:not([hidden])'],
     ['/crombolo/section/content/forms', 'umb-section-sidebar'],
-    ['/crombolo/section/content/approvals', 'umb-section-sidebar'],
+    ['/crombolo/section/approvals', 'umb-section-sidebar'],
   ] as const) {
     await page.goto(address)
     const sidebar = page.locator(tree).first()

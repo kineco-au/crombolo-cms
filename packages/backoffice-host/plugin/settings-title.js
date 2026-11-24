@@ -1,7 +1,7 @@
 /**
- * The title section every Settings tool opens with, under its breadcrumb: its
- * name and what it is for. As tall as Umbraco's own workspace headers, such as
- * Webhooks', which the section sets shorter (`--umb-header-layout-height`).
+ * The title every Settings tool opens with, under its breadcrumb: its name and what
+ * it is for, on the page itself rather than a white band, so it does not read as part
+ * of the white header above.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
@@ -24,20 +24,21 @@ export class CromboloSettingsTitleElement extends UmbLitElement {
     :host {
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      min-height: var(--umb-header-layout-height, 56px);
+      gap: var(--uui-size-space-1);
       box-sizing: border-box;
-      padding: var(--uui-size-space-2) var(--uui-size-layout-1);
-      background: var(--uui-color-surface);
-      border-bottom: 1px solid var(--uui-color-border);
+      padding: var(--uui-size-space-1) var(--uui-size-layout-1) var(--uui-size-space-5);
     }
     h2 {
       margin: 0;
-      font-size: var(--uui-type-h5-size);
-      line-height: 1.2;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--uui-color-text);
     }
     p {
-      margin: var(--uui-size-space-1) 0 0;
+      margin: 0;
+      font-size: 15px;
       color: var(--uui-color-text-alt);
     }
   `

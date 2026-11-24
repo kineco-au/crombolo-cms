@@ -41,11 +41,15 @@ export const SECTION_ALIASES = {
  */
 export const RETIRED_SECTIONS: ReadonlySet<string> = new Set(['packages', 'workflowSetup'])
 
-/** The places under Content (story 385): each a grant, and each needing Content too. */
+/**
+ * The places under Content (stories 385, 419): each a grant, and each needing Content too.
+ * They are what a workspace holds; Approvals, which a workspace does not, is not one.
+ */
 export const CONTENT_PLACES = [
   'pages',
   'media',
-  'workflow',
+  'library',
+  'translation',
   'structure',
   'components',
   'forms',
@@ -72,7 +76,8 @@ export function placesRefusal(sections: readonly string[]): string | undefined {
 export const PLACE_NAMES: Record<(typeof CONTENT_PLACES)[number], string> = {
   pages: 'Pages',
   media: 'Media',
-  workflow: 'Approvals',
+  library: 'Library',
+  translation: 'Translation',
   structure: 'Structure',
   components: 'Code',
   forms: 'Forms',

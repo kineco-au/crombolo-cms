@@ -105,6 +105,7 @@ import { workspaceConflictsMigration } from './workspace-conflicts.ts'
 import { workspaceErrorsMigration } from './workspace-errors.ts'
 import { workspaceLinksMigration } from './workspace-links.ts'
 import { workspaceMergeMigration } from './workspace-merge.ts'
+import { workspacePlacesMigration } from './workspace-places.ts'
 import { workspacePrivacyMigration } from './workspace-privacy.ts'
 import { workspaceProcessesMigration } from './workspace-processes.ts'
 import { workspaceSchedulesMigration } from './workspace-schedules.ts'
@@ -209,4 +210,5 @@ export const cromboloPlan = new MigrationPlan([
   groupStartKeysMigration,
   workspaceErrorsMigration,
   workspaceSchedulesMigration,
+  workspacePlacesMigration,
 ])

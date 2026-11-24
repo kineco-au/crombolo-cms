@@ -480,6 +480,15 @@ stylesheets and scripts; Settings keeps its tools and opens neither (`api-manage
 Workflow set-up, which a group could hold alone between stories 296 and 322, is read and dropped
 (`RETIRED_SECTIONS`). Migration 083 gave every stored group what it could open before.
 
+**Content is what a workspace holds (story 419).** The places are Pages, Media, Library
+(`library`), Translation (`translation`), Structure, Code and Forms: the same set a workspace
+holds, a change carries and a locked site refuses. Approvals (`workflow`) is no longer one: a
+request is made against Shared, so it is a section of its own with a header tab, after Content.
+Languages are Translation's, beside the dictionary, and a language write needs `translation`
+where it needed `structure`. Migration 098 gives Content to each group holding Library or
+Translation without it, and Translation to each holding Structure without it, so nobody loses
+what they could open; the seeded Translators group holds Content too.
+
 **Each place has an address under Content (story 385).** The fork's sections can live at a
 pathname with a slash in it: Media's is `content/media`, and the sections' routes are matched
 longest first so `section/content` does not take `section/content/media/...`. Structure and Code are
@@ -488,10 +497,15 @@ the Settings layout (`settings-section.js`) drawing each with its tree beside ev
 sidebars (`Crombolo.SectionSidebarMenu.Structure` and `.Code`) on Umbraco's menus. The editors of
 their types and files build their addresses from `UMB_STRUCTURE_SECTION_PATHNAME` and
 `UMB_CODE_SECTION_PATHNAME`, as Settings' build theirs from `UMB_SETTINGS_SECTION_PATHNAME`; any
-section opens any entity's editor at `workspace/<entity-type>`. Forms is at `content/forms` and
-Approvals at `content/approvals`. Old addresses redirect: `section/media`, `section/forms` and
-`section/workflow` in the fork's `moved-sections.ts`, and Settings' old Structure, Code, Forms,
-Workflows and editor addresses in its layout. None of the places has a header tab. Pages has no
+section opens any entity's editor at `workspace/<entity-type>`. Forms is at `content/forms`,
+Library at `content/library` and Translation at `content/translation` (story 419, in the fork's
+section constants); Approvals is at `approvals`. Old addresses redirect: `section/media`,
+`section/forms`, `section/library`, `section/translation`, `section/workflow` and
+`section/content/approvals` in the fork's `moved-sections.ts` (the last routed ahead of Content's,
+which would otherwise take it), and Settings' old Structure, Code, Forms, Workflows and editor
+addresses in its layout. None of the places has a header tab (`CROMBOLO_NO_TAB` in the fork's
+header sections). Translation's sidebar has the dictionary, then Languages
+(`Umb.SidebarMenu.Translation.Languages`). Pages has no
 section manifest: without the grant, Content draws no page tree (a condition on
 `Umb.SidebarMenu.Content` in the fork).
 
@@ -502,9 +516,10 @@ The create menu is built from `entityCreateOptionAction` manifests, not the unus
 the plugin's own requests: a 401 renews the session or opens the sign-in dialog, and the
 request waits and is sent again. The client's calls have their own queue and are left alone.
 
-**The menu under Content (story 289)** is `content-strip.js`: Pages, Media, Approvals, Structure
-and Code, each at its address under Content (story 385), for whoever holds each, and nothing for
-someone with one. It is a row of its own under the header, which the fork draws and a
+**The menu under Content (story 289)** is `content-strip.js`: the workspace switch, then Pages,
+Media, Library, Translation, Structure and Code (story 419), each at its address under Content
+(story 385), for whoever holds each, and nothing for someone with one. In a workspace it takes the
+workspace's colour (`stripTint`, from `colourOf`), so it shows what the workspace holds. It is a row of its own under the header, which the fork draws and a
 `backofficeEntryPoint` defines, shown wherever one of them is open;
 `--crombolo-content-strip-height` makes room for it. It raises `crombolo:mark-section` to keep
 Content's tab marked. Settings has no Build group.

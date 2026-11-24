@@ -32,6 +32,8 @@ const env = (_site: string, workspaces = true) => ({
   CROMBOLO_LOG_TO_CONSOLE: 'false',
   CROMBOLO_PROFILES_FILE: join(root, 'profiles'),
   CROMBOLO_WORKSPACES: workspaces ? 'true' : 'false',
+  // Story 420: a local change goes into one's own workspace where the site requires one.
+  CROMBOLO_WORKSPACES_REQUIRED: workspaces ? 'true' : 'false',
   CROMBOLO_SCHEMA_WRITABLE: 'true',
 })
 

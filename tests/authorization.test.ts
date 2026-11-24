@@ -151,7 +151,8 @@ describe('section requirements', () => {
       'PostTemporaryFile',
     ])
       expect([id, need(id)]).toEqual([id, []])
-    expect(need('PostLanguage')).toEqual([['structure']])
+    // Story 419: languages are Translation's.
+    expect(need('PostLanguage')).toEqual([['translation']])
   })
 
   test('each operation authorized unlike Umbraco is a real one, listed with its reason', () => {

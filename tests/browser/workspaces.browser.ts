@@ -1,5 +1,5 @@
 /**
- * Story 384: workspaces in the back office. The switch at the head of Content opens a
+ * Stories 384 and 419: workspaces in the back office. The switch at the head of Content opens a
  * workspace and enters it; a page changed there is changed only there; and the switch
  * merges it into Shared, where the change then is. A fresh load straight into an
  * editor waits for the back office to know the workspace and the page's revision.
@@ -56,14 +56,22 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   await goToSection(page, 'Content')
   await settle(page)
 
-  // The switch says Shared, and opens a workspace that the tab is then in.
+  // The switch says Shared, at the head of the strip, which is in no colour of its own.
+  const stripNav = page.locator('crombolo-content-strip nav')
   await expect(switchButton(page)).toContainText('Shared')
+  await expect(stripNav).not.toHaveAttribute('style', /--crombolo-strip-edge/)
+  await expect(stripNav.locator(':scope > *').first()).toHaveJSProperty(
+    'tagName',
+    'CROMBOLO-WORKSPACE-SWITCH',
+  )
   await switchButton(page).click()
   await menuItem(page, 'New workspace').click()
   const dialog = page.locator('dialog.crombolo-workspace-dialog')
   await dialog.locator('input[name="name"]').fill('Spring sale')
   await dialog.getByRole('button', { name: 'Open it' }).click()
   await expect(switchButton(page)).toContainText('Spring sale')
+  // Story 419: in it, the strip, what the workspace holds, is in its colour.
+  await expect(stripNav).toHaveAttribute('style', /--crombolo-strip-edge: #[0-9a-f]{6}/)
 
   // The page changed in it is changed there only.
   await page.goto(`/crombolo/section/content/workspace/document/edit/${key}`)

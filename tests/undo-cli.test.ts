@@ -228,11 +228,12 @@ describe('in a site folder', () => {
     await (await bootstrapDatabase(other.config)).db.close()
     const h = await serveSite(other)
     try {
-      await signInAsGroup(h, 'translator', 'translator@example.com')
+      // Sensitive data holds no section: Translators hold Content beside Translation (story 419).
+      await signInAsGroup(h, 'sensitiveData', 'outsider@example.com')
     } finally {
       await h.db.close()
     }
-    await keepSignIn(other, await sessionFor(other, 'translator@example.com'))
+    await keepSignIn(other, await sessionFor(other, 'outsider@example.com'))
     const env = { CROMBOLO_CLI_ACCESS: 'sign-in' }
     for (const args of [
       ['content', 'history', '/Home'],

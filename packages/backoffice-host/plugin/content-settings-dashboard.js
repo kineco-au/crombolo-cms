@@ -5,6 +5,7 @@
  */
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { settingsTabStyles } from './settings-tabs.js'
 import './addresses-dashboard.js'
 
 export const CONTENT_SETTINGS_TABS = [
@@ -52,15 +53,13 @@ export default class CromboloContentSettingsDashboardElement extends UmbLitEleme
     `
   }
 
-  static styles = css`
-    :host { display: block; }
-    uui-tab-group {
-      padding: 0 var(--uui-size-layout-1);
-      border-bottom: 1px solid var(--uui-color-border);
-      background: var(--uui-color-surface);
-    }
-    .padded { padding: var(--uui-size-layout-1); }
-  `
+  static styles = [
+    settingsTabStyles,
+    css`
+      :host { display: block; }
+      .padded { padding: var(--uui-size-layout-1); }
+    `,
+  ]
 }
 
 customElements.define(

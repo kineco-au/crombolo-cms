@@ -208,7 +208,8 @@ export function sectionRequirements(operation: OperationInfo): Array<Sections | 
     case 'template':
       return write ? [['components', 'content'], CODE] : [['components', 'content']]
     case 'language':
-      return write ? [STRUCTURE] : []
+      // Story 419: languages are Translation's, beside the dictionary.
+      return write ? [TRANSLATION] : []
     case 'dictionary':
       return [TRANSLATION]
     case 'user':

@@ -6,7 +6,12 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { hashPassword, passwordConfigJson } from '@crombolo/auth'
-import { contentPlacesMigration, type Db, seedIdentity } from '@crombolo/data'
+import {
+  contentPlacesMigration,
+  type Db,
+  seedIdentity,
+  workspacePlacesMigration,
+} from '@crombolo/data'
 import { dialectUnderTest, migratedDb } from './support/db.ts'
 
 const dbs: Db[] = []
@@ -65,5 +70,21 @@ describe(`migration 083, the places under Content (${dialectUnderTest})`, () => 
       expect.arrayContaining(['content', 'pages', 'structure', 'components', 'settings']),
     )
     expect(await sectionsOf(db, 2)).toContain('pages')
+  })
+})
+
+describe(`migration 098: Content is what a workspace holds (${dialectUnderTest}, story 419)`, () => {
+  test('Library or Translation without Content gains Content; Structure gains Translation', async () => {
+    const db = await seeded()
+    await setSections(db, 2, ['library'])
+    await setSections(db, 4, ['translation', 'users'])
+    await setSections(db, 5, ['content', 'structure'])
+    await workspacePlacesMigration.up(db)
+    expect(await sectionsOf(db, 2)).toEqual(['content', 'library'])
+    expect(await sectionsOf(db, 4)).toEqual(['content', 'translation', 'users'])
+    expect(await sectionsOf(db, 5)).toEqual(['content', 'structure', 'translation'])
+    // Run again, it adds nothing twice.
+    await workspacePlacesMigration.up(db)
+    expect(await sectionsOf(db, 5)).toEqual(['content', 'structure', 'translation'])
   })
 })

@@ -82,3 +82,14 @@ export function codeSettingOf(runtimeMode) {
   if (!runtimeMode) return '…'
   return runtimeMode === 'Production' ? 'Locked' : 'Editable'
 }
+
+/**
+ * Story 420: whether people may work in workspaces, as the overview says it. Pure.
+ *
+ * @param {{ enabled?: boolean, required?: boolean } | undefined} mine
+ */
+export function workspacesSettingOf(mine) {
+  if (!mine) return '…'
+  if (!mine.enabled) return 'Off'
+  return mine.required ? 'On, every edit in one' : 'On'
+}

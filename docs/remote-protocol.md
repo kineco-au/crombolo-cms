@@ -882,7 +882,7 @@ in the environment's listing says whether the caller may.
 | `GET <api>/environments/{id}/changes/since?at=` | every page edited since `at` (ISO), as one change |
 | `POST <api>/environments/{id}/changes/check` `{ since?, all? }` | checks what the site shares since a change, or as a whole: `{ ok, since, upTo, changes, pages, failures, notChecked }` (story 406, [changes](changes.md#shared-checked-since-a-change-story-406)), `notChecked` a list of `{ kind, item, why, says }` since 0.78.0 (story 418); needs Pull |
 | `PUT <api>/environments/{id}/changes` `?accept=` | applies the change in the body (`Crombolo-Sha256` required): `{ ok, skipped, changeId }`, or 409 `{ conflicts, workspace }` |
-| `PUT <api>/environments/{id}/changes?stage=true` `&into=` `&visibility=editors` | stages it, in a new workspace or `into` a staged one: `{ workspace, skipped, conflicts }`; with `visibility=editors`, shown to the site's editors to read before it is applied (story 416) |
+| `PUT <api>/environments/{id}/changes?stage=true` `&into=` `&visibility=editors` | stages it, in a new workspace or `into` a staged one: `{ workspace, skipped, conflicts }`; with `visibility=editors`, shown to the site's editors to read before it is applied (story 416); `into` stages over the changes staged there before, skipping one already staged (story 421) |
 | `PUT <api>/environments/{id}/changes/from-site` `?source=&into=&base=&prune=&check=` | stages a site bundle as a change, measured from the source's last merge (story 399, [changes](changes.md#a-site-bundle-staged-as-a-change-story-399)): `{ workspace, skipped, conflicts, pages, files, leftOut }` |
 
 - **A body that does not match its hash,** or is not a whole change bundle, is 400.

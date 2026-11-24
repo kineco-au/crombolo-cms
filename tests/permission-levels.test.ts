@@ -125,12 +125,15 @@ describe('the places under Content (story 385)', () => {
     expect(AREAS.filter((a) => a.under).map((a) => a.label)).toEqual([
       'Pages',
       'Media',
-      'Approvals',
+      'Library',
+      'Translation',
       'Structure',
       'Code',
       'Forms',
     ])
     expect(area('Settings').under).toBeUndefined()
+    // Story 419: Approvals, which a workspace does not hold, is an area of its own.
+    expect(area('Approvals').under).toBeUndefined()
   })
 
   test('a place held without Content is flagged; with Content, or not held, it is not', () => {

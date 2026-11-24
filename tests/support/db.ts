@@ -134,6 +134,8 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 098, Content as what a workspace holds (story 419): grants only, which a replay adds once.
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspacePlaces'")
   // 097, a workspace's schedules (story 414): a table of its own, and a column on one that stays.
   await db.exec('DROP TABLE IF EXISTS workspace_schedule')
   await db.exec('ALTER TABLE content_schedule DROP COLUMN change_key')

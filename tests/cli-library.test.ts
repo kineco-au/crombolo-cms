@@ -258,6 +258,9 @@ describe('at sign-in', () => {
       'Writers',
       '--section',
       'content',
+      // Pages are what open pages (story 385); Content alone opens nothing.
+      '--section',
+      'pages',
       '--permission',
       'Umb.Document.Read',
       '--language',
@@ -270,6 +273,9 @@ describe('at sign-in', () => {
       'readers',
       '--name',
       'Library readers',
+      // Story 419: the Library is a place under Content, which it needs too.
+      '--section',
+      'content',
       '--section',
       'library',
       '--permission',

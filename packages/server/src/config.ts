@@ -177,6 +177,14 @@ function environmentName(): string {
 /** Whether pages, media, types and code arrive only by a change (story 388). */
 export type ContentSetting = 'editable' | 'locked'
 
+/** `CROMBOLO_WORKSPACES`: on unless set to `false` (story 420), so editors can work apart. */
+function workspacesSetting(): boolean {
+  const value = (setting('CROMBOLO_WORKSPACES') ?? 'true').trim().toLowerCase()
+  if (value === '' || value === 'true') return true
+  if (value === 'false') return false
+  throw new Error(`CROMBOLO_WORKSPACES is "${value}": it is true or false.`)
+}
+
 /** `CROMBOLO_CONTENT`: `editable` unless set. */
 function contentSetting(): ContentSetting {
   const value = (setting('CROMBOLO_CONTENT') ?? 'editable').trim().toLowerCase()
@@ -266,7 +274,9 @@ export function runsOnLocalhost(config: CromboloConfig): boolean {
 
 /** The body limit to listen with: raised for uploads when the remote or workspaces are on. */
 export function listeningBodyLimit(config: CromboloConfig): number {
-  return config.remote.enabled || workspacesOn(config)
+  // Story 420: remote access only, now that workspaces are on everywhere; Bun's limit is
+  // every route's, not just the uploads'.
+  return config.remote.enabled
     ? Math.max(config.maxRequestBodyBytes, config.remote.maxUploadBytes)
     : config.maxRequestBodyBytes
 }
@@ -528,7 +538,7 @@ export interface CromboloConfig {
   cliTokenMaxDays: number
   /**
    * Whether people may open workspaces, to change pages apart from Shared
-   * (story 375). `CROMBOLO_WORKSPACES`, off unless set.
+   * (story 375). `CROMBOLO_WORKSPACES`, on unless set to `false` (story 420).
    */
   workspaces: boolean
   /**
@@ -1152,7 +1162,7 @@ export function loadConfig(
       managedAt: setting('CROMBOLO_GROUPS_MANAGED_AT') || undefined,
     },
     cliTokenMaxDays: Math.floor(positiveNumber(setting('CROMBOLO_CLI_TOKEN_MAX_DAYS'), 90)),
-    workspaces: setting('CROMBOLO_WORKSPACES') === 'true',
+    workspaces: workspacesSetting(),
     workspacesRequired: setting('CROMBOLO_WORKSPACES_REQUIRED') === 'true',
     applyChangesBy: (setting('CROMBOLO_APPLY_CHANGES_BY') || 'any') as 'any' | 'exchange',
     purgeAfterDays: Math.floor(nonNegativeNumber(setting('CROMBOLO_PURGE_AFTER_DAYS'), 0)),
@@ -1522,7 +1532,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.78.0'
+export const VERSION = '0.79.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

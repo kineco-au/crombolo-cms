@@ -635,7 +635,9 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
   ): Promise<StageOutcome> {
     const changes = new ChangeRepository(db)
     const keys = bundles.map((b) => b.change.key)
-    const held = await changes.held(keys)
+    // Story 421: a change staged into this workspace already counts as here, as one held does.
+    const stagedHere = new Set((into?.stagedChanges ?? []).map((s) => normaliseUuid(s.key)))
+    const held = new Set([...(await changes.held(keys)), ...stagedHere])
     const skipped = keys.filter((k) => held.has(normaliseUuid(k)))
     const todo = bundles.filter((b) => !held.has(normaliseUuid(b.change.key)))
     const conflicts: ChangeConflict[] = []
@@ -664,7 +666,10 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       return { workspace: undefined, skipped, conflicts: lacking, refused: true }
 
     const coming = new Set(todo.map((b) => normaliseUuid(b.change.key)))
-    const known = await changes.held(todo.flatMap((b) => b.change.depends))
+    const known = new Set([
+      ...(await changes.held(todo.flatMap((b) => b.change.depends))),
+      ...stagedHere,
+    ])
     const workspaces = new WorkspaceRepository(db)
     let workspace = into
     if (!workspace) {
@@ -704,7 +709,19 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         const key = options.media.key(url)
         if (key) await options.media.store.put(key, bytes)
       }
-      for (const page of change.pages) await stagePage(workspace, page, conflict, moved)
+      for (const page of change.pages)
+        try {
+          await stagePage(workspace, page, conflict, moved)
+        } catch (error) {
+          // Story 421: a page that cannot be staged is a conflict naming it, never a 500.
+          const label = `"${page.after?.name ?? page.before?.name ?? page.key}"`
+          conflict(
+            label,
+            /unique|duplicate/i.test(String(error))
+              ? `${label} is here already under its key, so it could not be made again.`
+              : `${label} could not be staged here.`,
+          )
+        }
       for (const order of change.orders ?? []) await stageOrder(workspace, order, conflict)
     }
     if (schemaTouched) await options.schema()?.build({ id: workspace.id, key: workspace.key })
@@ -820,7 +837,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
   ) {
     const shared = repo(page.kind)
     const here = repo(page.kind, workspace.id)
-    const target = await shared.byKey(page.key)
+    // Story 421: the workspace first, which holds what changes staged before this one made.
+    const target = (await here.byKey(page.key)) ?? (await shared.byKey(page.key))
     const label = `"${page.after?.name ?? page.before?.name ?? page.key}"`
 
     if (page.action === 'delete') {

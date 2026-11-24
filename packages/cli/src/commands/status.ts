@@ -41,6 +41,14 @@ export default class Status extends BaseCommand {
     line('site', `${report.site.name}${report.site.dir ? `   ${report.site.dir}` : ''}`)
     line('components', `${report.site.components}   snapshots in ${report.site.componentsCache}`)
     line(
+      'workspaces',
+      report.site.workspaces.on
+        ? report.site.workspaces.required
+          ? 'on, every edit in one'
+          : 'on'
+        : 'off (CROMBOLO_WORKSPACES=false)',
+    )
+    line(
       'database',
       `${report.database.description}   ${
         report.database.reachable

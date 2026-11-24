@@ -173,7 +173,8 @@ is published. A request sent back, withdrawn or declined raises nothing.
 
 ## In the backoffice
 
-- **Approvals** — in the menu under Content, after Pages, with no header tab.
+- **Approvals** — a section of its own at `section/approvals`, with a header tab after
+  Content (story 419): a request is made against Shared, so it is not under Content.
   One list of requests, the pending by default, with *Pending* and *Decided*
   to choose what it holds, a page of 25 at a time (`approvals/requests`). A
   tree beside it has one folder, *Pending*: every request still pending, those

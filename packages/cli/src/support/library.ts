@@ -124,16 +124,19 @@ export async function libraryPathOf(db: Db, node: NodeRow | null): Promise<strin
   return `${LIBRARY_SCHEME}/${names.join('/')}`
 }
 
-/** The section a path needs, for someone signed in: Library for the Library, else Content. */
+/**
+ * The section a path needs, for someone signed in: Library for the Library, else Pages,
+ * which is what opens pages since story 385; Content alone opens nothing (story 419).
+ */
 export function needSection(library: boolean): void {
   const person = signedInPerson()
-  const section = library ? 'library' : 'content'
+  const section = library ? 'library' : 'pages'
   if (person && !hasSection(person, section))
     throw new CliError(
       'refused',
       library
         ? "The Library needs the Library section, which your groups don't give you."
-        : "Pages need the Content section, which your groups don't give you.",
+        : "Pages need the Pages section, which your groups don't give you.",
     )
 }
 

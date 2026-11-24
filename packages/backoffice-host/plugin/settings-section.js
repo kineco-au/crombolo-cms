@@ -414,7 +414,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         ${
           this._tree === 'structure' && this._readOnly
             ? html`<p class="read-only" role="status">
-                ${readOnlyWords('Content types, data types and languages', 'site')}
+                ${readOnlyWords('Content types and data types', 'site')}
               </p>`
             : nothing
         }
@@ -467,9 +467,15 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         line-height: 1.5;
         color: var(--uui-color-text-alt);
       }
+      /* Small capitals above the title, on the page as the title is. */
       .crumbs {
         display: block;
-        padding: var(--uui-size-space-4) var(--uui-size-layout-1) var(--uui-size-space-4);
+        padding: var(--uui-size-space-6) var(--uui-size-layout-1) var(--uui-size-space-2);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--uui-color-text-alt);
       }
       /* Umbraco's workspace headers, Webhooks' among them, as short as the tools' titles. */
       umb-section-main {
@@ -572,7 +578,7 @@ export class CromboloSettingsLandingElement extends UmbLitElement {
 }
 
 const TREE_HELP = {
-  structure: html`<p>Choose a type, data type or language in the tree to edit it.</p>`,
+  structure: html`<p>Choose a type or data type in the tree to edit it.</p>`,
   code: html`<p>Choose a component, stylesheet or script in the tree to edit it.</p>`,
 }
 

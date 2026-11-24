@@ -143,7 +143,7 @@ To apply the definitions as a pipeline step instead, set `CROMBOLO_SYNC_SCHEMA_A
 
 ## Moving a change, not a whole site
 
-With workspaces on (`CROMBOLO_WORKSPACES=true`), a change is the thing you move. Open a
+With workspaces, which are on unless `CROMBOLO_WORKSPACES=false`, a change is the thing you move. Open a
 workspace, change it, check it and push it; it waits on the site you pushed to, unmerged,
 where it can be looked at, and is merged there:
 
