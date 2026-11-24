@@ -517,7 +517,7 @@ const DECLARED = [
     default: '',
     section: 'Schema',
     description:
-      "Where a locked site's content is edited: the address of the other site's back office, which an item opened here links to.",
+      "Where a locked site's content is edited: the address of the other site's back office, which an item opened here links to and every refusal of a write names.",
   },
   {
     env: 'CROMBOLO_WORKSPACES',

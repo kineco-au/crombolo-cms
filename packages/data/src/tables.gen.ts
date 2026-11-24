@@ -256,6 +256,7 @@ export interface CoreTables {
   }
   content_schedule: {
     action: string
+    change_key: string | null
     date: Timestamp
     id: Generated<number>
     language_id: number | null
@@ -1127,5 +1128,10 @@ export interface CoreTables {
     node_id: string
     reason: string
     workspace_key: string
+  }
+  workspace_schedule: {
+    base: string
+    node_id: number
+    workspace_id: Generated<number>
   }
 }

@@ -57,6 +57,8 @@ export interface ChangeBundlePage {
   parentKey: string | null
   /** Where it was before, when the change moved it. */
   beforeParentKey?: string | null
+  /** Story 411: taken out of the recycle bin by the change. */
+  restored?: true
   contentTypeKey: string
   contentTypeAlias: string
   componentKey: string | null
@@ -90,6 +92,18 @@ export interface ChangeBundle {
   pages: ChangeBundlePage[]
   /** Media files it carries, by their address. */
   media: string[]
+  /**
+   * Story 411: the parents whose children it reordered, with their keys in the new
+   * order and the order it found.
+   */
+  orders?: ChangeOrder[]
+}
+
+/** A parent's children reordered by a change (story 411); `parentKey` null: the top level. */
+export interface ChangeOrder {
+  parentKey: string | null
+  keys: string[]
+  before: string[]
 }
 
 const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`

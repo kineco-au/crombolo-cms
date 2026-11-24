@@ -294,6 +294,8 @@ export class WorkspaceRepository {
         await tx.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
         await tx.q.deleteFrom('content_version').where('workspace_id', '=', id).execute()
         await tx.q.deleteFrom('content_schedule').where('workspace_id', '=', id).execute()
+        await tx.q.deleteFrom('workspace_schedule').where('workspace_id', '=', id).execute()
+        await tx.q.deleteFrom('workspace_schedule').where('workspace_id', '=', id).execute()
         for (const table of [
           'workspace_pending',
           'workspace_document_culture',
@@ -419,6 +421,41 @@ export class WorkspaceRepository {
   }
 
   /** Drops what waits for the merge for one page, or one marker: the change is not to go. */
+  /**
+   * The pages a workspace set a schedule for (story 414), each with Shared's schedule as
+   * it was when it first did.
+   */
+  async scheduled(
+    id: number,
+  ): Promise<Array<{ nodeId: number; key: string; name: string; base: unknown[] }>> {
+    const rows = await this.#db.q
+      .selectFrom('workspace_schedule as w')
+      .innerJoin('node as n', 'n.id', 'w.node_id')
+      .select(['w.node_id', 'n.unique_id', 'n.text', 'w.base'])
+      .where('w.workspace_id', '=', id)
+      .execute()
+    return rows.map((r) => ({
+      nodeId: Number(r.node_id),
+      key: normaliseUuid(String(r.unique_id)),
+      name: String(r.text ?? ''),
+      base: JSON.parse(String(r.base)) as unknown[],
+    }))
+  }
+
+  /** Story 414: a page's schedule gone into Shared with a merge of it alone. */
+  async dropSchedule(id: number, nodeId: number): Promise<void> {
+    await this.#db.q
+      .deleteFrom('content_schedule')
+      .where('workspace_id', '=', id)
+      .where('node_id', '=', nodeId)
+      .execute()
+    await this.#db.q
+      .deleteFrom('workspace_schedule')
+      .where('workspace_id', '=', id)
+      .where('node_id', '=', nodeId)
+      .execute()
+  }
+
   async dropPending(id: number, nodeId: number): Promise<void> {
     await this.#db.q
       .deleteFrom('workspace_pending')
@@ -474,6 +511,7 @@ export class WorkspaceRepository {
     await this.#db.q.deleteFrom('document_version').where('id', 'in', versions()).execute()
     await this.#db.q.deleteFrom('content_version').where('workspace_id', '=', id).execute()
     await this.#db.q.deleteFrom('content_schedule').where('workspace_id', '=', id).execute()
+    await this.#db.q.deleteFrom('workspace_schedule').where('workspace_id', '=', id).execute()
     for (const table of [
       'workspace_pending',
       'workspace_document_culture',

@@ -291,6 +291,7 @@ describe(`a property with a value per environment (${dialectUnderTest})`, () => 
     const s = await site()
     expect(await (await s.send('GET', VALUES)).json()).toEqual({
       current: 'staging',
+      editedAt: null,
       names: ['staging', 'production'],
       readOnly: false,
     })

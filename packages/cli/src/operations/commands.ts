@@ -786,11 +786,29 @@ async function withDatabase<T>(config: CromboloConfig, use: (db: Db) => Promise<
 /** Refuses every editor's save, on every node, until resumed; readers are unaffected. */
 export function pauseEditing(
   config: CromboloConfig,
-  input: { reason?: string; by?: string } = {},
+  input: { reason?: string; by?: string; until?: Date | null } = {},
 ): Promise<WritesPaused> {
   return withDatabase(config, (db) =>
-    pauseWrites(db, { reason: input.reason ?? '', by: input.by ?? config.nodeId }),
+    pauseWrites(db, {
+      reason: input.reason ?? '',
+      by: input.by ?? config.nodeId,
+      until: input.until ?? null,
+    }),
   )
+}
+
+/**
+ * Story 409: a pause's length as people write it, `90s`, `10m`, `1h` or `1h30m`, in
+ * milliseconds; undefined for one that cannot be read. Pure.
+ */
+export function parseDuration(text: string): number | undefined {
+  const trimmed = text.trim().toLowerCase()
+  if (!/^(\d+(\.\d+)?[smhd])+$/.test(trimmed)) return undefined
+  const unit: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }
+  let total = 0
+  for (const [, amount, , u] of trimmed.matchAll(/(\d+(\.\d+)?)([smhd])/g))
+    total += Number(amount) * (unit[u as string] as number)
+  return total >= 1000 ? total : undefined
 }
 
 export function resumeEditing(config: CromboloConfig): Promise<void> {

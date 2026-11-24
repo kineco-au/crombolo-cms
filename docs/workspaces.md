@@ -274,9 +274,17 @@ wrote it.
   `Crombolo-Workspace-Link` on a Delivery API call. A link is kept by the SHA-256 of its
   secret (`workspace_link`, migration 087). A stranger on a workspace's host is answered
   404.
+- **The link is only ever on the workspace's own host** (story 410): `path` must start
+  with exactly one `/` and hold no backslash or control character, or the answer is a
+  400 ("Give a path on the workspace's site, such as /about."); and the address made
+  from it must have the workspace's origin, or none is answered. A shared link's address
+  is held to the same check. So no path a caller passes on can send the sign-in it
+  carries to another host.
 - **Every answer** is `private, no-store`, `X-Robots-Tag: noindex, nofollow`, with no ETag;
   `robots.txt` disallows everything and there is no sitemap. A workspace's publish fires
-  no webhook, runs no schedule and changes nothing in Shared's search (story 375).
+  no webhook, runs no schedule and changes nothing in Shared's search (story 375). A
+  schedule set there is kept with what Shared had then, and goes into Shared with the
+  merge (story 414, [`changes.md`](changes.md)).
 - **The preview link** (`368`) takes a workspace: `{ document, workspace }` answers the
   handoff to that page on the workspace's site.
 - **The site's own code runs as on the site:** routes and server actions on a workspace's
@@ -305,7 +313,7 @@ The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
 | `POST /{key}/files/resolve` `{ path, side \| text }` | answers a file's conflict |
 | `PUT /{key}/site-files` `{ path, text }` | carries a file the site reads only as it starts to the merge (an administrator) |
 | `GET /{key}/render?path=/` | one page as the workspace's site renders it |
-| `POST /{key}/open` `{ path }` | a member's link to the workspace's site, used once (story 379) |
+| `POST /{key}/open` `{ path }` | a member's link to the workspace's site, used once (story 379); `path` is on that site, or 400 (story 410) |
 | `GET /{key}/links` · `POST /{key}/links` `{ days }` · `DELETE /{key}/links/{id}` | links for someone else to look |
 
 Each workspace answers its key, name, owner and members, its privacy, its state, `mine`

@@ -133,6 +133,11 @@ entry after it succeeds:
 `content publish` and `content unpublish` record one entry per page, as document
 writes.
 
+**Pausing editing over HTTP** (story 409) writes the same `PauseEditing` and
+`ResumeEditing` entries (`system`) as `maintenance pause` and `resume`, naming the caller,
+the reason and when the pause ends. A resume when nothing is paused writes none, nor
+does a pause that ends by its time.
+
 The user recorded is the account that ran the command, or `CROMBOLO_ACTOR`
 when a pipeline names who it is acting for. The detail is the command without
 its arguments, because an argument can be a password.

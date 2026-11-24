@@ -6,6 +6,62 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.77.0 — 2026-11-24
+
+### Security
+
+- **A workspace's site is only ever opened on its own host (410).**
+  `POST <backoffice>/crombolo/api/workspaces/{key}/open { path }` took any path starting
+  with `/`, so `//other.test/x` (or a backslash or a tab after the slash) answered an
+  address on another host carrying the one-time sign-in to the workspace's site. Such a
+  path is now refused with a 400, and every address answered is checked to be on the
+  workspace's own host. A path without a leading `/` is refused too, where it used to
+  open the home page.
+
+### Features
+
+- **A schedule set in a workspace goes with its change (414).** A merge sets each page's
+  schedule in Shared as the workspace has it, and its change carries it; set or cleared
+  in a person's own workspace, it merges the page at once and is announced, though
+  nothing is published yet. A schedule Shared changed meanwhile is a conflict
+  (`schedule-changed`). When a schedule fires it raises `Crombolo.ChangePublished`
+  naming the change that set it, on each site that fires it.
+
+- **An unpublish, a move, a reorder and a delete are passed on (411).** Each closes the
+  person's change and raises `Crombolo.ChangePublished` with `Change.Kind`
+  (`unpublish`, `move`, `reorder`, `delete`), as a publish does; a delete names the page
+  as `Change.Page`. The change carries them, and applying it does the same on the other
+  site. In a person's own workspace each merges the page at once. A subscriber that
+  ignores `Kind` sees publishes as before.
+- **Unpublishing a page in a workspace that had not saved it there works (411).** It
+  answered "The document could not be found."
+
+- **A locked site's refusal says where content is edited (412).** With
+  `CROMBOLO_CONTENT=locked` and `CROMBOLO_CONTENT_EDITED_AT` set, every refused write (a
+  page, media, the Library, a type, a code file, an environment's value, a new workspace)
+  says "This site's content is edited at <address>. Changes reach it from there." and
+  carries the address as `editedAt`. The back office shows a notice beside the refused
+  save, with a link to the same item there. With no address set, nothing changes.
+- **Editing paused over HTTP, for a set time (409).** `POST <backoffice>/crombolo/api/maintenance`
+  `{ action: 'pause' | 'resume', reason?, forSeconds? | until? }` pauses and resumes
+  editing on a running site, and `GET` says whether it is paused. A pause with a time
+  ends by itself, by each node's clock; `crombolo maintenance pause` takes `--for` and
+  `--until`. It needs Apply changes (`Crombolo.Remote.ApplyChanges`), as applying a change
+  does, and is audited (`docs/operations.md`).
+- **Editors see a banner while editing is paused (409),** across the top of the back
+  office, with the reason and when they can save again, which goes by itself when the
+  pause ends.
+
+### Upgrade notes
+
+- **Migration 097** (`AddWorkspaceSchedules`) adds the `workspace_schedule` table and
+  `content_schedule.change_key`.
+- **A schedule set in a workspace before this release** is not carried by its merge, as
+  before: set it again in the workspace to have it go with the change.
+- **`Crombolo.ChangePublished` also comes from a schedule firing** (414), and from an
+  unpublish, a move, a reorder and a delete (411), each with `Change.Kind`; a subscriber
+  that passes every change on may hear of one it applied already.
+
 ## v0.76.0 — 2026-11-23
 
 ### Features

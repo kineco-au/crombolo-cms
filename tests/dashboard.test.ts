@@ -105,6 +105,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.UsersManaged',
       'backofficeEntryPoint:Crombolo.EntryPoint.EnvironmentValues',
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
+      'backofficeEntryPoint:Crombolo.EntryPoint.Maintenance',
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',
       'userProfileApp:Crombolo.UserProfileApp.CliTokens',
       'mfaLoginProvider:Crombolo.MfaLoginProvider.Authenticator',

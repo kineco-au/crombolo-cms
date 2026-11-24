@@ -21,6 +21,24 @@ export const EDIT_WINDOW_MS = 10 * 60 * 1000
 /** Where a change keeps a page's schedule among its items (story 395): `schedules/<page key>`. */
 export const SCHEDULE_PREFIX = 'schedules/'
 
+/** Story 411: where a change keeps a page's place and whether it was published: `places/<key>`. */
+export const PLACE_PREFIX = 'places/'
+
+/** Story 411: where a change keeps the order of a parent's children: `orders/<key>` or `orders/root`. */
+export const ORDER_PREFIX = 'orders/'
+
+/** Where a page stood, beside its content, as a change carries it (story 411). */
+export interface PagePlace {
+  parentKey: string | null
+  published: boolean
+  /** In the recycle bin. */
+  trashed?: boolean
+}
+
+/** The item path for a parent's children's order. */
+export const orderPath = (parentKey: string | null) =>
+  `${ORDER_PREFIX}${parentKey ? normaliseUuid(parentKey) : 'root'}`
+
 export interface Change {
   id: string
   kind: ChangeSource
@@ -253,6 +271,133 @@ export class ChangeRepository {
   }
 
   /**
+   * A page a person moved, restored or unpublished straight in Shared (story 411): in
+   * their open change, with where it stood before their first such change and now.
+   */
+  async placed(
+    madeBy: string,
+    page: { key: string; kind: string },
+    before: PagePlace,
+    after: PagePlace,
+    now = new Date(),
+  ): Promise<boolean> {
+    const id = await this.#openEdit(madeBy, now)
+    if (!(await this.#recordPage(id, page))) return false
+    await this.#keepItem(id, `${PLACE_PREFIX}${normaliseUuid(page.key)}`, before, after)
+    await this.#touch(id, now)
+    return true
+  }
+
+  /** A parent's children a person reordered straight in Shared (story 411), before and now. */
+  async ordered(
+    madeBy: string,
+    parentKey: string | null,
+    before: readonly string[],
+    after: readonly string[],
+    now = new Date(),
+  ): Promise<void> {
+    const id = await this.#openEdit(madeBy, now)
+    await this.#keepItem(id, orderPath(parentKey), before, after)
+    await this.#touch(id, now)
+  }
+
+  /**
+   * A page a person deleted straight in Shared, to the recycle bin or for good (story
+   * 411): in their open change as a removal, keeping the page as it stood.
+   */
+  async removedBy(
+    madeBy: string,
+    page: { key: string; kind: string },
+    was: object,
+    now = new Date(),
+  ): Promise<void> {
+    const id = await this.#openEdit(madeBy, now)
+    const nodeKey = normaliseUuid(page.key)
+    const recorded = await this.#db.q
+      .selectFrom('content_transfer_change')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('node_key', '=', nodeKey)
+      .execute()
+    // Gone for good, it cannot be read back: one the change already holds keeps its row.
+    if (recorded.length === 0 && !(await this.#recordPage(id, page)))
+      await this.#db.q
+        .insertInto('content_transfer_change')
+        .values({
+          run_id: id,
+          node_key: nodeKey,
+          kind: page.kind,
+          action: 'recycle',
+          before_event_id: null,
+          before_published_event_id: null,
+          event_id: null,
+        })
+        .execute()
+    await this.#db.q
+      .updateTable('content_transfer_change')
+      .set({ action: 'recycle', event_id: null })
+      .where('run_id', '=', id)
+      .where('node_key', '=', nodeKey)
+      .execute()
+    const path = `pages/${nodeKey}`
+    const found = await this.#db.q
+      .selectFrom('change_item')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('path', '=', path)
+      .execute()
+    if (!found[0])
+      await this.item(id, {
+        path,
+        kind: 'page',
+        class: 'none',
+        before: JSON.stringify(was),
+        after: null,
+      })
+    await this.#touch(id, now)
+  }
+
+  /** Closes a person's open change (story 411): finished, to be passed on. */
+  async closeOpen(
+    madeBy: string,
+    now = new Date(),
+  ): Promise<{ key: string; name: string | null } | undefined> {
+    const open = await this.#db.q
+      .selectFrom('content_transfer_run')
+      .select('id')
+      .where('change_kind', '=', 'edit')
+      .where('made_by', '=', madeBy)
+      .where('closed_at', 'is', null)
+      .orderBy('started_at', 'desc')
+      .executeTakeFirst()
+    return open ? this.#close(String(open.id), now) : undefined
+  }
+
+  /** An item that keeps its first "before" and takes the latest "after". */
+  async #keepItem(id: string, path: string, before: unknown, after: unknown) {
+    const found = await this.#db.q
+      .selectFrom('change_item')
+      .select('id')
+      .where('run_id', '=', id)
+      .where('path', '=', path)
+      .execute()
+    if (found[0])
+      await this.#db.q
+        .updateTable('change_item')
+        .set({ after_hash: await this.#put(JSON.stringify(after)) })
+        .where('id', '=', Number(found[0].id))
+        .execute()
+    else
+      await this.item(id, {
+        path,
+        kind: 'page',
+        class: 'none',
+        before: JSON.stringify(before),
+        after: JSON.stringify(after),
+      })
+  }
+
+  /**
    * A page a person published straight in Shared (story 388): in their open change as
    * it is now, and the change closed, so it is finished and can be passed on. Their
    * next edit starts another.
@@ -264,6 +409,10 @@ export class ChangeRepository {
   ): Promise<{ key: string; name: string | null } | undefined> {
     const id = await this.#openEdit(madeBy, now)
     if (!(await this.#recordPage(id, page))) return undefined
+    return this.#close(id, now)
+  }
+
+  async #close(id: string, now: Date): Promise<{ key: string; name: string | null }> {
     await this.#touch(id, now)
     await this.#db.q
       .updateTable('content_transfer_run')

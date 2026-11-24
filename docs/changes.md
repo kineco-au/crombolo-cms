@@ -240,11 +240,42 @@ In the back office each page, media item and Library item opens read-only, its I
 saying where it is edited, with a link to the same item there when
 `CROMBOLO_CONTENT_EDITED_AT` names that site's back office address.
 
+Every write a locked site refuses names that address too (story `412`): pages, media,
+the Library, types, data types, code files, an environment's values and opening a
+workspace each answer 409 saying "This site's content is edited at <address>. Changes
+reach it from there.", with the address as `editedAt` beside the title and detail. In
+the back office a notice beside the refused save says the same and links to the same
+item there. Only an `http` or `https` address is made a link. With no address set,
+each refusal keeps its old words. A site with only its code locked
+(`CROMBOLO_CODE=locked`) keeps its own words, since the address names where content is
+made.
+
 On the site where content is made, a person's publish closes their change, so it holds
 what they changed and is finished, and raises `Crombolo.ChangePublished` naming it
 ([`webhooks.md`](webhooks.md)): a host subscribed to it can take the change
 (`changes/{id}/bundle`) and apply it to the serving copy at once. Their next edit starts
 another change.
+
+An unpublish, a move, a reorder and a delete close the change and are announced the same
+way, with `Change.Kind` saying which (story `411`):
+
+- **What the change holds:** each page's place before and after (`places/<key>`: its
+  parent, whether it was published, whether it was in the recycle bin), and for a reorder
+  the parent's children before and after (`orders/<key>`, `orders/root` for the top
+  level). A page deleted keeps its last state (`pages/<key>`), as a merge's delete does.
+- **In the bundle:** an unpublish is `before.published: true`, `after.published: false`; a
+  move is `beforeParentKey`; a restore is `restored: true`; a delete is `action:
+  'delete'`; a reorder is `orders: [{ parentKey, keys, before }]`.
+- **Applied on the other site,** each does the same there: the page is unpublished where
+  it is published, moved where it is still where the change found it, put back from the
+  recycle bin (or made again, if deleted there for good), deleted once `page-deleted` is
+  accepted; the parent's children it has are put in the change's order, the rest after.
+  A parent reordered there since the change began is a conflict, as a moved page is.
+- **The recycle bin is the delete.** Emptying it announces nothing more; restoring from it
+  is announced as a move.
+- **In a person's own workspace,** done to a page Shared has, each merges that page at
+  once (a reorder, the parent's children) and is announced with `From: own-workspace`;
+  done to a page made there and never merged, it stays there and nothing is announced.
 
 
 ### What the served copy holds
@@ -276,6 +307,17 @@ which ones it applied (story `395`), so editors there are offered only what is l
 - **Setting or clearing a schedule** closes the person's change and raises the event,
   as a publish does. The change carries the page's schedule, and applying it sets the
   same schedule there, which fires at its time.
+- **A schedule set in a workspace goes with its change** (story `414`). A merge sets
+  each page's schedule in Shared as the workspace has it, a cleared one cleared, and its
+  change holds it as one set in Shared does. Set or cleared in a person's own workspace,
+  it merges that page at once and raises the event with `From: "own-workspace"`, though
+  nothing is published yet; a page made there arrives unpublished, with its schedule. A
+  schedule Shared changed since the workspace set its own is a conflict, settled by
+  accepting `schedule-changed`, which keeps the workspace's.
+- **Both sites fire a schedule,** each its own, at the same instant: times are kept and
+  carried in UTC. As it fires, each raises the page's ordinary webhooks and
+  `Crombolo.ChangePublished` naming the change that set it (`Kind: "unpublish"` for a
+  page coming down). A host taking that change again finds it applied already.
 - **A publish in a person's own workspace** (story `397`), which merges that page alone
   into Shared, raises the event for the merge's change, with `From: "own-workspace"`. A
   named workspace's merge raises none: it waits for a release.

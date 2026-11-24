@@ -18,6 +18,7 @@ export default class MaintenanceStatus extends BaseCommand {
           { name: 'at', type: 'string' },
           { name: 'by', type: 'string', nullable: true },
           { name: 'reason', type: 'string', nullable: true },
+          { name: 'until', type: 'string', nullable: true },
         ],
       },
     ],
@@ -28,7 +29,7 @@ export default class MaintenanceStatus extends BaseCommand {
     const paused = await ops.editingPaused(await siteConfig())
     this.say(
       paused
-        ? `Editing paused since ${paused.at}${paused.by ? ` by ${paused.by}` : ''}${paused.reason ? `: ${paused.reason}` : ''}.`
+        ? `Editing paused since ${paused.at}${paused.by ? ` by ${paused.by}` : ''}${paused.reason ? `: ${paused.reason}` : ''}; ${paused.until ? `it ends at ${paused.until}` : 'until resumed'}.`
         : 'Editing is not paused.',
     )
     return { paused: paused ?? null }

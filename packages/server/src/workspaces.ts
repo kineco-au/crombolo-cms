@@ -16,17 +16,19 @@ import {
   WORKSPACE_OPERATIONS,
   WORKSPACE_REFUSALS,
 } from '@crombolo/api-management/domain'
-import { fieldWords, type MergePlan } from '@crombolo/content'
+import { fieldWords, type MergePlan, type OnlyKind } from '@crombolo/content'
 import {
   DocumentPermissions as D,
   normaliseUuid,
   problemDetails,
   problemResponse,
+  SystemNodes,
   WorkspacePermissions,
 } from '@crombolo/core'
 import {
   type Db,
   DocumentRepository,
+  NodeRepository,
   type NodeSchemaState,
   UserRepository,
   type Workspace,
@@ -73,8 +75,22 @@ const ADMIN_READS = new Set([
 /** The header's word for a person's own unnamed workspace (story 380). */
 export const OWN_WORKSPACE = 'mine'
 
-const PUBLISHES = new Set(['PutDocumentByIdPublish', 'PutDocumentByIdUpdateAndPublish'])
-const PAGE_IN_PATH = /\/document\/([0-9a-f-]{36})\//i
+/**
+ * What merges a person's own page at once, by what it does: a publish (story 380), and an
+ * unpublish, a move, a reorder and a delete, which no publish follows (story 411).
+ */
+const MERGED_AT_ONCE = new Map<string, OnlyKind>([
+  ['PutDocumentByIdPublish', 'publish'],
+  ['PutDocumentByIdUpdateAndPublish', 'publish'],
+  ['PutDocumentByIdUnpublish', 'unpublish'],
+  ['PutDocumentByIdMove', 'move'],
+  ['PutDocumentByIdMoveToRecycleBin', 'delete'],
+  ['DeleteDocumentById', 'delete'],
+  ['PutDocumentSort', 'reorder'],
+  ['PutDocumentByIdSortChildren', 'reorder'],
+  ['PutDocumentRootSortChildren', 'reorder'],
+])
+const PAGE_IN_PATH = /\/document\/([0-9a-f-]{36})(?:\/|$)/i
 
 /** The settings a scope reads, each request. */
 export interface WorkspaceScopeOptions {
@@ -83,6 +99,8 @@ export interface WorkspaceScopeOptions {
   required?: () => boolean
   /** Story 388: the site takes its content only by a change. */
   locked?: () => boolean
+  /** Where a locked site's content is edited, to name in its refusals (story 412). */
+  editedAt?: () => string | null
   /** The merge a publish in a person's own workspace makes, of that page alone. */
   merge?: () => WorkspaceMerging
   /** The workspace's copy of the schema files, taken as it opens (story 376). */
@@ -108,7 +126,7 @@ export function createWorkspaceScope(db: Db, settings: WorkspaceScopeOptions | (
     const key = request.headers.get(WORKSPACE_HEADER)?.trim()
     const pages = WORKSPACE_OPERATIONS.has(operation.operationId)
     if (options.locked?.() && pages && request.method !== 'GET')
-      return problem(409, CONTENT_LOCKED.title, CONTENT_LOCKED.detail)
+      return lockedRefusal(options.editedAt?.())
     if (!key) {
       if (options.enabled() && options.required?.() && pages && request.method !== 'GET')
         return problem(
@@ -152,52 +170,100 @@ export function createWorkspaceScope(db: Db, settings: WorkspaceScopeOptions | (
         'A staged change is not edited here: change it where it was made and stage it again.',
       )
     const workspace = found
-    const page = PUBLISHES.has(operation.operationId)
-      ? new URL(request.url).pathname.match(PAGE_IN_PATH)?.[1]
-      : undefined
+    const kind = MERGED_AT_ONCE.get(operation.operationId)
+    const inPath = new URL(request.url).pathname.match(PAGE_IN_PATH)?.[1]
+    // A reorder names its parent: in the path, in the body, or the top level.
+    const sortParent =
+      operation.operationId === 'PutDocumentSort'
+        ? await request
+            .clone()
+            .json()
+            .then((b: { parent?: { id?: string } | null }) => b?.parent?.id ?? null)
+            .catch(() => null)
+        : (inPath ?? null)
     return {
       run: async <T>(fn: () => Promise<T>): Promise<T> => {
         const answered = await held.run(workspace, fn)
         const merging = options.merge?.()
-        if (!workspace.personal || !page || !merging || !(answered instanceof Response))
+        if (!workspace.personal || !kind || !merging || !(answered instanceof Response))
           return answered
         if (answered.status < 200 || answered.status >= 300) return answered
-        return (await publishOwnPage(db, merging, workspace, principal, page)) ?? answered
+        const what =
+          kind === 'reorder'
+            ? { kind, parentKey: sortParent }
+            : inPath
+              ? { kind, page: inPath }
+              : undefined
+        if (!what) return answered
+        return (await mergeOwnPage(db, merging, workspace, principal, what)) ?? answered
       },
     }
   }
 }
 
+const DONE_WORDS: Record<OnlyKind, string> = {
+  publish: 'Published',
+  unpublish: 'Unpublished',
+  move: 'Moved',
+  reorder: 'Reordered',
+  delete: 'Deleted',
+}
+
 /**
  * A publish in a person's own workspace is the merge of that page alone, at once
- * (story 380). Where it cannot go, the page stays published there, and why is said.
+ * (story 380); so are an unpublish, a move, a reorder and a delete of a page Shared has
+ * (story 411). A page made in the workspace and never merged has nothing in Shared to
+ * change, so nothing goes. Where it cannot go, it stays there, and why is said.
  */
-async function publishOwnPage<T>(
+async function mergeOwnPage<T>(
   db: Db,
   merging: WorkspaceMerging,
   workspace: Workspace,
   principal: Principal,
-  page: string,
+  what: { kind: OnlyKind; page?: string; parentKey?: string | null },
 ): Promise<T | undefined> {
   const plan = await merging.preview(workspace)
+  let keys: string[]
+  if (what.kind === 'reorder') {
+    const parentId = what.parentKey
+      ? (await new NodeRepository(db).byKey(what.parentKey))?.id
+      : SystemNodes.Root
+    keys = plan.pending
+      .filter((p) => p.pending.kind === 'sort' && p.pending.baseParentId === parentId)
+      .flatMap((p) => (p.pending.key ? [p.pending.key] : []))
+  } else keys = what.page ? [normaliseUuid(what.page)] : []
+  const only = new Set(keys)
+  const pages = plan.pages.filter((p) => only.has(p.page.key))
+  if (what.kind !== 'publish' && pages.some((p) => p.page.made)) return undefined
   const one: MergePlan = {
-    pages: plan.pages.filter((p) => p.page.key === normaliseUuid(page)),
-    pending: [],
-    conflicts: plan.conflicts.filter((c) => c.key === normaliseUuid(page)),
-    findings: plan.findings.filter((f) => f.key === normaliseUuid(page)),
+    pages,
+    pending:
+      what.kind === 'publish'
+        ? []
+        : plan.pending.filter((p) => p.pending.key !== null && only.has(p.pending.key)),
+    conflicts: plan.conflicts.filter((c) => c.key !== null && only.has(c.key)),
+    findings: plan.findings.filter((f) => f.key !== null && only.has(f.key)),
   }
+  // Story 414: a schedule set there goes too, though nothing else did.
+  const scheduled =
+    what.kind === 'publish' &&
+    (await new WorkspaceRepository(db).scheduled(workspace.id)).some((r) => only.has(r.key))
+  if (one.pages.length === 0 && one.pending.length === 0 && !scheduled) return undefined
   const refusals = await mergeRefusals(db, principal, one)
   const outcome =
     refusals.length > 0
       ? undefined
       : await merging.run(workspace, principal, {
-          only: normaliseUuid(page),
+          only: what.kind === 'publish' ? (keys[0] as string) : keys,
+          ...(what.kind === 'publish' ? {} : { onlyKind: what.kind }),
+          // Deleting it is what the person asked: they need not accept it again.
+          ...(what.kind === 'delete' ? { accepted: ['page-deleted'] } : {}),
           ...(await userIdOf(db, principal)),
         })
   if (outcome?.ok) return undefined
   return problem(
     409,
-    'Published in your own changes, not yet for everyone',
+    `${DONE_WORDS[what.kind]} in your own changes, not yet for everyone`,
     [...refusals, ...(outcome?.blockers ?? [])].join(' '),
   ) as T
 }
@@ -286,10 +352,69 @@ const json = (body: unknown, status = 200) => Response.json(body, { status })
 const refused = (message: string, status: number) => json({ message }, status)
 
 /** What a locked site says of a write it refuses (story 388), in the API and the back office. */
+/**
+ * Story 410: whether a path names a place on a workspace's own site and nothing else:
+ * exactly one leading `/`, no backslash and no control character, so no parser can read
+ * a scheme or a host into it. Pure.
+ */
+export const isSitePath = (path: unknown): path is string =>
+  typeof path === 'string' &&
+  path.startsWith('/') &&
+  !path.startsWith('//') &&
+  !path.includes('\\') &&
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+  !/[\u0000-\u001f\u007f]/.test(path)
+
+/**
+ * A path on a site, as an address on that origin, or undefined when the path is not one
+ * or the address made from it is anywhere else. Pure.
+ */
+export function onOrigin(path: string, origin: URL | string): URL | undefined {
+  if (!isSitePath(path)) return undefined
+  const base = new URL(origin)
+  const url = new URL(path, base)
+  return url.origin === base.origin ? url : undefined
+}
+
+/** A page's address as a path on a workspace's site: its path alone, or `/`. Pure. */
+export function pageSitePath(url: string | null | undefined): string {
+  if (!url) return '/'
+  let path = url
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) {
+    try {
+      const at = new URL(url, 'http://localhost')
+      path = `${at.pathname}${at.search}`
+    } catch {
+      return '/'
+    }
+  }
+  return isSitePath(path) ? path : '/'
+}
+
 export const CONTENT_LOCKED = {
   title: 'This site takes its content by change',
   detail:
     'Its pages, media, types and code are changed where they are made, and arrive here when that change is applied.',
+}
+
+/** What a locked site's refusal says where it knows where content is edited (story 412). Pure. */
+export const editedAtDetail = (editedAt: string) =>
+  `This site's content is edited at ${editedAt}. Changes reach it from there.`
+
+/**
+ * A locked site's refusal of a write (story 412): naming where content is edited, and
+ * carrying it as `editedAt`, when the site knows it; today's words when it does not.
+ */
+export function lockedRefusal(editedAt: string | null | undefined, status = 409): Response {
+  const at = editedAt?.trim() || undefined
+  return problemResponse({
+    ...problemDetails({
+      title: CONTENT_LOCKED.title,
+      status,
+      detail: at ? editedAtDetail(at) : CONTENT_LOCKED.detail,
+    }),
+    ...(at ? { editedAt: at } : {}),
+  } as ReturnType<typeof problemDetails>)
 }
 
 /** One open workspace as an administrator sees it among them all (story 383). */
@@ -661,11 +786,15 @@ export function createWorkspacesApi(
           return json({ items: listed.map((w) => viewOf(w, principal, counts.get(w.id) ?? 0)) })
         }
         if (request.method === 'POST') {
-          if (options.locked?.())
-            return refused(
-              `${CONTENT_LOCKED.title}: a workspace is opened where its content is made.`,
-              409,
-            )
+          if (options.locked?.()) {
+            const at = options.editedAt?.()?.trim()
+            return at
+              ? json({ message: editedAtDetail(at), editedAt: at }, 409)
+              : refused(
+                  `${CONTENT_LOCKED.title}: a workspace is opened where its content is made.`,
+                  409,
+                )
+          }
           const asked = await body()
           const name = nameOf(asked)
           if (!name) return refused('A workspace needs a name of up to 255 characters.', 400)
@@ -895,7 +1024,9 @@ export function createWorkspacesApi(
       if (sub === 'open' && !member && request.method === 'POST' && options.open) {
         if (found.state === 'merged') return refused('This workspace was merged already.', 409)
         const asked = await body()
-        const path = typeof asked.path === 'string' && asked.path.startsWith('/') ? asked.path : '/'
+        const path = asked.path === undefined || asked.path === null ? '/' : asked.path
+        if (!isSitePath(path))
+          return refused("Give a path on the workspace's site, such as /about.", 400)
         const url = await options.open(found, principal, path, request, adminRead === true)
         return url ? json({ url }) : refused('You may not open it.', 403)
       }

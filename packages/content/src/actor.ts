@@ -57,6 +57,8 @@ export type Actor =
       user?: { id: string; name: string }
       /** Said with what it did, in notifications and the audit: `approved through "Legal"`. */
       note?: string
+      /** Story 414: the change whose schedule it carries out. */
+      change?: { key: string; name: string | null }
     }
 
 /**
@@ -112,6 +114,7 @@ export const systemActor = (
     source?: ActorOrigin['source']
     user?: { id: string; name: string }
     note?: string
+    change?: { key: string; name: string | null }
   } = {},
 ): Actor => ({
   kind: 'system',
@@ -119,6 +122,7 @@ export const systemActor = (
   origin: { source: options.source ?? 'job' },
   user: options.user,
   note: options.note,
+  ...(options.change ? { change: options.change } : {}),
 })
 
 /** The name an audit entry or a notification gives the actor. */

@@ -9,6 +9,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { isSitePath, onOrigin, pageSitePath } from '../packages/server/src/workspaces.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -395,5 +396,78 @@ describe(`a workspace's site (${dialectUnderTest})`, () => {
     expect(await (await visitor.get(`http://${label(sale.key)}.preview.test/`)).text()).toContain(
       'Sale home',
     )
+  })
+})
+
+// Story 410: the address `open` answers carries a sign-in, so it is only ever on the
+// workspace's own host.
+const HOSTILE = [
+  '//other.test/x',
+  '/\\other.test/x',
+  '/\\/other.test/x',
+  '/\t/other.test/x',
+  '/\n/other.test/x',
+  '/%0a/other.test/x'.replace('%0a', '\r'),
+  'https://other.test/',
+  'other.test',
+  'about',
+  '',
+  '/\u0000x',
+]
+
+describe('a path on a workspace’s site (story 410)', () => {
+  test('is one leading slash and no way to name a host; the address made stays on the origin', () => {
+    for (const path of ['/', '/about', '/about?x=1#top', '/a/b/'])
+      expect(onOrigin(path, 'https://sale.preview.test')?.origin).toBe('https://sale.preview.test')
+    for (const path of HOSTILE) {
+      expect(isSitePath(path), JSON.stringify(path)).toBe(false)
+      expect(onOrigin(path, 'https://sale.preview.test'), JSON.stringify(path)).toBeUndefined()
+    }
+  })
+
+  test('a page’s own address gives its path alone', () => {
+    expect(pageSitePath('/about/')).toBe('/about/')
+    expect(pageSitePath('https://www.example.test/about/?x=1')).toBe('/about/?x=1')
+    expect(pageSitePath(null)).toBe('/')
+    expect(pageSitePath('//other.test/x')).toBe('/x')
+    expect(pageSitePath('about')).toBe('/')
+  })
+})
+
+describe(`opening a workspace’s site at a path (${dialectUnderTest}, story 410)`, () => {
+  test('a path on another host is refused, and nothing answered is ever off the workspace’s host', async () => {
+    const { send, opened } = await site()
+    const sale = await opened('Spring sale')
+    const host = `${label(sale.key)}.preview.test`
+    for (const path of HOSTILE) {
+      const response = await send('POST', `${WORKSPACES}/${sale.key}/open`, { path })
+      expect(response.status, JSON.stringify(path)).toBe(400)
+      expect(JSON.stringify(await response.json())).toContain("a path on the workspace's site")
+    }
+    for (const path of ['/', '/about', '/about?x=1#top']) {
+      const answered = (await (
+        await send('POST', `${WORKSPACES}/${sale.key}/open`, { path })
+      ).json()) as { url: string }
+      const url = new URL(answered.url)
+      expect(url.host, path).toBe(host)
+      expect(url.searchParams.size, path).toBeGreaterThan(0)
+    }
+    // Saying no path opens the home page, as the back office asks.
+    const home = (await (await send('POST', `${WORKSPACES}/${sale.key}/open`, {})).json()) as {
+      url: string
+    }
+    expect(new URL(home.url).pathname).toBe('/')
+  })
+
+  test('without a host of its own, the address is on the site’s own host', async () => {
+    const { send, opened } = await site({ host: null })
+    const sale = await opened('Spring sale')
+    expect(
+      (await send('POST', `${WORKSPACES}/${sale.key}/open`, { path: '//other.test/x' })).status,
+    ).toBe(400)
+    const answered = (await (
+      await send('POST', `${WORKSPACES}/${sale.key}/open`, { path: '/about' })
+    ).json()) as { url: string }
+    expect(new URL(answered.url).host).toBe('localhost')
   })
 })

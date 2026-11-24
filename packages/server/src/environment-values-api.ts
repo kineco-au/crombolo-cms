@@ -15,6 +15,7 @@ import {
   type DocumentRepositoryOptions,
   readEnvironments,
 } from '@crombolo/data'
+import { editedAtDetail } from './workspaces.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const json = (body: unknown, status = 200) => Response.json(body, { status })
@@ -38,6 +39,8 @@ export function createEnvironmentValuesApi(
     documents: () => DocumentOperations
     /** The values can only arrive by a change here (`environmentValues.readOnly`, or locked content). */
     readOnly: () => boolean
+    /** Where content is edited, on a locked site that names it (story 412). */
+    editedAt?: () => string | null
   },
 ) {
   /** The properties of a page that vary by environment, with each of their values. */
@@ -101,6 +104,7 @@ export function createEnvironmentValuesApi(
           current: options.environment(),
           names: await readEnvironments(db),
           readOnly: options.readOnly(),
+          editedAt: (options.readOnly() && options.editedAt?.()?.trim()) || null,
         })
       const key = parts[0]
       if (parts.length !== 1 || !key || !UUID.test(key))
@@ -110,11 +114,14 @@ export function createEnvironmentValuesApi(
         return json({ items: (await valuesOf(normaliseUuid(key))) ?? [] })
       }
       if (request.method !== 'PUT') return new Response(null, { status: 405 })
-      if (options.readOnly())
+      if (options.readOnly()) {
+        const at = options.editedAt?.()?.trim()
+        if (at) return json({ message: editedAtDetail(at), editedAt: at }, 409)
         return refused(
           "This environment's values arrive only by a change applied from where they are made.",
           409,
         )
+      }
       const asked = ((await request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>
       const alias = typeof asked.alias === 'string' ? asked.alias : ''
       const environment = typeof asked.environment === 'string' ? asked.environment : ''

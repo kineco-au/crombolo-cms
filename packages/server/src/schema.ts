@@ -26,6 +26,7 @@ import {
   latestLedgerId,
   type NodeSchemaState,
   oldestCacheInstructionId,
+  pauseEnded,
   readWritesPaused,
   touchServer,
   updateSchemaStateHash,
@@ -374,9 +375,9 @@ export class CacheInstructionPoller {
     return this.#readsUnsafe
   }
 
-  /** Set while an operator has paused editing cluster-wide. */
+  /** Set while an operator has paused editing cluster-wide, and its end has not passed (story 409). */
   get paused(): WritesPaused | undefined {
-    return this.#paused
+    return this.#paused && !pauseEnded(this.#paused) ? this.#paused : undefined
   }
 
   constructor(options: CachePollerOptions) {

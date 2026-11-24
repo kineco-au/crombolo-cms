@@ -694,6 +694,25 @@ export class DocumentRepository {
   }
 
   /** The workspace's latest event for a page, with its name, template and date. */
+  /** A version as a page's head reads it (story 411): for a workspace page with none of its own. */
+  async #versionHead(versionId: number | null) {
+    if (versionId === null) return undefined
+    const rows = await this.#db.q
+      .selectFrom('content_version as cv')
+      .innerJoin('document_version as dv', 'dv.id', 'cv.id')
+      .leftJoin('node as tn', 'tn.id', 'dv.template_id')
+      .select([
+        'cv.id',
+        'cv.text',
+        'cv.version_date',
+        'dv.template_id',
+        'tn.unique_id as template_key',
+      ])
+      .where('cv.id', '=', versionId)
+      .execute()
+    return rows[0]
+  }
+
   async #workspaceHead(nodeId: number) {
     const rows = await this.#db.q
       .selectFrom('content_version as cv')
@@ -786,7 +805,9 @@ export class DocumentRepository {
       .where('c.node_id', '=', node.id)
       .execute()
     const row = rows[0]
-    const head = await this.#workspaceHead(node.id)
+    // Unpublished there and not saved there, it has no version of its own: Shared's it began from.
+    const head =
+      (await this.#workspaceHead(node.id)) ?? (await this.#versionHead(wd.baseEventId ?? null))
     if (!row || !head) return undefined
     const propertyTypes = await this.#propertyTypes(Number(row.content_type_id))
     const languages = await this.#languages()
@@ -3108,6 +3129,24 @@ export class DocumentRepository {
     const languages = await this.#languages()
     const workspace = this.#workspace ?? null
     await this.#db.transaction(async (tx) => {
+      // Story 414: the first time a workspace sets one, Shared's as it was then.
+      if (workspace !== null) {
+        const held = await tx.q
+          .selectFrom('workspace_schedule')
+          .select('node_id')
+          .where('workspace_id', '=', workspace)
+          .where('node_id', '=', node.id)
+          .execute()
+        if (held.length === 0)
+          await tx.q
+            .insertInto('workspace_schedule')
+            .values({
+              workspace_id: workspace,
+              node_id: node.id,
+              base: JSON.stringify(await scheduleEntriesOf(tx, node.id, null)),
+            })
+            .execute()
+      }
       for (const entry of entries) {
         const languageId = entry.culture
           ? (languages.find((l) => l.isoCode.toLowerCase() === entry.culture?.toLowerCase())?.id ??
@@ -3165,17 +3204,44 @@ export class DocumentRepository {
     }))
   }
 
+  /**
+   * A page's schedule as a change carries it (story 414): per language, when it goes live
+   * and comes down, in this repository's view, Shared's or the workspace's.
+   */
+  async scheduleEntries(key: string): Promise<ScheduleEntryAt[]> {
+    const node = await this.#nodes.byKey(key)
+    if (!node) return []
+    return scheduleEntriesOf(this.#db, node.id, this.#workspace ?? null)
+  }
+
+  /** Story 414: the change that set the page's schedule in Shared, named when it fires. */
+  async scheduleSetBy(key: string, changeKey: string): Promise<void> {
+    const node = await this.#nodes.byKey(key)
+    if (!node) return
+    await this.#db.q
+      .updateTable('content_schedule')
+      .set({ change_key: changeKey })
+      .where('node_id', '=', node.id)
+      .where('workspace_id', 'is', null)
+      .execute()
+  }
+
   /** Schedules whose time has come, oldest first. */
-  async dueSchedules(
-    now: Date,
-  ): Promise<
-    Array<{ id: number; key: string; culture: string | null; action: 'Release' | 'Expire' }>
+  async dueSchedules(now: Date): Promise<
+    Array<{
+      id: number
+      key: string
+      culture: string | null
+      action: 'Release' | 'Expire'
+      /** Story 414: the change that set it, when one did. */
+      changeKey: string | null
+    }>
   > {
     const rows = await this.#db.q
       .selectFrom('content_schedule as s')
       .innerJoin('node as n', 'n.id', 's.node_id')
       .leftJoin('language as l', 'l.id', 's.language_id')
-      .select(['s.id', 's.action', 'n.unique_id', 'l.iso_code'])
+      .select(['s.id', 's.action', 'n.unique_id', 'l.iso_code', 's.change_key'])
       .where('s.date', '<=', DbDate.toDb(now))
       .where('n.node_object_type', '=', this.objectType)
       // A workspace's schedules wait for it to be served (story 379).
@@ -3188,6 +3254,7 @@ export class DocumentRepository {
       key: normaliseUuid(String(row.unique_id)),
       culture: (row.iso_code as string | null) ?? null,
       action: String(row.action) as 'Release' | 'Expire',
+      changeKey: (row.change_key as string | null) ?? null,
     }))
   }
 
@@ -5029,6 +5096,7 @@ export async function deleteNodeRows(
   )
   await tx.q.deleteFrom('property_value').where('node_id', 'in', nodes()).execute()
   await tx.q.deleteFrom('content_schedule').where('node_id', 'in', nodes()).execute()
+  await tx.q.deleteFrom('workspace_schedule').where('node_id', 'in', nodes()).execute()
   await tx.q.deleteFrom('user_notification').where('node_id', 'in', nodes()).execute()
   await tx.q.deleteFrom('domain').where('node_id', 'in', nodes()).execute()
   await tx.q
@@ -5068,4 +5136,36 @@ export async function deleteNodeRows(
           ),
       )
       .execute()
+}
+
+/** A page's schedule per language, as a change carries it (story 414). */
+export interface ScheduleEntryAt {
+  culture: string | null
+  publishTime: string | null
+  unpublishTime: string | null
+}
+
+/** A page's schedule rows as entries, in Shared (`workspace` null) or a workspace, by language. */
+async function scheduleEntriesOf(
+  db: Db,
+  nodeId: number,
+  workspace: number | null,
+): Promise<ScheduleEntryAt[]> {
+  const rows = await db.q
+    .selectFrom('content_schedule as s')
+    .leftJoin('language as l', 'l.id', 's.language_id')
+    .select(['s.action', 's.date', 'l.iso_code'])
+    .where('s.node_id', '=', nodeId)
+    .where('s.workspace_id', workspace === null ? 'is' : '=', workspace)
+    .execute()
+  const byCulture = new Map<string | null, ScheduleEntryAt>()
+  for (const row of rows) {
+    const culture = (row.iso_code as string | null) ?? null
+    const entry = byCulture.get(culture) ?? { culture, publishTime: null, unpublishTime: null }
+    const at = (DbDate.fromDb(row.date) ?? new Date(0)).toISOString()
+    if (row.action === 'Release') entry.publishTime = at
+    else entry.unpublishTime = at
+    byCulture.set(culture, entry)
+  }
+  return [...byCulture.values()].sort((a, b) => (a.culture ?? '').localeCompare(b.culture ?? ''))
 }

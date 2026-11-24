@@ -253,6 +253,10 @@ export interface WebhookFacts extends RaisedWebhookEvent {
     }>
     /** Story 397: published in the person's own workspace, merging that page alone. */
     from?: 'own-workspace'
+    /** Story 411: what it did, other than a publish or a schedule. */
+    kind?: 'unpublish' | 'move' | 'reorder' | 'delete'
+    /** Story 411: the page a delete took, named as it was before it went. */
+    page?: { key: string; name: string | null }
   }
   /** Story 400: the workspace a workspace event is about, as it was then. */
   workspace?: {
@@ -285,6 +289,8 @@ const changeOf = (change: NonNullable<WebhookFacts['change']>) => ({
       }
     : {}),
   ...(change.from ? { From: change.from } : {}),
+  ...(change.kind ? { Kind: change.kind } : {}),
+  ...(change.page ? { Page: { Key: change.page.key, Name: change.page.name } } : {}),
 })
 
 /** An event as the site's own handler receives it (story 298). Pure. */

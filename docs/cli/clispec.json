@@ -6793,7 +6793,7 @@
     },
     {
       "name": "maintenance pause",
-      "description": "refuse every editor's save, on every node, until resumed",
+      "description": "refuse every editor's save, on every node, for a while or until resumed",
       "effects": "idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -6805,6 +6805,11 @@
           "name": "reason",
           "type": "string",
           "nullable": true
+        },
+        {
+          "name": "until",
+          "type": "string",
+          "nullable": true
         }
       ],
       "args": [
@@ -6812,6 +6817,16 @@
           "name": "--reason",
           "type": "string",
           "description": "what editors are told"
+        },
+        {
+          "name": "--for",
+          "type": "string",
+          "description": "how long, as 90s, 10m, 1h or 1h30m"
+        },
+        {
+          "name": "--until",
+          "type": "string",
+          "description": "when it ends, as a time (ISO 8601)"
         }
       ],
       "errors": ["usage", "internal"]
@@ -6851,6 +6866,11 @@
             },
             {
               "name": "reason",
+              "type": "string",
+              "nullable": true
+            },
+            {
+              "name": "until",
               "type": "string",
               "nullable": true
             }

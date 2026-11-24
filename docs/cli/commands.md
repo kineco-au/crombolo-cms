@@ -6828,20 +6828,23 @@ crombolo jobs show <id> [--profile <profile>] [--env <env>]
 
 ### `crombolo maintenance pause`
 
-Refuse every editor's save, on every node, until resumed. Safe to run again: a second run changes nothing more.
+Refuse every editor's save, on every node, for a while or until resumed. Safe to run again: a second run changes nothing more.
 
 ```
-crombolo maintenance pause [--reason <reason>]
+crombolo maintenance pause [--reason <reason>] [--for <for>] [--until <until>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `--reason` | string | What editors are told. |
+| `--for` | string | How long, as 90s, 10m, 1h or 1h30m. |
+| `--until` | string | When it ends, as a time (ISO 8601). |
 
 **Output** (single, with `-o json`):
 
 - `paused` (boolean)
 - `reason` (string)
+- `until` (string)
 
 **Fails with:** `usage`, `internal`.
 
@@ -6873,6 +6876,7 @@ crombolo maintenance status
   - `at` (string)
   - `by` (string)
   - `reason` (string)
+  - `until` (string)
 
 **Fails with:** `usage`, `internal`.
 

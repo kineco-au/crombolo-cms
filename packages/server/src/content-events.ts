@@ -26,6 +26,7 @@ import {
   notificationFor,
   webhookFor,
 } from '@crombolo/content'
+import { normaliseUuid } from '@crombolo/core'
 import {
   AuditLog,
   ChangeRepository,
@@ -120,6 +121,80 @@ async function needsOf(tx: Db, key: string) {
   return page ? { needs: neededBy(view, page) } : {}
 }
 
+/** Story 411: what a change did, as `Change.Kind` says; a publish or a schedule says none. */
+export type ChangeKind = 'unpublish' | 'move' | 'reorder' | 'delete'
+
+/**
+ * Story 411: an unpublish, move, reorder, restore or delete straight in Shared, put in the
+ * person's change with where the page stood; what to announce, or undefined for any other.
+ */
+async function placeInChange(
+  tx: Db,
+  changes: ChangeRepository,
+  userKey: string,
+  event: DocumentEvent,
+): Promise<
+  | { key: string | null; says: { kind: ChangeKind; page?: { key: string; name: string | null } } }
+  | undefined
+> {
+  const docs = new DocumentRepository(tx)
+  const page = (key: string) => ({ key, kind: 'document' })
+  switch (event.type) {
+    case 'sorted': {
+      if (!event.before) return undefined
+      const after = (await docs.children(event.parentKey, 0, 10_000)).items.map((n) =>
+        normaliseUuid(n.key),
+      )
+      if (after.join() === event.before.join()) return undefined
+      await changes.ordered(userKey, event.parentKey, event.before, after)
+      return { key: event.parentKey ?? after[0] ?? null, says: { kind: 'reorder' } }
+    }
+    case 'unpublished': {
+      const doc = await docs.byKey(event.key)
+      if (!doc) return undefined
+      const at = { parentKey: doc.parentKey, published: doc.published }
+      if (!(await changes.placed(userKey, page(event.key), { ...at, published: true }, at)))
+        return undefined
+      return { key: event.key, says: { kind: 'unpublish' } }
+    }
+    case 'moved':
+    case 'restored': {
+      const doc = await docs.byKey(event.key)
+      if (!doc) return undefined
+      const from =
+        event.type === 'restored'
+          ? { parentKey: null, trashed: true }
+          : (event.from ?? { parentKey: doc.parentKey, trashed: false })
+      const before = {
+        parentKey: from.parentKey,
+        published: doc.published,
+        ...(from.trashed ? { trashed: true } : {}),
+      }
+      const after = { parentKey: doc.parentKey, published: doc.published }
+      if (!(await changes.placed(userKey, page(event.key), before, after))) return undefined
+      return { key: event.key, says: { kind: 'move' } }
+    }
+    case 'trashed': {
+      const doc = await docs.byKey(event.key)
+      if (!doc) return undefined
+      await changes.removedBy(userKey, page(event.key), doc)
+      const name = (doc.variants.find((v) => v.culture === null) ?? doc.variants[0])?.name ?? null
+      return { key: event.key, says: { kind: 'delete', page: { key: event.key, name } } }
+    }
+    case 'deleted': {
+      // From the bin, it went when it was moved there: emptying it says nothing more.
+      if (!event.was) return undefined
+      await changes.removedBy(userKey, page(event.key), event.was)
+      return {
+        key: event.key,
+        says: { kind: 'delete', page: { key: event.key, name: event.name } },
+      }
+    }
+    default:
+      return undefined
+  }
+}
+
 export function createContentEventSink(options: ContentEventSinkOptions): EventSink {
   /** A person's own write in the back office or the API, not a merge's nor the site's code. */
   const ownEdit = (actor: Actor) => actor.kind === 'user' && !actor.origin.via
@@ -128,8 +203,16 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
   async function recordInChange(tx: Db, event: DocumentEvent, actor: Actor) {
     const key = subjectOf(event)
     const userKey = actorUserKey(actor)
-    if (!key || !userKey || !ownEdit(actor)) return
+    if (!userKey || !ownEdit(actor)) return
     const changes = new ChangeRepository(tx)
+    // Story 411: an unpublish, a move, a reorder and a delete close the change as a publish does.
+    const passedOn = await placeInChange(tx, changes, userKey, event)
+    if (passedOn) {
+      const closed = await changes.closeOpen(userKey)
+      if (closed) await announceChange(tx, passedOn.key, { ...closed, ...passedOn.says }, actor)
+      return
+    }
+    if (!key) return
     if (SAVES.has(event.type)) await changes.pageSavedBy(userKey, { key, kind: 'document' })
     // Story 395: setting or clearing a schedule is passed on as a publish is.
     const scheduled = event.type === 'scheduled'
@@ -138,18 +221,31 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     if (scheduled || schedule.length > 0)
       await changes.scheduleOf(userKey, { key, kind: 'document' }, scheduleEntries(schedule))
     const closed = await changes.publishedBy(userKey, { key, kind: 'document' })
+    // Story 414: the schedule names the change that set it, for when it fires.
+    if (closed && (scheduled || schedule.length > 0))
+      await new DocumentRepository(tx).scheduleSetBy(key, closed.key)
     if (closed) await announceChange(tx, key, closed, actor)
   }
 
   /** `Crombolo.ChangePublished` for a page's change, as an outbox event in its transaction. */
   async function announceChange(
     tx: Db,
-    key: string,
-    closed: { key: string; name: string | null; from?: 'own-workspace' },
+    key: string | null,
+    closed: {
+      key: string
+      name: string | null
+      from?: 'own-workspace'
+      kind?: ChangeKind
+      page?: { key: string; name: string | null }
+    },
     actor: Actor,
   ) {
-    const change = { ...closed, ...(await madeBy()), ...(await needsOf(tx, key)) }
-    const hook = { alias: CHANGE_PUBLISHED, key }
+    const change = {
+      ...closed,
+      ...(await madeBy()),
+      ...(key && closed.kind !== 'delete' ? await needsOf(tx, key) : {}),
+    }
+    const hook = { alias: CHANGE_PUBLISHED, key: key ?? '' }
     await new ContentEventRepository(tx).record({
       kind: 'change-published',
       entityType: 'Document',
@@ -172,12 +268,31 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
       await announceChange(
         tx,
         published.key,
-        { key: change.key, name: change.name, from: 'own-workspace' },
+        {
+          key: change.key,
+          name: change.name,
+          from: 'own-workspace',
+          ...(published.kind ? { kind: published.kind } : {}),
+          ...(published.page ? { page: published.page } : {}),
+        },
         actor,
       )
     },
     async record(tx: Db, event, actor) {
       if (options.changes) await recordInChange(tx, event, actor as Actor)
+      // Story 414: a schedule firing names the change that set it.
+      const fired = actor.kind === 'system' ? actor.change : undefined
+      if (options.changes && fired && (event.type === 'published' || event.type === 'unpublished'))
+        await announceChange(
+          tx,
+          event.key,
+          {
+            key: fired.key,
+            name: fired.name,
+            ...(event.type === 'unpublished' ? { kind: 'unpublish' as const } : {}),
+          },
+          actor as Actor,
+        )
       const entry = auditEntryFor(event, actor)
       const audit = new AuditLog(tx)
       // A deleted page cannot be named after it went: the operation read its name first.

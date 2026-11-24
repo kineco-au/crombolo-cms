@@ -5,7 +5,7 @@
  * reorder and delete is done; then the workspace is closed. Anything refused
  * undoes all of it. A rehearsal runs the same and undoes it on purpose.
  */
-import { type DocumentValue, ObjectTypes } from '@crombolo/core'
+import { type DocumentValue, normaliseUuid, ObjectTypes } from '@crombolo/core'
 import {
   type ChangeItemInput,
   ChangeRepository,
@@ -14,6 +14,7 @@ import {
   DocumentRepository,
   type DocumentRepositoryOptions,
   Locks,
+  type ScheduleEntryAt,
   SystemNodes,
   TransferRunRepository,
   type Workspace,
@@ -100,23 +101,58 @@ export type WorkspaceMergeOutcome =
     }
   | { ok: false; blockers: string[]; plan: MergePlan }
 
+/** A page whose schedule a workspace set, as its merge carries it (story 414). */
+interface ScheduledPage {
+  nodeId: number
+  key: string
+  name: string
+  entries: ScheduleEntryAt[]
+}
+
+/** Whether two schedules are the same, entry by entry. Pure. */
+const sameSchedule = (a: unknown, b: unknown) => JSON.stringify(a ?? []) === JSON.stringify(b ?? [])
+
 /** Where a deleted page's state is kept among its change's items (story 383). */
 export const REMOVED_PAGE_PREFIX = 'pages/'
+
+/** Story 411: what a merge of a person's own page alone does, as its change is named and announced. */
+export type OnlyKind = 'publish' | 'unpublish' | 'move' | 'reorder' | 'delete'
+
+/**
+ * `only`: the pages of a person's own workspace that go alone (story 380), with what waits
+ * for a merge of them: a move, a reorder or a delete (story 411).
+ */
+export interface OnlyOptions {
+  only?: string | readonly string[]
+  onlyKind?: OnlyKind
+}
+
+const onlyKeys = (only: OnlyOptions['only']): ReadonlySet<string> | undefined =>
+  only === undefined ? undefined : new Set(typeof only === 'string' ? [only] : only)
+
+const ONLY_NAMES: Record<OnlyKind, string> = {
+  publish: 'Published',
+  unpublish: 'Unpublished',
+  move: 'Moved',
+  reorder: 'Reordered',
+  delete: 'Deleted',
+}
 
 /** Records a merge as a change (story 381): its name, who made and merged it, its files and pages. */
 async function recordChange(
   tx: Db,
   list: readonly Workspace[],
-  options: WorkspaceMergeOptions & { only?: string },
+  options: WorkspaceMergeOptions & OnlyOptions,
   items: readonly ChangeItemInput[],
   pages: readonly PageChange[],
   merged: Done['merged'],
+  done: Done['done'] = [],
 ): Promise<string> {
   const changes = new ChangeRepository(tx)
   const first = list[0] as Workspace
   const name =
     options.only !== undefined
-      ? `Published "${merged[0]?.name ?? 'a page'}"`
+      ? `${ONLY_NAMES[options.onlyKind ?? 'publish']} "${merged[0]?.name ?? done[0]?.name ?? 'a page'}"`
       : list.map((w) => w.name).join(', ')
   const id = await changes.begin({
     kind: 'merge',
@@ -268,7 +304,7 @@ function betweenThem(plans: ReadonlyArray<{ workspace: Workspace; plan: MergePla
  */
 export async function runWorkspaceMerge(
   chosen: Workspace | readonly Workspace[],
-  options: WorkspaceMergeOptions & { only?: string },
+  options: WorkspaceMergeOptions & OnlyOptions,
 ): Promise<WorkspaceMergeOutcome> {
   const list = Array.isArray(chosen) ? chosen : [chosen as Workspace]
   const documents = new DocumentRepository(options.db, options.repository)
@@ -287,14 +323,19 @@ export async function runWorkspaceMerge(
     await locked(() =>
       documents.atomically(async (shared, tx) => {
         const workspaces = new WorkspaceRepository(tx)
+        const only = onlyKeys(options.only)
         const narrowed = (plan: MergePlan): MergePlan =>
-          options.only === undefined
+          only === undefined
             ? plan
             : {
-                pages: plan.pages.filter((p) => p.page.key === options.only),
-                pending: [],
-                conflicts: plan.conflicts.filter((c) => c.key === options.only),
-                findings: plan.findings.filter((f) => f.key === options.only),
+                pages: plan.pages.filter((p) => only.has(p.page.key)),
+                // Story 411: what waits for the merge of those pages goes with them.
+                pending:
+                  options.onlyKind && options.onlyKind !== 'publish'
+                    ? plan.pending.filter((p) => p.pending.key !== null && only.has(p.pending.key))
+                    : [],
+                conflicts: plan.conflicts.filter((c) => c.key !== null && only.has(c.key)),
+                findings: plan.findings.filter((f) => f.key !== null && only.has(f.key)),
               }
         const first: Array<{ workspace: Workspace; plan: MergePlan }> = []
         for (const workspace of list)
@@ -348,7 +389,29 @@ export async function runWorkspaceMerge(
                 fileBlockers.push(
                   `"${page.name}" is of a type made in the workspace: merge the workspace to bring both.`,
                 )
+        // Story 414: the schedules each workspace set, and any Shared changed since.
+        const schedules: ScheduledPage[][] = []
+        const scheduleBlockers: string[] = []
+        for (const workspace of list) {
+          const planned: ScheduledPage[] = []
+          for (const row of await workspaces.scheduled(workspace.id)) {
+            if (only !== undefined && !only.has(row.key)) continue
+            const entries = await shared.inWorkspace(workspace.id).scheduleEntries(row.key)
+            const now = await shared.scheduleEntries(row.key)
+            if (
+              !sameSchedule(now, row.base) &&
+              !sameSchedule(now, entries) &&
+              !(options.accepted ?? []).includes('schedule-changed')
+            )
+              scheduleBlockers.push(
+                `"${row.name}": its schedule was changed in Shared since. Accept "schedule-changed" to set it as the workspace has it.`,
+              )
+            planned.push({ nodeId: row.nodeId, key: row.key, name: row.name, entries })
+          }
+          schedules.push(planned)
+        }
         const blockers = [
+          ...scheduleBlockers,
           ...fileBlockers,
           ...betweenThem(first),
           ...first.flatMap(({ workspace, plan }) =>
@@ -366,6 +429,7 @@ export async function runWorkspaceMerge(
           await options.events.record(tx, event, options.actor)
         }
         const merged: Done['merged'] = []
+        const scheduled: string[] = []
         const forApproval: Done['forApproval'] = []
         const done: Done['done'] = []
         const pages: PageChange[] = []
@@ -389,14 +453,59 @@ export async function runWorkspaceMerge(
             pages,
             removed: items,
           })
+          // Story 414: its schedules set in Shared, and held by its change.
+          for (const page of schedules[n] ?? []) {
+            const had = await shared.scheduleEntries(page.key)
+            await shared.setSchedule(page.key, [
+              ...had
+                .filter((h) => !page.entries.some((e) => e.culture === h.culture))
+                .map((h) => ({ culture: h.culture, publishTime: null, unpublishTime: null })),
+              ...page.entries.map((e) => ({
+                culture: e.culture,
+                publishTime: e.publishTime ? new Date(e.publishTime) : null,
+                unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
+              })),
+            ])
+            await record({ type: 'scheduled', key: page.key })
+            items.push({
+              path: `schedules/${page.key}`,
+              kind: 'page',
+              class: 'none',
+              before: null,
+              after: JSON.stringify(page.entries),
+            })
+            if (!pages.some((p) => p.key === page.key)) {
+              const at = await shared.eventMarkers(page.key)
+              pages.push({
+                key: page.key,
+                kind: 'document',
+                action: 'update',
+                beforeEventId: at?.head ?? null,
+                beforePublishedEventId: at?.published ?? null,
+                eventId: at?.head ?? null,
+              })
+            }
+            if (!merged.some((m) => m.key === page.key))
+              merged.push({ key: page.key, name: page.name, published: false, unpublished: false })
+            scheduled.push(page.key)
+            if (options.only !== undefined) await workspaces.dropSchedule(workspace.id, page.nodeId)
+          }
           if (options.only === undefined)
             await workspaces.closeMerged(workspace.id, options.userKey)
-          else
+          else {
             for (const page of plan.pages)
               if (!page.page.made) await workspaces.dropPage(workspace.id, page.page.nodeId)
+            for (const { pending } of plan.pending)
+              await workspaces.dropPending(workspace.id, pending.nodeId)
+          }
         }
         // Story 381: the merge is a change, its files and pages each with before and after.
-        const changeId = await recordChange(tx, list, options, items, pages, merged)
+        const changeId = await recordChange(tx, list, options, items, pages, merged, done)
+        // Story 414: each schedule it set names it, for when it fires.
+        if (scheduled.length > 0) {
+          const made = await new ChangeRepository(tx).byId(changeId)
+          if (made) for (const key of scheduled) await shared.scheduleSetBy(key, made.key)
+        }
         // Story 400: each workspace the merge closed, announced with the change it made.
         if (options.only === undefined) {
           const made = await new ChangeRepository(tx).byId(changeId)
@@ -409,7 +518,23 @@ export async function runWorkspaceMerge(
               )
         }
         const alone = options.only === undefined ? undefined : merged[0]
-        if (alone?.published)
+        const kind = options.onlyKind ?? 'publish'
+        if (options.only !== undefined && kind !== 'publish') {
+          // Story 411: announced as what it did, naming the page a delete took.
+          const first = done.find((d) => d.key !== null) ?? merged[0]
+          if (first?.key)
+            await options.events.ownPublished?.(
+              tx,
+              {
+                changeId,
+                key: first.key,
+                kind,
+                ...(kind === 'delete' ? { page: { key: first.key, name: first.name } } : {}),
+              },
+              options.actor,
+            )
+        } else if (alone && (alone.published || scheduled.includes(alone.key)))
+          // Story 414: a page only scheduled is announced as one published is.
           await options.events.ownPublished?.(tx, { changeId, key: alone.key }, options.actor)
         outcome = {
           ok: true,
@@ -474,6 +599,16 @@ async function apply(
         await shared.unpublish(page.key, cultures)
         await record({ type: 'unpublished', key: page.key, cultures })
         unpublished = true
+        // Story 411: its change says it was taken down, as the page read back cannot.
+        const now = await shared.byKey(page.key)
+        if (now)
+          out.removed.push(
+            placeItem(
+              page.key,
+              { parentKey: now.parentKey, published: true },
+              { parentKey: now.parentKey, published: now.published },
+            ),
+          )
       }
     }
     out.merged.push({ key: page.key, name: pagePlan.name, published, unpublished })
@@ -490,13 +625,18 @@ async function apply(
 
   const keyOf = async (id: number | null) =>
     id === null || id === SystemNodes.Root ? null : ((await sharedAll.nodes.byId(id))?.key ?? null)
+  // Story 411: each parent's children's order before its first reorder, for the change.
+  const orders = new Map<string, { parentKey: string | null; before: string[] }>()
+  const childKeys = async (parentKey: string | null) =>
+    (await sharedAll.children(parentKey, 0, 10_000)).items.map((n) => normaliseUuid(n.key))
   for (const { pending } of plan.pending) {
     const key = pending.key
     if (pending.kind === 'gone' || key === null) continue
     const shared = sharedAll.ofKind(pending.objectKind ?? 'document')
     const before = await shared.eventMarkers(key)
     // A delete takes the page's history with it: its change keeps the page as it stood (story 383).
-    if (pending.kind === 'delete') {
+    // Story 411: so does one moved to the bin, which the bin may empty before the change is taken.
+    if (pending.kind === 'delete' || pending.kind === 'trash') {
       const doc = await shared.byKey(key)
       if (doc)
         out.removed.push({
@@ -508,11 +648,27 @@ async function apply(
         })
     }
     if (pending.kind === 'move') {
-      await shared.move(key, await keyOf(pending.targetParentId))
-      await record({ type: 'moved', key })
+      const node = await shared.nodes.byId(pending.nodeId)
+      const from = {
+        parentKey: await keyOf(node?.parentId ?? null),
+        trashed: node?.trashed ?? false,
+      }
+      const to = await keyOf(pending.targetParentId)
+      await shared.move(key, to)
+      await record({ type: 'moved', key, from })
+      const published = (await shared.byKey(key))?.published ?? false
+      out.removed.push(
+        placeItem(
+          key,
+          { ...from, published, ...(from.trashed ? { trashed: true } : {}) },
+          { parentKey: to, published },
+        ),
+      )
     } else if (pending.kind === 'sort' && pending.sortOrder !== null) {
       const node = await shared.nodes.byId(pending.nodeId)
       const parentKey = await keyOf(node?.parentId ?? null)
+      const slot = parentKey ?? ''
+      if (!orders.has(slot)) orders.set(slot, { parentKey, before: await childKeys(parentKey) })
       await shared.sort(parentKey, [{ key, sortOrder: pending.sortOrder }])
       await record({ type: 'sorted', parentKey })
     } else if (pending.kind === 'trash') {
@@ -540,4 +696,28 @@ async function apply(
         eventId: after?.head ?? null,
       })
   }
+  for (const { parentKey, before } of orders.values()) {
+    const after = await childKeys(parentKey)
+    if (after.join() !== before.join())
+      out.removed.push({
+        path: `orders/${parentKey ? normaliseUuid(parentKey) : 'root'}`,
+        kind: 'page',
+        class: 'none',
+        before: JSON.stringify(before),
+        after: JSON.stringify(after),
+      })
+  }
 }
+
+/** Story 411: a page's place before and after, as its change keeps it. */
+const placeItem = (
+  key: string,
+  before: { parentKey: string | null; published: boolean; trashed?: boolean },
+  after: { parentKey: string | null; published: boolean },
+): ChangeItemInput => ({
+  path: `places/${normaliseUuid(key)}`,
+  kind: 'page',
+  class: 'none',
+  before: JSON.stringify(before),
+  after: JSON.stringify(after),
+})

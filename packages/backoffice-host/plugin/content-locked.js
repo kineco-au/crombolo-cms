@@ -28,9 +28,37 @@ export const LOCKED_LINE =
  * under that site's back office address.
  */
 export const editedHref = (editedAt, pathname, here = base()) => {
-  if (!editedAt) return undefined
+  if (!linkable(editedAt)) return undefined
   const path = pathname.startsWith(here) ? pathname.slice(here.length) : pathname
   return `${editedAt.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
+}
+
+/** Whether an address may be made a link: `http` or `https` only (story 412). */
+export const linkable = (address) => {
+  if (typeof address !== 'string' || !address) return false
+  try {
+    return ['http:', 'https:'].includes(new URL(address).protocol)
+  } catch {
+    return false
+  }
+}
+
+/** What a locked site's refusal says where it names the address (story 412). */
+export const editedAtLine = (editedAt) =>
+  `This site's content is edited at ${editedAt}. Changes reach it from there.`
+
+/**
+ * The notice beside a refused save that names where content is edited, with a link to
+ * the same item there (story 412); undefined for any other answer.
+ */
+export const lockedNotice = (status, body, pathname, here = base()) => {
+  const editedAt = typeof body?.editedAt === 'string' ? body.editedAt : ''
+  if (status !== 409 || !editedAt) return undefined
+  return {
+    headline: 'This is edited on another site',
+    message: editedAtLine(editedAt),
+    href: editedHref(editedAt, pathname, here),
+  }
 }
 
 /** Where the site says its content is edited, once known. */
@@ -63,4 +91,5 @@ export const onInit = async (_host, extensionRegistry) => {
   lockedState.editedAt = editedAt ?? null
   extensionRegistry.register(LOCKED_GUARD)
   extensionRegistry.register(LOCKED_INFO)
+  if (editedAt) await (await import('./content-locked-notice.js')).watchRefusals(_host)
 }

@@ -464,6 +464,16 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     try {
       const befores: unknown[] = []
       for (const node of writes) befores.push(await options.redirects?.capture(node.key))
+      // Story 411: where each was, for its change to carry the move.
+      const from = new Map<string, { parentKey: string | null; trashed: boolean }>()
+      for (const node of writes)
+        from.set(node.key, {
+          parentKey:
+            node.parentId === SystemNodes.Root
+              ? null
+              : ((await nodes.byId(node.parentId))?.key ?? null),
+          trashed: node.trashed,
+        })
       const done = await commit(
         actor,
         async (tx) => {
@@ -472,7 +482,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
             if ((await tx.move(node.key, targetKey)) === 'moved') out.push(node.key)
           return out
         },
-        (moved) => moved.map((key): DocumentEvent => ({ type: 'moved', key })),
+        (moved) =>
+          moved.map((key): DocumentEvent => {
+            const was = from.get(key)
+            return was ? { type: 'moved', key, from: was } : { type: 'moved', key }
+          }),
       )
       changed()
       for (const before of befores) await options.redirects?.commit(before)
@@ -481,6 +495,10 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       return refusalFrom(error, options.refusalReason)
     }
   }
+
+  /** The keys of a parent's children in their order (story 411): what a reorder changes. */
+  const childOrder = async (parentKey: string | null): Promise<string[]> =>
+    (await repo.children(parentKey, 0, 10_000)).items.map((n) => normaliseUuid(n.key))
 
   /**
    * Moves pages to the recycle bin in one transaction, every one checked first.
@@ -979,10 +997,13 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (options_.fromBin && !node.trashed)
         return refuse('invalid', 400, 'The document is not in the recycle bin')
       if (!(await permits(actor, 'delete', options_.fromBin ? 'bin' : key))) return forbidden()
+      // Story 411: one deleted from outside the bin, as it stood, for its change to carry.
+      const was = node.trashed ? undefined : await repo.byKey(key)
       const removed = await commit(
         actor,
         (tx) => tx.delete(key),
-        (done) => (done ? [{ type: 'deleted', key, name: node.text ?? null }] : []),
+        (done): DocumentEvent[] =>
+          done ? [{ type: 'deleted', key, name: node.text ?? null, ...(was ? { was } : {}) }] : [],
       )
       if (!removed) return refuse('notFound', 404, NOT_FOUND)
       changed()
@@ -1110,10 +1131,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       }
       try {
         const before = await options.redirects?.captureChildren(parentKey)
+        const order = await childOrder(parentKey)
         const result = await commit(
           actor,
           (tx) => tx.sort(parentKey, sorting),
-          (done) => (done === 'notFound' ? [] : [{ type: 'sorted', parentKey }]),
+          (done) => (done === 'notFound' ? [] : [{ type: 'sorted', parentKey, before: order }]),
         )
         if (result === 'notFound')
           return refuse(
@@ -1138,10 +1160,11 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (!(await permits(actor, 'sort', parentKey ?? 'root'))) return forbidden()
       try {
         const before = await options.redirects?.captureChildren(parentKey)
+        const order = await childOrder(parentKey)
         const result = await commit(
           actor,
           (tx) => tx.sortChildrenBy(parentKey, field, direction),
-          (done) => (done === 'notFound' ? [] : [{ type: 'sorted', parentKey }]),
+          (done) => (done === 'notFound' ? [] : [{ type: 'sorted', parentKey, before: order }]),
         )
         if (result === 'notFound') return refuse('notFound', 404, NOT_FOUND)
         changed()

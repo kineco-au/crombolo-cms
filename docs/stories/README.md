@@ -415,6 +415,7 @@ cannot, what is left out and why, and how the rest splits into stories.
 | `360` | Search and sharing settings from the command line | could | S | done | 349 |
 | `361` | Library elements and menus from the command line | could | L | done | 349 |
 | `362` | What an extension did, from the command line | could | S | done | 349, 352 |
+| `409` | Editing paused over HTTP, for a set time | should | M | done | 152, 351 |
 
 ### Epic Q — A site from the command line
 
@@ -559,4 +560,9 @@ it.
 | `406` | Shared checked as a whole since a change | should | M | done | 381, 383, 386 |
 | `407` | A workspace's conflicts in its listing | should | S | done | 384, 400 |
 | `408` | A workspace's errors answered for the whole site | should | M | done | 386, 396 |
+| `410` | A workspace's address is only ever on its own site | must | S | done | 379 |
+| `411` | An unpublish, a move, a reorder and a delete are passed on | should | M | done | 388, 395, 397 |
+| `412` | A locked site's refusal says where content is edited | should | S | done | 388 |
+| `413` | An approved publish is passed on | should | M | ready | 028, 388, 395, 411 |
+| `414` | A schedule set in a workspace goes with its change | should | M | done | 395, 397 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

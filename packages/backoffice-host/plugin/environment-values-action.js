@@ -7,6 +7,7 @@
 import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/document'
 import { UMB_PROPERTY_CONTEXT } from '@umbraco-cms/backoffice/property'
 import { UmbPropertyActionBase } from '@umbraco-cms/backoffice/property-action'
+import { editedAtLine, editedHref } from './content-locked.js'
 import {
   asText,
   NOT_SECRET,
@@ -64,7 +65,14 @@ export class CromboloEnvironmentValuesAction extends UmbPropertyActionBase {
       line.append(input, save)
       dialog.append(line)
     }
-    if (environments.readOnly)
+    if (environments.readOnly && environments.editedAt) {
+      // Story 412: where they are edited, and a link there when it is a web address.
+      const line = text('p', editedAtLine(environments.editedAt))
+      const href = editedHref(environments.editedAt, globalThis.location?.pathname ?? '')
+      if (href)
+        line.append(' ', text('a', 'Edit it there', { href, target: '_blank', rel: 'noopener' }))
+      dialog.append(line)
+    } else if (environments.readOnly)
       dialog.append(text('p', 'These values arrive here by a change from where they are made.'))
     dialog.append(status)
     const close = text('button', 'Close', { type: 'button' })

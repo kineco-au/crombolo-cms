@@ -1783,6 +1783,7 @@ contract (a framework contract, or `types purge`) is ledgered as one, and a
 
 ```
 crombolo maintenance pause --reason "restoring Monday's backup"
+crombolo maintenance pause --reason "Deploying" --for 10m     # or --until 2026-11-24T10:00:00Z
 crombolo maintenance status
 crombolo maintenance resume
 ```
@@ -1790,9 +1791,27 @@ crombolo maintenance resume
 A flag in `key_value`, read by the write gate inside every editor's write
 transaction, so it takes effect on every node at once rather than at the next
 poll. A refused save is a 409 like any other, naming the reason. Readers are
-unaffected and no node drains; `/health` reports `paused` so the backoffice can
-say why saves fail. Content imports are not editor writes and are not refused —
-which is what lets a restore proceed while editors wait.
+unaffected and no node drains; `/health` reports `paused`, with `until`. Content
+imports are not editor writes and are not refused — which is what lets a restore
+proceed while editors wait.
+
+- **A pause may end by itself** (story 409): with a time, a pause past it is no pause,
+  by each node's own clock, so nothing has to run for it to end, and a caller that
+  stalls cannot leave the site refusing saves. Without one, it lasts until resumed.
+- **Over HTTP:** `GET <backoffice>/crombolo/api/maintenance` answers
+  `{ paused: { reason, until } | null }` (with `by` and `at` for the Settings section);
+  `POST` takes `{ action: 'pause' | 'resume', reason?, forSeconds? | until? }`, never
+  both, `until` at least a second ahead by the site's clock. It needs **Apply changes**
+  (`Crombolo.Remote.ApplyChanges`), as applying a change does, and so follows
+  `CROMBOLO_APPLY_CHANGES_BY`; by a token in `Authorization` or the back office's cookie.
+- **Repeating is safe:** resuming when nothing is paused changes nothing; pausing again
+  for the same reason keeps who paused and when and moves the end; another reason
+  replaces the pause.
+- **Editors see a banner** across the top of the back office while editing is paused,
+  with the reason and when they can save again in their own time; it appears and goes
+  within a few seconds, and goes by itself when the time passes.
+- **Audited** as `PauseEditing` and `ResumeEditing`, with the caller, the reason and when
+  it ends. A pause ended by its time writes nothing: its own entry says when.
 
 ### Reading the cluster back
 

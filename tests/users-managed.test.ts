@@ -13,6 +13,7 @@ import {
   checkBundleContent,
   exportSite,
   extractTarball,
+  installBundleContent,
   loadConfig,
   managedHref,
   oidc,
@@ -401,6 +402,22 @@ describe(`a managed user's external login, linked by the directory (story 404, $
         excludePeople: true,
       })
       expect(without.check.findings.map((f) => f.code)).not.toContain('users-managed')
+      const replaced = await installBundleContent(
+        h.server.db,
+        h.server.config,
+        {
+          ...input,
+          replace: 'replace',
+          replaceFiles: true,
+          resolveAll: 'take-bundle',
+          publish: true,
+          backupTaken: true,
+          allowMissingBlobs: true,
+        },
+        { vouchedBy: 'host' },
+      )
+      expect(replaced.runId).toBeUndefined()
+      expect(replaced.check.outstanding.map((f) => f.code)).toContain('users-managed')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

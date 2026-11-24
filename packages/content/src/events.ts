@@ -20,14 +20,18 @@ export type DocumentEvent =
   | { type: 'branchPublished'; key: string; published: readonly string[] }
   | { type: 'unpublished'; key: string; cultures: readonly string[] | null }
   | { type: 'trashed'; key: string }
-  /** `name` is read before it went, since it cannot be read after. */
-  | { type: 'deleted'; key: string; name: string | null }
+  /**
+   * `name` is read before it went, since it cannot be read after. `was`: the page as it
+   * stood, when it was deleted from outside the recycle bin (story 411).
+   */
+  | { type: 'deleted'; key: string; name: string | null; was?: object }
   | { type: 'restored'; key: string }
   | { type: 'binEmptied' }
-  | { type: 'moved'; key: string }
+  /** `from`: where it was before, as its change carries it (story 411). */
+  | { type: 'moved'; key: string; from?: { parentKey: string | null; trashed: boolean } }
   | { type: 'copied'; key: string; copyKey: string }
-  /** `parentKey` null: the top level. */
-  | { type: 'sorted'; parentKey: string | null }
+  /** `parentKey` null: the top level. `before`: the children's order before (story 411). */
+  | { type: 'sorted'; parentKey: string | null; before?: readonly string[] }
   | { type: 'rolledBack'; key: string; versionId: string }
   | { type: 'domainsAssigned'; key: string }
   | { type: 'publicAccessChanged'; key: string; change: 'added' | 'set' | 'removed' }
@@ -42,7 +46,17 @@ export interface EventSink {
   record(tx: Db, event: DocumentEvent, actor: Actor): Promise<void>
   afterCommit?(event: DocumentEvent, actor: Actor): void
   /** Story 397: a publish in a person's own workspace merged its page, recorded as `changeId`. */
-  ownPublished?(tx: Db, published: { changeId: string; key: string }, actor: Actor): Promise<void>
+  ownPublished?(
+    tx: Db,
+    published: {
+      changeId: string
+      key: string
+      /** Story 411: what the page's merge did, other than a publish. */
+      kind?: 'unpublish' | 'move' | 'reorder' | 'delete'
+      page?: { key: string; name: string | null }
+    },
+    actor: Actor,
+  ): Promise<void>
 }
 
 /** A sink that hears nothing: for tests and tools that announce nothing. */

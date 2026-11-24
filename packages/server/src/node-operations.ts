@@ -80,7 +80,9 @@ export interface WorkspaceMerging {
       userId?: number
       accepted?: readonly string[]
       rehearse?: boolean
-      only?: string
+      only?: string | readonly string[]
+      /** Story 411: what a merge of those pages alone does. */
+      onlyKind?: 'publish' | 'unpublish' | 'move' | 'reorder' | 'delete'
       /** Story 383: the identity its change takes, and the changes from other sites it applies. */
       changeKey?: string
       appliedChanges?: ReadonlyArray<{ key: string; name: string | null }>
@@ -288,6 +290,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
         accepted: run.accepted,
         rehearse: run.rehearse,
         ...(run.only === undefined ? {} : { only: run.only }),
+        ...(run.onlyKind === undefined ? {} : { onlyKind: run.onlyKind }),
         ...(run.changeKey ? { changeKey: run.changeKey } : {}),
         ...(run.appliedChanges ? { appliedChanges: run.appliedChanges } : {}),
         ...(files ? { files } : {}),

@@ -328,6 +328,7 @@ import {
   viteIslandManifest,
   viteOutDir,
 } from './islands.ts'
+import { createMaintenanceApi } from './maintenance-api.ts'
 import { managedGroupHref, managedHref } from './managed-users.ts'
 import {
   hasMiddleware,
@@ -398,6 +399,8 @@ import {
   createWorkspaceScope,
   createWorkspacesApi,
   OWN_WORKSPACE,
+  onOrigin,
+  pageSitePath,
   WORKSPACE_HEADER,
 } from './workspaces.ts'
 
@@ -1718,6 +1721,7 @@ export async function createServer(
     enabled: () => workspacesOn(config),
     required: () => config.workspacesRequired,
     locked: () => contentLocked(config),
+    editedAt: () => config.contentEditedAt ?? null,
     merge: () => core.operations.merge,
     schema: () => workspaceSchema,
   })
@@ -1891,6 +1895,13 @@ export async function createServer(
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
   const usersManagedPath = `${paths.pluginPath}/api/users-managed`
+  // Story 409: editing paused and resumed by a request, for the back office's banner too.
+  const maintenancePath = `${paths.pluginPath}/api/maintenance`
+  const maintenanceApi = createMaintenanceApi({
+    db,
+    mayReadAll: (principal) => hasSection(principal, 'settings'),
+    mayPause: (principal) => mayApplyChanges(principal, config.applyChangesBy, may),
+  })
   // Story 404: a user's external logins, linked by the directory that manages users.
   const userLoginsPath = `${paths.pluginPath}/api/users/`
   const userLogins = createUserLogins({
@@ -2054,6 +2065,7 @@ export async function createServer(
     repository: { nodeState: core.schema.nodeState, nodeId: core.schema.nodeId },
     documents: () => core.operations.documents,
     readOnly: () => config.environmentValuesReadOnly || contentLocked(config),
+    editedAt: () => (contentLocked(config) ? (config.contentEditedAt ?? null) : null),
   })
   // Story 381: every change to the site, and its revert.
   // Story 406: Shared's own pages and views, checked since a change.
@@ -2376,12 +2388,14 @@ export async function createServer(
       expires: Date.now() + WORKSPACE_HANDOFF_SECONDS * 1000,
       ...(asAdministrator ? { admin: true } : {}),
     })
-    const url = new URL(
-      path.startsWith('/') ? path : `/${path}`,
+    // Story 410: the hand-off signs the person in, so it goes on the workspace's own host only.
+    const url = onOrigin(
+      path,
       request
         ? workspaceOrigin(workspace, request)
         : publicOrigin(new Request('http://localhost/'), config),
     )
+    if (!url) return undefined
     url.searchParams.set(WORKSPACE_HANDOFF_PARAM, token)
     return url.toString()
   }
@@ -2397,9 +2411,10 @@ export async function createServer(
         secretHash: linkSecretHash(secret),
         expiresAt: new Date(Date.now() + days * 86_400_000),
       })
-      const url = new URL('/', publicOrigin(new Request('http://localhost/'), config))
+      const origin = new URL('/', publicOrigin(new Request('http://localhost/'), config))
       const hosts = workspaceHostsOf()
-      if (hosts) url.host = hosts.hostFor(workspace.key, url.host)
+      if (hosts) origin.host = hosts.hostFor(workspace.key, origin.host)
+      const url = onOrigin('/', origin) as URL
       url.searchParams.set(WORKSPACE_LINK_PARAM, secret)
       return { id: link.id, url: url.toString(), secret, expiresAt: link.expiresAt.toISOString() }
     },
@@ -2645,7 +2660,7 @@ export async function createServer(
       if (!workspace || (workspace.ownerKey !== me && !workspace.memberKeys.includes(me)))
         return Response.json({ title: 'There is no such workspace' }, { status: 404 })
       const shown = await cache.byKey(key, culture)
-      const url = await workspaceOpenUrl(workspace, principal, shown?.url ?? '/', request)
+      const url = await workspaceOpenUrl(workspace, principal, pageSitePath(shown?.url), request)
       if (!url) return Response.json({ title: 'You may not read this page' }, { status: 403 })
       return Response.json(
         { url, expiresAt: new Date(Date.now() + WORKSPACE_HANDOFF_SECONDS * 1000).toISOString() },
@@ -3550,6 +3565,13 @@ export async function createServer(
       if (!template || !hasSection(principal, 'users')) return Response.json({ href: null })
       const user = await new UserRepository(db).byKey(key).catch(() => undefined)
       return Response.json({ href: user ? managedHref(template, user) : null })
+    }
+
+    // Story 409: whether editing is paused, and pausing or resuming it.
+    if (pathname === maintenancePath) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return maintenanceApi.handle(request, principal)
     }
 
     // Story 404: a user's links to their external sign-ins, for a token in Authorization alone.

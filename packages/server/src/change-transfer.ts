@@ -23,6 +23,9 @@ import {
   DictionaryRepository,
   DocumentRepository,
   type DocumentRepositoryOptions,
+  ORDER_PREFIX,
+  type PagePlace,
+  PLACE_PREFIX,
   SCHEDULE_PREFIX,
   TransferRunRepository,
   type Workspace,
@@ -35,6 +38,7 @@ import {
   type ChangeBundle,
   type ChangeBundleFile,
   type ChangeBundlePage,
+  type ChangeOrder,
   type ChangePageState,
   type ChangeValue,
   loadBundle,
@@ -266,6 +270,20 @@ function stateOf(doc: DocumentAggregate): ChangePageState {
   }
 }
 
+/**
+ * Story 411: a page's place as its change recorded it, over the states read back, which
+ * name where the page is now: whether it was published, and where it was moved from.
+ */
+function placeOn(page: ChangeBundlePage, place: { before: PagePlace; after: PagePlace }) {
+  if (page.before) page.before.published = place.before.published
+  if (page.after) page.after.published = place.after.published
+  if (place.before.parentKey !== place.after.parentKey || place.before.trashed) {
+    page.parentKey = place.after.parentKey
+    page.beforeParentKey = place.before.parentKey
+  }
+  if (place.before.trashed) page.restored = true
+}
+
 /** Every field of a page's state, values and names alike, by one key. */
 function fieldsOf(state: ChangePageState | null): Map<string, unknown> {
   const out = new Map<string, unknown>()
@@ -349,6 +367,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     depends: Iterable<string>
     files: ChangeBundleFile[]
     pages: ChangeBundlePage[]
+    orders?: ChangeOrder[]
   }): ChangeBundle {
     const added = new Set<string>()
     for (const page of input.pages) {
@@ -366,6 +385,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       files: input.files,
       pages: input.pages,
       media: [...added].sort(),
+      ...(input.orders && input.orders.length > 0 ? { orders: input.orders } : {}),
     }
   }
 
@@ -417,8 +437,35 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
           JSON.parse(i.after as string) as PageSchedule,
         ]),
     )
+    // Story 411: where each page stood before and after, and the orders it set.
+    const places = new Map(
+      items
+        .filter((i) => i.path.startsWith(PLACE_PREFIX) && i.before && i.after)
+        .map((i) => [
+          normaliseUuid(i.path.slice(PLACE_PREFIX.length)),
+          {
+            before: JSON.parse(i.before as string) as PagePlace,
+            after: JSON.parse(i.after as string) as PagePlace,
+          },
+        ]),
+    )
+    const orders: ChangeOrder[] = items
+      .filter((i) => i.path.startsWith(ORDER_PREFIX) && i.before && i.after)
+      .map((i) => {
+        const parent = i.path.slice(ORDER_PREFIX.length)
+        return {
+          parentKey: parent === 'root' ? null : parent,
+          keys: JSON.parse(i.after as string) as string[],
+          before: JSON.parse(i.before as string) as string[],
+        }
+      })
     for (const item of items) {
-      if (item.path.startsWith(REMOVED_PAGE_PREFIX) || item.path.startsWith(SCHEDULE_PREFIX))
+      if (
+        item.path.startsWith(REMOVED_PAGE_PREFIX) ||
+        item.path.startsWith(SCHEDULE_PREFIX) ||
+        item.path.startsWith(PLACE_PREFIX) ||
+        item.path.startsWith(ORDER_PREFIX)
+      )
         continue
       const versions = await changes.versions(item.path)
       const at = versions.findIndex((v) => v.changeId === change.id)
@@ -457,6 +504,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         await lastChangeOfNode(row.nodeKey, row.beforeEventId, change.key),
       )
       if (page.after && schedule) page.after.schedule = schedule
+      const place = places.get(normaliseUuid(row.nodeKey))
+      if (place) placeOn(page, place)
       pages.push(page)
       depends.push(...(await madeBy([page.after], change.key)))
       if (page.lastChange && page.action !== 'create') depends.push(page.lastChange)
@@ -471,6 +520,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       depends,
       files,
       pages,
+      orders,
     })
     return { change: bundle, media: await mediaBytes(bundle.media) }
   }
@@ -655,6 +705,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         if (key) await options.media.store.put(key, bytes)
       }
       for (const page of change.pages) await stagePage(workspace, page, conflict, moved)
+      for (const order of change.orders ?? []) await stageOrder(workspace, order, conflict)
     }
     if (schemaTouched) await options.schema()?.build({ id: workspace.id, key: workspace.key })
     const staged = [...(workspace.stagedChanges ?? [])]
@@ -791,7 +842,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const after = page.after as ChangePageState
     if (!target) {
       // Changed by the change, and never made here: the change that made it is missing.
-      if (page.action === 'update' && page.before && moved(label)) return
+      // Story 411: one restored from the bin, deleted here for good, is made again.
+      if (page.action === 'update' && page.before && !page.restored && moved(label)) return
       const clash = await sameAddress(page, after.name)
       if (clash) {
         conflict(label, `${label} was made here too, as "${clash}", at the same address.`)
@@ -809,6 +861,11 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       return
     }
 
+    // Story 411: restored from the bin there, and in this site's bin, it comes out here too.
+    if (page.restored && (await shared.nodes.byKey(page.key))?.trashed) {
+      await here.move(page.key, page.parentKey)
+      return
+    }
     const now = (await here.byKey(page.key)) ?? target
     const nowFields = fieldsOf(stateOf(now))
     const beforeFields = fieldsOf(page.before)
@@ -858,6 +915,48 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       }
     }
     if (taken.size > 0 && after.published) await here.publish(page.key, null)
+    // Story 411: unpublished by the change, and published here, it is unpublished here too.
+    if (page.before?.published && !after.published && now.published)
+      await here.unpublish(page.key, null)
+  }
+
+  /**
+   * Story 411: a parent's children put in the order a change set, those this site has in
+   * that order and the rest after; a parent reordered here since the change began is a
+   * conflict, as a moved page is.
+   */
+  async function stageOrder(
+    workspace: Workspace,
+    order: ChangeOrder,
+    conflict: (item: string, says: string) => void,
+  ) {
+    const here = repo('document', workspace.id)
+    if (order.parentKey && !(await here.byKey(order.parentKey))) return
+    const now = (await here.children(order.parentKey, 0, 10_000)).items.map((n) =>
+      normaliseUuid(n.key),
+    )
+    const wanted = order.keys.map(normaliseUuid)
+    const found = new Set(order.before.map(normaliseUuid))
+    const both = new Set(now.filter((k) => found.has(k)))
+    const seq = (keys: readonly string[]) => keys.filter((k) => both.has(k)).join()
+    if (seq(now) === seq(wanted)) return
+    if (seq(now) !== seq(order.before.map(normaliseUuid))) {
+      const parent = order.parentKey ? await here.byKey(order.parentKey) : undefined
+      const named = parent
+        ? `"${(parent.variants.find((v) => v.culture === null) ?? parent.variants[0])?.name ?? order.parentKey}"`
+        : 'The top level'
+      conflict(named, `${named}'s pages were put in another order here since.`)
+      return
+    }
+    const present = new Set(now)
+    const next = [
+      ...wanted.filter((k) => present.has(k)),
+      ...now.filter((k) => !wanted.includes(k)),
+    ]
+    await here.sort(
+      order.parentKey,
+      next.map((key, sortOrder) => ({ key, sortOrder })),
+    )
   }
 
   const variantsOf = (state: ChangePageState) =>
@@ -961,12 +1060,15 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         workspace: workspace.key,
       }
     for (const change of applied)
-      for (const page of change.schedules ?? []) await scheduleHere(page)
+      for (const page of change.schedules ?? []) await scheduleHere(page, change.key)
     return { ok: true, skipped, changeId: outcome.changeId ?? null }
   }
 
   /** A page's schedule as a change carries it, replacing what Shared had for the page. */
-  async function scheduleHere(page: { key: string; kind: string; entries: PageSchedule }) {
+  async function scheduleHere(
+    page: { key: string; kind: string; entries: PageSchedule },
+    changeKey: string,
+  ) {
     const here = repo(page.kind as PageKind)
     if (!(await here.byKey(page.key))) return
     const had = await here.schedules(page.key)
@@ -981,6 +1083,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
       })),
     ])
+    // Story 414: it names the change it came with, for when it fires.
+    await here.scheduleSetBy(page.key, changeKey)
   }
 
   /** A page as Shared has it now, as a site bundle would carry it. */

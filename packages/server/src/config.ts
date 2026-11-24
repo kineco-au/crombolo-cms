@@ -496,7 +496,8 @@ export interface CromboloConfig {
   contentEditing: ContentSetting
   /**
    * Where a locked site's content is edited: the other site's back office, for the
-   * line and link an item opened here shows. `CROMBOLO_CONTENT_EDITED_AT`.
+   * line and link an item opened here shows, and for every refusal (story 412).
+   * `CROMBOLO_CONTENT_EDITED_AT`.
    */
   contentEditedAt?: string
   /**
@@ -1521,7 +1522,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.76.0'
+export const VERSION = '0.77.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

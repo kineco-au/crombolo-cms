@@ -153,6 +153,17 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
     return run
   }
 
+  /** Story 414: a change by the key it travels by, with the name it was given. */
+  async function changeNamed(key: string): Promise<{ key: string; name: string | null }> {
+    const row = await options.db.q
+      .selectFrom('content_transfer_run')
+      .select('name')
+      .where('change_key', '=', key)
+      .orderBy('started_at', 'desc')
+      .executeTakeFirst()
+    return { key, name: (row?.name as string | null | undefined) ?? null }
+  }
+
   async function runScheduledPublishingUntraced(now = new Date()): Promise<ScheduledRun> {
     const run: ScheduledRun = { published: [], unpublished: [], failed: [] }
     for (const due of await documents.dueSchedules(now)) {
@@ -161,6 +172,8 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       const release = due.action === 'Release'
       const actor = systemActor('The schedule', {
         note: `scheduled${due.culture ? ` (${due.culture})` : ''}`,
+        // Story 414: the change that set it, named as it fires.
+        ...(due.changeKey ? { change: await changeNamed(due.changeKey) } : {}),
       })
       const result = release
         ? await options.operations.publish(actor, due.key, { cultures })
