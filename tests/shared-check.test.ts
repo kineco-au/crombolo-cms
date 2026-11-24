@@ -8,7 +8,8 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { normaliseUuid } from '@crombolo/core'
+import { ComponentRepository, ContentTypeRepository, PublicAccessRepository } from '@crombolo/data'
 import { createSharedCheck } from '../packages/server/src/shared-check.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
@@ -35,7 +36,7 @@ type Checked = {
   changes: number
   pages: Array<{ key: string; url: string; ok: boolean; because: string }>
   failures: Array<{ kind: string; item: string; says: string }>
-  notChecked: string[]
+  notChecked: Array<{ kind: string; item: string; why: string; says: string }>
 }
 
 async function site() {
@@ -56,6 +57,19 @@ async function site() {
   writeFileSync(
     join(root, 'components', 'parts', 'heading.tsx'),
     "export default ({ text }) => <h1>{text === undefined ? 'Welcome' : text.shout()}</h1>\n",
+  )
+  // Story 418: a type with no template, as a headless site's are, and one only members see.
+  writeFileSync(
+    join(root, 'schema', 'content-types', 'headless.toml'),
+    '[content-type]\nalias = "headless"\nname = "Headless"\nallow-at-root = true\n',
+  )
+  writeFileSync(
+    join(root, 'schema', 'content-types', 'members.toml'),
+    '[content-type]\nalias = "members"\nname = "Members"\nallow-at-root = true\ncomponents = ["members"]\ndefault-component = "members"\n',
+  )
+  writeFileSync(
+    join(root, 'components', 'members.tsx'),
+    'export default ({ member }) => <main>{member.roles.join()}</main>\n',
   )
   writeFileSync(join(root, 'css', 'site.css'), 'body { color: black; }\n')
   writeFileSync(join(root, 'package.json'), '{ "name": "site" }\n')
@@ -154,7 +168,26 @@ async function site() {
     const response = await send('POST', `${CHANGES}/check`, body)
     return { status: response.status, body: (await response.json()) as Checked }
   }
-  return { h, db, root, home, about, base, merged, saveView, rename, check }
+  /** A page of a type, published, with its template or none (story 418). */
+  const made = async (alias: string, name: string, template: boolean) => {
+    const type = (await new ContentTypeRepository(db).byAlias(alias))?.key as string
+    const component = template ? (await new ComponentRepository(db).byAlias(alias))?.key : undefined
+    const created = await send('POST', `${V1}/document`, {
+      documentType: { id: type },
+      ...(component ? { template: { id: component } } : {}),
+      parent: null,
+      values: [],
+      variants: [{ culture: null, segment: null, name }],
+    })
+    expect(created.status, await created.clone().text()).toBe(201)
+    const key = created.headers.get('umb-generated-resource') as string
+    const published = await send('PUT', `${V1}/document/${key}/publish`, {
+      publishSchedules: [{ culture: null }],
+    })
+    expect(published.status, await published.clone().text()).toBe(200)
+    return key
+  }
+  return { h, db, root, home, about, base, merged, saveView, rename, check, send, made }
 }
 
 describe(`Shared checked since a change (${dialectUnderTest})`, () => {
@@ -241,6 +274,72 @@ describe(`Shared checked since a change (${dialectUnderTest})`, () => {
     }).check(undefined, true)
     expect(rendered).toHaveLength(1)
     expect(checked?.pages).toHaveLength(1)
-    expect(checked?.notChecked).toEqual(['1 more page(s), past the 1 one check renders'])
+    expect(checked?.notChecked).toEqual([
+      {
+        kind: 'page',
+        item: '',
+        why: 'over-the-limit',
+        says: '1 more page(s), past the 1 one check renders.',
+      },
+    ])
+  })
+
+  test('a page with nothing to render is not checked, and a members-only page renders as a member (story 418)', async () => {
+    const { h, db, home, check, made } = await site()
+    const headless = await made('headless', 'Headless', false)
+    const members = await made('members', 'Staff only', true)
+    await new PublicAccessRepository(db).save({
+      nodeKey: members,
+      loginNodeKey: home,
+      errorNodeKey: home,
+      memberGroupNames: ['Staff'],
+      memberUserNames: [],
+    })
+    h.server.cache.invalidate()
+    const whole = await check({ all: true })
+    expect(whole.body.failures, JSON.stringify(whole.body.failures)).toEqual([])
+    expect(whole.body.ok).toBe(true)
+    expect(whole.body.notChecked).toContainEqual({
+      kind: 'page',
+      item: expect.any(String),
+      why: 'no-template',
+      says: '"Headless": Its type has no template, so there is nothing to render.',
+    })
+    expect(whole.body.pages.find((p) => p.key === normaliseUuid(members))?.ok).toBe(true)
+    void headless
+  })
+
+  test('a page of a type with templates and none chosen fails, saying so (story 418)', async () => {
+    const { check, made } = await site()
+    await made('page', 'Bare', false)
+    const whole = await check({ all: true })
+    expect(whole.body.ok).toBe(false)
+    expect(whole.body.failures).toContainEqual(
+      expect.objectContaining({ kind: 'page', says: 'It has no template chosen.' }),
+    )
+    expect(JSON.stringify(whole.body)).not.toContain('It answered')
+  })
+
+  test('a workspace’s check passes a renamed page with no template, and notes no error (story 418)', async () => {
+    const { h, send, rename, made } = await site()
+    const headless = await made('headless', 'Headless', false)
+    const opened = await send('POST', WORKSPACES, { name: 'Spring' })
+    const { key } = (await opened.json()) as { key: string }
+    await rename(headless, 'Renamed', key)
+    const checked = (await (await send('POST', `${WORKSPACES}/${key}/check`, {})).json()) as Checked
+    expect(checked.ok, JSON.stringify(checked.failures)).toBe(true)
+    expect(checked.notChecked.map((n) => n.why)).toEqual(
+      expect.arrayContaining(['no-template', 'at-start']),
+    )
+    const url = checked.pages.find((p) => p.key === normaliseUuid(headless))?.url
+    expect(url).toBeTruthy()
+    expect(
+      (await send('GET', `${WORKSPACES}/${key}/render?path=${enc(url as string)}`)).status,
+    ).toBe(200)
+    const errors = (await (await send('GET', `${WORKSPACES}/${key}/errors`)).json()) as {
+      items: unknown[]
+    }
+    expect(errors.items).toEqual([])
+    void h
   })
 })

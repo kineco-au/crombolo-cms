@@ -68,6 +68,8 @@
   (`bun run docker:test:postgres`); the tag only once both have passed
 - The tag's Release workflow does not run CI again: it runs the load test and benchmarks,
   then publishes. A failure found there costs a version number
+- `--skip-load-tests` in the tagged commit's message skips the load test and benchmarks,
+  only when the maintainer asks for a release without them
 - Locally before pushing `main`, run `check` and the SQLite suite, and the browser tests a
   change touches
 

@@ -7,9 +7,12 @@
 import { normaliseUuid, ObjectTypes } from '@crombolo/core'
 import { type Change, ChangeRepository, type Db, TransferRunRepository } from '@crombolo/data'
 import {
+  type NotChecked,
   PAGES_SAMPLED,
   type PageResult,
   pagesAffectedBy,
+  pageVerdict,
+  skippedPages,
   type WorkspaceRendered,
 } from './workspace-checks.ts'
 
@@ -37,7 +40,7 @@ export interface SharedCheckResult {
   changes: number
   pages: PageResult[]
   failures: Array<{ kind: string; item: string; says: string }>
-  notChecked: string[]
+  notChecked: NotChecked[]
 }
 
 export function createSharedCheck(options: SharedCheckOptions) {
@@ -111,16 +114,17 @@ export function createSharedCheck(options: SharedCheckOptions) {
         } catch (error) {
           rendered = { status: 'error', error: String(error) }
         }
-        const ok = ['ok', 'redirect', 'outcome'].includes(rendered.status)
+        const verdict = pageVerdict(rendered)
         pages.push({
           key: one.key,
           name: found.name,
           url: found.url,
           status: rendered.status,
-          ok,
+          ok: verdict.ok,
           ms: Math.round(performance.now() - started),
           because: one.because,
-          ...(rendered.error ? { error: rendered.error } : {}),
+          ...(verdict.ok ? {} : { error: verdict.says }),
+          ...(verdict.ok && verdict.skipped ? { skipped: verdict.skipped } : {}),
         })
       }
 
@@ -132,7 +136,7 @@ export function createSharedCheck(options: SharedCheckOptions) {
           .map((p) => ({
             kind: 'page',
             item: p.url ?? p.key,
-            says: p.error ?? `It answered ${p.status}.`,
+            says: p.error ?? 'It did not render.',
           })),
         ...problems.map((says) => ({ kind: 'file', item: '', says })),
       ]
@@ -145,10 +149,25 @@ export function createSharedCheck(options: SharedCheckOptions) {
         pages,
         failures,
         notChecked: [
-          ...(past > 0 ? [`${past} more page(s), past the ${limit} one check renders`] : []),
+          ...skippedPages(pages),
+          ...(past > 0
+            ? [
+                {
+                  kind: 'page' as const,
+                  item: '',
+                  why: 'over-the-limit' as const,
+                  says: `${past} more page(s), past the ${limit} one check renders.`,
+                },
+              ]
+            : []),
           ...held.files
             .filter((f) => f.path.startsWith('site/'))
-            .map((f) => `${f.path.slice('site/'.length)} takes effect when the site next starts`),
+            .map((f) => ({
+              kind: 'file' as const,
+              item: f.path.slice('site/'.length),
+              why: 'at-start' as const,
+              says: `${f.path.slice('site/'.length)} takes effect when the site next starts.`,
+            })),
         ],
       }
     },

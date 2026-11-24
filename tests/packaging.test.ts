@@ -318,7 +318,7 @@ describe('republishing the product site', () => {
     // Keyed off secret-absence instead, a rotated or deleted token would skip
     // silently and the site would quietly stop being republished — which is the
     // chore this job exists to remove.
-    expect(job).toMatch(/if:\s*vars\.BROCHUREWARE_PUBLISH == 'enabled'/)
+    expect(job).toMatch(/if:.*vars\.BROCHUREWARE_PUBLISH == 'enabled'/)
     expect(job).not.toMatch(/if:.*secrets\./)
   })
 

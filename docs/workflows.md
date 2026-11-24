@@ -158,6 +158,19 @@ time for the whole page on the Workflow tab. Story `029`.
 Times are kept in UTC and shown in the reader's own time, with the zone named;
 "at the time" means within the job's interval of it, as for any schedule.
 
+## An approval passed on (story 413)
+
+What an approval publishes, takes down or schedules is passed on as the editor's change,
+for a host that sends changes to a serving site as they are made
+([`changes.md`](changes.md)). The editor's newest change that holds the page (their own
+edits, or the merge of their own workspace that took the page into Shared) is closed if
+it is still open and raised as `Crombolo.ChangePublished`, with `Change.ApprovedBy:
+{ Key, Name }` and `Change.Workflow`; `By` stays the editor. A take-down says `Kind:
+unpublish`; an approval with a time says `Kind: schedule`, the change holding the
+schedule, so the serving copy fires its own (`414`). Other pages in that change arrive
+saved, not published. What goes live is the version approved, so what is sent is what
+is published. A request sent back, withdrawn or declined raises nothing.
+
 ## In the backoffice
 
 - **Approvals** — in the menu under Content, after Pages, with no header tab.

@@ -416,6 +416,9 @@ export function createChangeRoutes(options: ChangeRouteOptions) {
           // Story 386: a workspace pulled to work on, rather than a change to look at.
           if (url.searchParams.get('editable') === 'true' && outcome.workspace)
             await workspaces.setStaged(outcome.workspace.id, outcome.workspace.stagedChanges, false)
+          // Story 416: shown to the site's editors, to look at before it is applied.
+          if (url.searchParams.get('visibility') === 'editors' && outcome.workspace)
+            await workspaces.setPrivacy(outcome.workspace.id, { visibility: 'editors' })
           return Response.json(
             {
               workspace: outcome.workspace?.key ?? null,

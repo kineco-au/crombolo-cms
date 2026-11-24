@@ -725,7 +725,8 @@
           "name": "notChecked",
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "object",
+            "description": "{ kind, item, why, says }: what the check did not look at"
           }
         }
       ],
@@ -16747,7 +16748,8 @@
           "name": "notChecked",
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "object",
+            "description": "{ kind, item, why, says }: what the check did not look at"
           }
         }
       ],

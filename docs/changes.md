@@ -71,6 +71,15 @@ change's id, as Shared serves it.
 - **No more than 500 pages** are rendered in one check; the rest are counted in
   `notChecked`, with any file under `site/` that takes effect only when the site next
   starts.
+- **What a check makes of a page** (story `418`), the same in this check, a workspace's
+  and the errors `render` notes: a page of a type with no template (as a headless site's
+  are) is not checked and does not fail; a page of a type with templates and none chosen
+  fails, "It has no template chosen."; a page only members may see is rendered as a member
+  of the groups it allows would see it. Each failure says what went wrong in words.
+- **`notChecked` is a list of `{ kind, item, why, says }`** (story `418`; a list of
+  sentences before 0.78.0): `kind` is `page`, `file` or `site`; `why` is `no-template`,
+  `not-published` or `over-the-limit` for a page, `at-merge` or `at-start` for the rest;
+  `says` is a sentence to show.
 - **A `since` the site does not hold** answers 404. A change applied from another site
   is known by the key it travelled with as well as its id here.
 
@@ -307,6 +316,14 @@ which ones it applied (story `395`), so editors there are offered only what is l
 - **Setting or clearing a schedule** closes the person's change and raises the event,
   as a publish does. The change carries the page's schedule, and applying it sets the
   same schedule there, which fires at its time.
+- **An approval passes the editor's change on** (story `413`): the approval's publish,
+  take-down or time closes the editor's change and raises the event, naming the approver
+  (`ApprovedBy`) and the workflow ([`workflows.md`](workflows.md)).
+- **A change that only schedules says so** (story `417`): `Change.Kind: "schedule"`, with
+  the times as `Change.Schedule`. A publish that also sets or clears a time (live now,
+  down on Friday) says no kind and carries `Change.Schedule` too. Clearing a time through
+  the Management API's publish publishes the page now, so it is told as a publish with an
+  empty `Schedule`.
 - **A schedule set in a workspace goes with its change** (story `414`). A merge sets
   each page's schedule in Shared as the workspace has it, a cleared one cleared, and its
   change holds it as one set in Shared does. Set or cleared in a person's own workspace,

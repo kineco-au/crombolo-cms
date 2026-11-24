@@ -15,7 +15,14 @@ import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
 import { encodePng, REMOTE_API_PATH } from '@crombolo/server'
 import { dialectUnderTest } from './support/db.ts'
-import { BACKOFFICE, type Harness, ORIGIN, signedInServer, V1 } from './support/harness.ts'
+import {
+  BACKOFFICE,
+  type Harness,
+  ORIGIN,
+  signedInServer,
+  signInAsGroup,
+  V1,
+} from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -594,4 +601,92 @@ describe(`a change moved between sites (${dialectUnderTest})`, () => {
     ).json()) as { environments: Array<{ capabilities: string[] }> }
     expect(JSON.stringify(discovery)).toContain('"changes"')
   })
+})
+
+// Story 416: a staged change read by the site's editors, when whoever staged it says so.
+describe(`a staged change read by the site’s editors (${dialectUnderTest}, story 416)`, () => {
+  const ask = (h: Harness, method: string, path: string, body?: unknown) =>
+    h.call(path, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+
+  test('shown to editors, an editor reads it, checks it and opens it, and changes nothing', async () => {
+    const made = await madeThere((s, w) => s.edit(HOME, { title: 'Spring sale' }, w))
+    const target = await site()
+    const staged = await target.put(made.bundle, '?stage=true&visibility=editors')
+    expect(staged.status, await staged.clone().text()).toBe(200)
+    const { workspace } = (await staged.json()) as { workspace: string }
+    const editor = await signInAsGroup(target.h, 'writer')
+    const at = `${WORKSPACES}/${workspace}`
+
+    const listed = (await (await ask(editor, 'GET', WORKSPACES)).json()) as {
+      items: Array<{ key: string; staged: boolean; member: boolean }>
+    }
+    expect(listed.items.find((w) => w.key === workspace)).toMatchObject({
+      staged: true,
+      member: false,
+    })
+    for (const read of ['', '/changes', '/diff', '/merge', '/conflicts', '/pages', '/errors'])
+      expect((await ask(editor, 'GET', `${at}${read}`)).status, read).toBe(200)
+    expect((await ask(editor, 'POST', `${at}/check`, {})).status).toBe(200)
+    expect((await ask(editor, 'GET', `${at}/render?path=/`)).status).toBe(200)
+    const opened = await ask(editor, 'POST', `${at}/open`, { path: '/' })
+    expect(opened.status, await opened.clone().text()).toBe(200)
+
+    expect((await ask(editor, 'POST', `${at}/merge`, {})).status).toBeGreaterThanOrEqual(400)
+    expect((await ask(editor, 'DELETE', at)).status).toBe(404)
+    expect((await ask(editor, 'PATCH', at, { name: 'Mine' })).status).toBeGreaterThanOrEqual(400)
+    expect((await ask(editor, 'POST', `${at}/links`, { days: 1 })).status).toBeGreaterThanOrEqual(
+      400,
+    )
+    expect(await target.fieldValue(HOME, 'title')).toBe('Welcome')
+  }, 30_000)
+
+  test('not shown to editors, or to someone without Content, it is no workspace at all', async () => {
+    const made = await madeThere((s, w) => s.edit(HOME, { title: 'Spring sale' }, w))
+    const target = await site()
+    const hidden = (await (await target.put(made.bundle, '?stage=true')).json()) as {
+      workspace: string
+    }
+    const editor = await signInAsGroup(target.h, 'writer')
+    expect((await ask(editor, 'GET', `${WORKSPACES}/${hidden.workspace}`)).status).toBe(404)
+    await target.h.server.db.q
+      .updateTable('workspace')
+      .set({ visibility: 'editors' })
+      .where('key', '=', hidden.workspace)
+      .execute()
+    const outsider = await signInAsGroup(target.h, 'sensitiveData')
+    // Refused before the workspace is looked at, or answered as none.
+    expect([403, 404]).toContain(
+      (await ask(outsider, 'GET', `${WORKSPACES}/${hidden.workspace}`)).status,
+    )
+  }, 30_000)
+
+  test('a page the editor may not read in Shared is left out, and refused by render and open', async () => {
+    const made = await madeThere((s, w) => s.edit(HOME, { title: 'Spring sale' }, w))
+    const target = await site()
+    const { workspace } = (await (
+      await target.put(made.bundle, '?stage=true&visibility=editors')
+    ).json()) as { workspace: string }
+    const writers = await target.h.server.db.q
+      .selectFrom('user_group')
+      .select('key')
+      .where('alias', '=', 'writer')
+      .executeTakeFirst()
+    await target.h.server.db.q
+      .deleteFrom('user_group_permission')
+      .where('user_group_key', '=', String(writers?.key))
+      .where('permission', '=', 'Umb.Document.Read')
+      .execute()
+    const editor = await signInAsGroup(target.h, 'writer')
+    const at = `${WORKSPACES}/${workspace}`
+    const changes = (await (await ask(editor, 'GET', `${at}/changes`)).json()) as {
+      items: Array<{ key: string }>
+    }
+    expect(changes.items.map((c) => c.key)).not.toContain(HOME)
+    expect((await ask(editor, 'GET', `${at}/render?path=/`)).status).toBe(404)
+    expect((await ask(editor, 'POST', `${at}/open`, { path: '/' })).status).toBe(404)
+  }, 30_000)
 })

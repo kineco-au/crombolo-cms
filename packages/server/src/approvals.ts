@@ -64,6 +64,16 @@ export interface ApprovalPublisher {
     cultures: string[] | null,
     actor: Actor,
   ): Promise<{ ok: true } | { ok: false; reason: string }>
+  /** Story 413: the times an approval set, as the site, so its change is passed on. */
+  schedule?(
+    key: string,
+    entries: ReadonlyArray<{
+      culture: string | null
+      publishTime: Date | null
+      unpublishTime: Date | null
+    }>,
+    actor: Actor,
+  ): Promise<{ ok: true } | { ok: false; reason: string }>
 }
 
 export interface ApprovalsOptions {
@@ -650,13 +660,17 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           ? [...(nowCultures as string[]), ...untimed]
           : undefined
     }
-    if (cultures !== undefined) {
-      // As the site, on the approver's behalf; the publish raises the notification, with this note.
-      const actor = systemActor('Approval', {
+    // As the site, on the approver's behalf; the publish raises the notification, with this
+    // note, and story 413: passes the editor's change on, naming the approver.
+    const approvalActor = () =>
+      systemActor('Approval', {
         source: principal ? 'request' : 'job',
         user: principal ? { id: principal.id, name: principal.name } : undefined,
         note: `approved through "${request.workflow.name}"`,
+        approval: { editorKey: request.requestedBy, workflow: request.workflow.name },
       })
+    if (cultures !== undefined) {
+      const actor = approvalActor()
       const result =
         request.action === 'publish'
           ? await options.publisher.publish(
@@ -680,8 +694,13 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
         comment: passed ? 'the requested time had passed when it was approved' : null,
       })
     }
-    if (later.length + expires.length > 0)
-      await documents().setSchedule(request.nodeKey, [...later, ...expires])
+    if (later.length + expires.length > 0) {
+      // Story 413: through the operations, so the editor's change carries the times on.
+      const set = options.publisher.schedule
+        ? await options.publisher.schedule(request.nodeKey, [...later, ...expires], approvalActor())
+        : undefined
+      if (!set?.ok) await documents().setSchedule(request.nodeKey, [...later, ...expires])
+    }
     if (later.length === 0) return approved(request, principal)
     const when = describeSchedule(request.action, later)
     await repo.setState(request.id, 'scheduled')

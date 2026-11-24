@@ -3129,8 +3129,15 @@ export class DocumentRepository {
     const languages = await this.#languages()
     const workspace = this.#workspace ?? null
     await this.#db.transaction(async (tx) => {
-      // Story 414: the first time a workspace sets one, Shared's as it was then.
-      if (workspace !== null) {
+      // Story 414: the first time a workspace sets one, Shared's as it was then; a publish
+      // that names no time, and finds none to clear, sets none.
+      const timed = entries.some((e) => e.publishTime !== null || e.unpublishTime !== null)
+      const clears =
+        !timed &&
+        workspace !== null &&
+        ((await scheduleEntriesOf(tx, node.id, workspace)).length > 0 ||
+          (await scheduleEntriesOf(tx, node.id, null)).length > 0)
+      if (workspace !== null && (timed || clears)) {
         const held = await tx.q
           .selectFrom('workspace_schedule')
           .select('node_id')

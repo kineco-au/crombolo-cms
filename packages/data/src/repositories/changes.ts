@@ -357,6 +357,40 @@ export class ChangeRepository {
     await this.#touch(id, now)
   }
 
+  /**
+   * Story 413: a person's newest change that holds a page, made by their own edits or by
+   * the merge of their own workspace, closed if it was still open.
+   */
+  async closeHolding(
+    madeBy: string,
+    pageKey: string,
+    now = new Date(),
+  ): Promise<{ id: string; key: string; name: string | null; merged: boolean } | undefined> {
+    const row = await this.#db.q
+      .selectFrom('content_transfer_change as c')
+      .innerJoin('content_transfer_run as r', 'r.id', 'c.run_id')
+      .select(['r.id', 'r.change_kind', 'r.closed_at'])
+      .where('c.node_key', '=', normaliseUuid(pageKey))
+      .where('r.made_by', '=', normaliseUuid(madeBy))
+      .where('r.change_kind', 'in', ['edit', 'merge'])
+      .orderBy('r.started_at', 'desc')
+      .executeTakeFirst()
+    if (!row) return undefined
+    const id = String(row.id)
+    const merged = row.change_kind === 'merge'
+    if (!merged && row.closed_at === null) {
+      const closed = await this.#close(id, now)
+      return { id, ...closed, merged }
+    }
+    const run = await this.byId(id)
+    return run ? { id, key: run.key, name: run.name, merged } : undefined
+  }
+
+  /** Story 413: a page's schedule set by an approval, kept in the change that holds the page. */
+  async scheduleIn(changeId: string, pageKey: string, entries: readonly unknown[]): Promise<void> {
+    await this.#keepItem(changeId, `${SCHEDULE_PREFIX}${normaliseUuid(pageKey)}`, null, entries)
+  }
+
   /** Closes a person's open change (story 411): finished, to be passed on. */
   async closeOpen(
     madeBy: string,

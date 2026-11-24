@@ -4979,7 +4979,7 @@ crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--incl
 - `ok` (boolean)
 - `pages` (array of object)
 - `failures` (array of object)
-- `notChecked` (array of string)
+- `notChecked` (array of object)
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`.
 
@@ -5458,7 +5458,7 @@ crombolo changes check [--profile <profile>] [--env <env>] [--include-private] [
 - `changes` (integer)
 - `pages` (array of object)
 - `failures` (array of object)
-- `notChecked` (array of string)
+- `notChecked` (array of object)
 
 **Fails with:** `usage`, `internal`, `auth`, `not_found`.
 

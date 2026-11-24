@@ -59,6 +59,8 @@ export type Actor =
       note?: string
       /** Story 414: the change whose schedule it carries out. */
       change?: { key: string; name: string | null }
+      /** Story 413: the approval it carries out: the editor who asked, and the workflow. */
+      approval?: { editorKey: string; workflow: string }
     }
 
 /**
@@ -115,6 +117,7 @@ export const systemActor = (
     user?: { id: string; name: string }
     note?: string
     change?: { key: string; name: string | null }
+    approval?: { editorKey: string; workflow: string }
   } = {},
 ): Actor => ({
   kind: 'system',
@@ -123,6 +126,7 @@ export const systemActor = (
   user: options.user,
   note: options.note,
   ...(options.change ? { change: options.change } : {}),
+  ...(options.approval ? { approval: options.approval } : {}),
 })
 
 /** The name an audit entry or a notification gives the actor. */

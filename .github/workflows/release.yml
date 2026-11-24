@@ -31,8 +31,11 @@ jobs:
     # `bun run docker:test:load`. The seed is printed, so a failure replays with
     # CROMBOLO_LOAD_SEED. Postgres splits the load test and the two benchmarks
     # across three independent runners; their full-sized fixtures stay intact.
+    # `--skip-load-tests` in the tagged commit's message skips it, for a release the
+    # maintainer has chosen to publish without it.
     load:
         name: load (${{ matrix.dialect }}${{ matrix.shards > 1 && format(' {0}/{1}', matrix.shard, matrix.shards) || '' }})
+        if: ${{ !contains(github.event.head_commit.message, '--skip-load-tests') }}
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
@@ -107,6 +110,8 @@ jobs:
 
     publish:
         needs: [load]
+        # The load test passed, or the tagged commit asked to skip it.
+        if: ${{ !cancelled() && (needs.load.result == 'success' || needs.load.result == 'skipped') }}
         runs-on: ubuntu-latest
         permissions:
             # Creates the GitHub release the signed demo bundles are attached to.
@@ -183,7 +188,8 @@ jobs:
     # prevent. Off, it skips and says so. On, any failure fails the release.
     brochureware:
         needs: publish
-        if: vars.BROCHUREWARE_PUBLISH == 'enabled'
+        # Stated, so a skipped load test does not skip it with publish's success.
+        if: ${{ !cancelled() && needs.publish.result == 'success' && vars.BROCHUREWARE_PUBLISH == 'enabled' }}
         runs-on: ubuntu-latest
         permissions:
             contents: read

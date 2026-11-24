@@ -20,6 +20,7 @@ import { fieldWords, type MergePlan, type OnlyKind } from '@crombolo/content'
 import {
   DocumentPermissions as D,
   normaliseUuid,
+  ObjectTypes,
   problemDetails,
   problemResponse,
   SystemNodes,
@@ -38,7 +39,8 @@ import {
 } from '@crombolo/data'
 import { recordAudit } from './adapters/audit.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
-import type { WorkspaceChecks } from './workspace-checks.ts'
+import { originOf } from './seo.ts'
+import { pageVerdict, type WorkspaceChecks, type WorkspaceRendered } from './workspace-checks.ts'
 import type { WorkspaceSchema } from './workspace-schema.ts'
 
 export const WORKSPACE_HEADER = 'crombolo-workspace'
@@ -60,7 +62,12 @@ const problem = (status: number, title: string, detail?: string) =>
   problemResponse(problemDetails({ title, status, ...(detail ? { detail } : {}) }))
 
 /** What an administrator may read of a workspace they are not in, when they ask to (story 401). */
-const ADMIN_READS = new Set([
+/**
+ * What may be read of a workspace by someone not in it (stories 401, 416): an
+ * administrator who asks, and an editor it is shown to, alike. Each a GET, but `check`
+ * and `open`, which change nothing.
+ */
+const WORKSPACE_READS = new Set([
   'changes',
   'merge',
   'conflicts',
@@ -71,6 +78,7 @@ const ADMIN_READS = new Set([
   'render',
   'members',
 ])
+const POSTED_READS = new Set(['check', 'open'])
 
 /** The header's word for a person's own unnamed workspace (story 380). */
 export const OWN_WORKSPACE = 'mine'
@@ -309,6 +317,8 @@ export interface WorkspaceView {
   /** Story 407: whether it is in conflict with Shared, and over how many items, as last found. */
   conflicted: boolean
   conflicts: number
+  /** Story 416: a change from another site, staged to be looked at and applied. */
+  staged: boolean
   state: 'open' | 'merged'
   mergedAt: string | null
   createdAt: string
@@ -340,6 +350,7 @@ const viewOf = (workspace: Workspace, principal: Principal, conflicts = 0): Work
   personal: workspace.personal,
   conflicted: conflicts > 0,
   conflicts,
+  staged: workspace.stagedReadOnly === true,
   state: workspace.state,
   mergedAt: workspace.mergedAt?.toISOString() ?? null,
   createdAt: workspace.createdAt.toISOString(),
@@ -389,6 +400,25 @@ export function pageSitePath(url: string | null | undefined): string {
     }
   }
   return isSitePath(path) ? path : '/'
+}
+
+/**
+ * Where a workspace's site is (story 415): on the address the request came to, forwarded
+ * host and scheme followed, or with none, the site's application address; never the SEO
+ * public address, which may be an app that serves no workspace. Its own host where
+ * workspaces have them. Pure.
+ */
+export function workspaceOriginOf(
+  key: string,
+  request: Request | undefined,
+  config: { applicationUrl: string },
+  hosts?: { hostFor(key: string, host: string): string },
+): URL {
+  const origin = new URL(
+    request ? originOf(request, config) : config.applicationUrl.replace(/\/$/, ''),
+  )
+  if (hosts) origin.host = hosts.hostFor(key, origin.host)
+  return origin
 }
 
 export const CONTENT_LOCKED = {
@@ -482,6 +512,63 @@ async function filesNamedBy(db: Db, workspaceId: number): Promise<string[]> {
 /** Whether someone may merge workspaces at all: the permission of its own, which an administrator holds. */
 export const mayMerge = (principal: Principal): boolean =>
   principal.isAdmin || principal.permissions.includes(WorkspacePermissions.Merge)
+
+/**
+ * What someone not in a workspace may read of it (story 416): the pages they may read in
+ * Shared, and the files of the sections they have.
+ */
+function readsOf(db: Db, principal: Principal) {
+  const known = new Map<string, boolean>()
+  const page = async (key: string): Promise<boolean> => {
+    const k = normaliseUuid(key)
+    const seen = known.get(k)
+    if (seen !== undefined) return seen
+    const node = await new NodeRepository(db).byKey(k)
+    const document =
+      node &&
+      (node.objectType === ObjectTypes.Document ||
+        node.objectType === ObjectTypes.WorkspaceDocument)
+    const allowed = document ? mayDocumentAt(principal, await chainOf(db, node.id), [D.Read]) : true
+    known.set(k, allowed)
+    return allowed
+  }
+  const item = async (value: unknown): Promise<boolean> => {
+    if (!value || typeof value !== 'object') return true
+    const o = value as Record<string, unknown>
+    if (typeof o.key === 'string' && UUID.test(o.key) && !(await page(o.key))) return false
+    if (typeof o.path === 'string' && fileRefusals(principal, { [o.path]: true }).length > 0)
+      return false
+    return true
+  }
+  async function hold(value: unknown): Promise<unknown> {
+    if (Array.isArray(value)) {
+      const out = []
+      for (const v of value) if (await item(v)) out.push(await hold(v))
+      return out
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(value)) out[k] = await hold(v)
+      return out
+    }
+    return value
+  }
+  return {
+    hold,
+    /** Whether the page at a path on the workspace's site is one they may read. */
+    async path(
+      workspace: { id: number; key: string },
+      path: string,
+      pageAt?: (
+        workspace: { id: number; key: string },
+        path: string,
+      ) => Promise<string | undefined>,
+    ): Promise<boolean> {
+      const key = pageAt ? await pageAt(workspace, path) : undefined
+      return key ? page(key) : true
+    },
+  }
+}
 
 /** A page's place as permissions read it: its ancestors' keys, then its own. */
 async function chainOf(db: Db, nodeId: number): Promise<string[]> {
@@ -609,6 +696,8 @@ export function createWorkspacesApi(
     schema?: () => WorkspaceSchema | undefined
     /** Renders one page with the workspace's views (story 377). */
     render?: (workspace: { id: number; key: string }, path: string) => Promise<unknown>
+    /** Story 416: the page at a path on a workspace's site, to hold a reader to their access. */
+    pageAt?: (workspace: { id: number; key: string }, path: string) => Promise<string | undefined>
     /** Told when a workspace is merged or discarded, for what is held for it. */
     onClosed?: (key: string) => void
     /** The files a discarded workspace's values named, for those nothing else does to go (story 390). */
@@ -629,6 +718,7 @@ export function createWorkspacesApi(
         workspace: { id: number; key: string },
         principal: Principal,
         days: number,
+        request?: Request,
       ): Promise<{ id: number; url: string; expiresAt: string }>
       list(workspaceId: number): Promise<
         Array<{
@@ -887,19 +977,24 @@ export function createWorkspacesApi(
       // only when they ask to (story 401).
       const usable = found && mayUse(found, principal)
       const discardable = found && (usable || principal.isAdmin)
+      const aRead =
+        (request.method === 'GET' &&
+          (sub === undefined || WORKSPACE_READS.has(sub)) &&
+          (sub !== 'changes' || !member)) ||
+        (request.method === 'POST' && !member && sub !== undefined && POSTED_READS.has(sub))
       const adminRead =
         !usable &&
         principal.isAdmin &&
         new URL(request.url).searchParams.get('includePrivate') === 'true' &&
-        ((request.method === 'GET' &&
-          (sub === undefined || ADMIN_READS.has(sub)) &&
-          (sub !== 'changes' || !member)) ||
-          (request.method === 'POST' && !member && (sub === 'check' || sub === 'open')))
-      // Story 384: one its owner shows to every editor is read by them, and changed by its members.
-      const readable =
-        found?.visibility === 'editors' &&
-        request.method === 'GET' &&
-        (sub === undefined || ['changes', 'diff', 'merge', 'members', 'conflicts'].includes(sub))
+        aRead
+      // Story 384: one its owner shows to every editor is read by them, and changed by its
+      // members; story 416: every read, by someone with the Content section.
+      const readable = found?.visibility === 'editors' && hasSection(principal, 'content') && aRead
+      // Story 416: an editor not in it sees only the pages and files they may in Shared.
+      const heldToAccess = !usable && !adminRead && readable
+      const mayRead = readsOf(db, principal)
+      const answer = async (value: unknown, status = 200) =>
+        json(heldToAccess ? await mayRead.hold(value) : value, status)
       if (
         !found ||
         (!usable &&
@@ -942,7 +1037,7 @@ export function createWorkspacesApi(
       }
 
       if (sub === 'changes' && !member && request.method === 'GET')
-        return json({ items: await workspaces.changes(found.id) })
+        return answer({ items: await workspaces.changes(found.id) })
       // Story 384: "Drop this change": the page goes back to Shared's, here.
       if (sub === 'changes' && member && UUID.test(member) && request.method === 'DELETE') {
         if (!usable) return refused('Only its members change a workspace.', 403)
@@ -962,28 +1057,43 @@ export function createWorkspacesApi(
         const query = new URL(request.url).searchParams
         if (sub === 'diff' && request.method === 'GET') {
           const against = query.get('against') === 'base' ? 'base' : 'shared'
-          return json(await checks.diff(found, against))
+          return answer(await checks.diff(found, against))
         }
         if (sub === 'conflicts' && request.method === 'GET')
-          return json({ items: await checks.conflicts(found) })
+          return answer({ items: await checks.conflicts(found) })
         if (sub === 'check' && request.method === 'POST') {
           const asked = await body()
-          return json(await checks.check(found, asked.all === true))
+          const checked = await checks.check(found, asked.all === true)
+          if (!heldToAccess) return json(checked)
+          // Its failures and pages not checked go with the pages left out.
+          const shown = (await mayRead.hold(checked.pages)) as typeof checked.pages
+          const hidden = new Set(
+            checked.pages.filter((p) => !shown.includes(p)).flatMap((p) => [p.url, p.key]),
+          )
+          return json({
+            ...checked,
+            pages: shown,
+            failures: checked.failures.filter((f) => !hidden.has(f.item)),
+            notChecked: checked.notChecked.filter((n) => !hidden.has(n.item)),
+          })
         }
         if (sub === 'pages' && request.method === 'GET') {
           const pages = await checks.pages(found, query.get('all') === 'true')
-          return json({
+          return answer({
             items: query.get('failing') === 'true' ? pages.filter((p) => !p.ok) : pages,
           })
         }
         if (sub === 'errors' && request.method === 'GET') {
           const since = query.get('since') ? new Date(query.get('since') as string) : undefined
-          return json({
-            items: await checks.errors(
-              found,
-              since && !Number.isNaN(since.getTime()) ? since : undefined,
-            ),
-          })
+          const items = await checks.errors(
+            found,
+            since && !Number.isNaN(since.getTime()) ? since : undefined,
+          )
+          if (!heldToAccess) return json({ items })
+          const kept = []
+          for (const item of items)
+            if (await mayRead.path(found, item.page, options.pageAt)) kept.push(item)
+          return json({ items: kept })
         }
       }
 
@@ -992,14 +1102,18 @@ export function createWorkspacesApi(
       if (schema && sub === 'files' && !member && request.method === 'GET') {
         const planned = await schema.plan(found.id)
         return json({
-          changes: (await new WorkspaceFileRepository(db).changes(found.id)).map((c) => ({
-            path: schema.shown(c.path),
-            class: c.class ?? 'none',
-            added: c.base === null,
-            removed: c.now === null,
-            // Read only as the site starts (story 377): it takes effect when merged.
-            ...(c.path.startsWith('site/') ? { takesEffect: 'at merge' } : {}),
-          })),
+          changes: (await new WorkspaceFileRepository(db).changes(found.id))
+            .filter(
+              (c) => !heldToAccess || fileRefusals(principal, { [c.path]: true }).length === 0,
+            )
+            .map((c) => ({
+              path: schema.shown(c.path),
+              class: c.class ?? 'none',
+              added: c.base === null,
+              removed: c.now === null,
+              // Read only as the site starts (story 377): it takes effect when merged.
+              ...(c.path.startsWith('site/') ? { takesEffect: 'at merge' } : {}),
+            })),
           conflicts: planned.conflicts,
           problems: planned.problems,
         })
@@ -1027,7 +1141,9 @@ export function createWorkspacesApi(
         const path = asked.path === undefined || asked.path === null ? '/' : asked.path
         if (!isSitePath(path))
           return refused("Give a path on the workspace's site, such as /about.", 400)
-        const url = await options.open(found, principal, path, request, adminRead === true)
+        if (heldToAccess && !(await mayRead.path(found, path, options.pageAt)))
+          return refused('There is no such page.', 404)
+        const url = await options.open(found, principal, path, request, adminRead || heldToAccess)
         return url ? json({ url }) : refused('You may not open it.', 403)
       }
       if (sub === 'links' && options.links) {
@@ -1050,7 +1166,7 @@ export function createWorkspacesApi(
           const days = typeof asked.days === 'number' ? asked.days : most
           if (!(days > 0) || days > most)
             return refused(`A link lasts at most ${most} day(s) here.`, 400)
-          const made = await links.make(found, principal, days)
+          const made = await links.make(found, principal, days, request)
           await audit(
             principal,
             'Link',
@@ -1070,11 +1186,13 @@ export function createWorkspacesApi(
       // Story 377: one page as the workspace's views render it, before it has an address (379).
       if (sub === 'render' && !member && request.method === 'GET' && options.render) {
         const path = new URL(request.url).searchParams.get('path') ?? '/'
+        if (heldToAccess && !(await mayRead.path(found, path, options.pageAt)))
+          return refused('There is no such page.', 404)
         const rendered = await options.render({ id: found.id, key: found.key }, path)
-        // Story 408: a page that fails when asked for is one of the workspace's errors.
-        const { status, error } = (rendered ?? {}) as { status?: string; error?: string }
-        if (status && !['ok', 'redirect', 'outcome'].includes(status))
-          await options.checks?.().note(found, path, error ?? `answered ${status}`)
+        // Story 408: a page that fails when asked for is one of the workspace's errors;
+        // story 418: by the checks' own rule, so a page with nothing to render is none.
+        const verdict = pageVerdict((rendered ?? { status: 'error' }) as WorkspaceRendered)
+        if (!verdict.ok) await options.checks?.().note(found, path, verdict.says)
         return json(rendered)
       }
       if (schema && sub === 'update' && !member && request.method === 'POST') {
@@ -1111,7 +1229,7 @@ export function createWorkspacesApi(
         if (sub === 'merge' && !member && request.method === 'GET') {
           const plan = await merging.preview(found)
           const files = schema ? await schema.plan(found.id) : undefined
-          return json({
+          return answer({
             ...planView(plan),
             files: files
               ? {

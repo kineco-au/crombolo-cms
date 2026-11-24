@@ -563,6 +563,10 @@ it.
 | `410` | A workspace's address is only ever on its own site | must | S | done | 379 |
 | `411` | An unpublish, a move, a reorder and a delete are passed on | should | M | done | 388, 395, 397 |
 | `412` | A locked site's refusal says where content is edited | should | S | done | 388 |
-| `413` | An approved publish is passed on | should | M | ready | 028, 388, 395, 411 |
+| `413` | An approved publish is passed on | should | M | done | 028, 388, 395, 411 |
 | `414` | A schedule set in a workspace goes with its change | should | M | done | 395, 397 |
+| `415` | A workspace's link is on the site's own address | must | S | done | 379, 410 |
+| `416` | A staged change read by the site's editors | should | M | done | 383, 384, 386, 401 |
+| `417` | A change that only schedules says so | could | S | done | 411, 414 |
+| `418` | A check passes a page that has nothing to render | must | S | done | 386, 406 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

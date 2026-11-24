@@ -953,3 +953,72 @@ describe(`a schedule set in a workspace goes with its change (${dialectUnderTest
     expect(items.map((i) => i.path)).toContain(`schedules/${BETA}`)
   }, 30_000)
 })
+
+// Story 417: a change that only schedules says so, with its times.
+describe(`a change that only schedules says so (${dialectUnderTest}, story 417)`, () => {
+  const later = () => new Date(Math.floor(Date.now() / 1000) * 1000 + 3_600_000).toISOString()
+  const scheduleOf = (
+    s: Awaited<ReturnType<typeof site>>,
+    key: string,
+    times: { publishTime?: string; unpublishTime?: string } | null,
+    headers = {},
+  ) =>
+    s.send(
+      'PUT',
+      `${V1}/document/${key}/publish`,
+      { publishSchedules: [{ culture: null, schedule: times }] },
+      headers,
+    )
+  type Told = Announced & { schedule?: unknown[] }
+
+  test('setting and clearing a time says schedule with the times; a publish that sets one says none', async () => {
+    const s = await site()
+    await threePages(s)
+    const told = announcements(s)
+    await s.send('PUT', `${V1}/document/${ALPHA}/unpublish`, { cultures: null })
+    await told.fresh()
+    const at = later()
+
+    expect((await scheduleOf(s, ALPHA, { publishTime: at })).status).toBe(200)
+    expect((await told.fresh()) as Told[]).toEqual([
+      expect.objectContaining({
+        kind: 'schedule',
+        schedule: [{ culture: null, publishTime: at, unpublishTime: null }],
+      }),
+    ])
+    // Cleared through a publish, which publishes it now: a publish, carrying no times.
+    expect((await scheduleOf(s, ALPHA, null)).status).toBe(200)
+    const cleared = (await told.fresh()) as Told[]
+    expect(cleared).toEqual([expect.objectContaining({ schedule: [] })])
+    expect(cleared[0]?.kind).toBeUndefined()
+
+    // Live now and down later is a publish, carrying the time.
+    expect((await scheduleOf(s, BETA, { unpublishTime: at })).status).toBe(200)
+    expect(await stateOf(s, BETA)).toBe('Published')
+    const published = (await told.fresh()) as Told[]
+    expect(published).toEqual([
+      expect.objectContaining({
+        schedule: [{ culture: null, publishTime: null, unpublishTime: at }],
+      }),
+    ])
+    expect(published[0]?.kind).toBeUndefined()
+  }, 30_000)
+
+  test('in a person’s own workspace, a page only scheduled says schedule', async () => {
+    const s = await site()
+    await threePages(s)
+    const told = announcements(s)
+    await s.send('PUT', `${V1}/document/${GAMMA}/unpublish`, { cultures: null })
+    await told.fresh()
+    const at = later()
+    const set = await scheduleOf(s, GAMMA, { publishTime: at }, { 'crombolo-workspace': 'mine' })
+    expect(set.status, await set.clone().text()).toBe(200)
+    expect((await told.fresh()) as Told[]).toEqual([
+      expect.objectContaining({
+        kind: 'schedule',
+        from: 'own-workspace',
+        schedule: [{ culture: null, publishTime: at, unpublishTime: null }],
+      }),
+    ])
+  }, 30_000)
+})

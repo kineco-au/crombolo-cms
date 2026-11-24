@@ -384,7 +384,7 @@ import {
   type WorkspaceAccess,
   workspaceHosts,
 } from './workspace-access.ts'
-import { createWorkspaceChecks } from './workspace-checks.ts'
+import { createWorkspaceChecks, type WorkspaceRendered } from './workspace-checks.ts'
 import { withConflictWatch } from './workspace-conflicts.ts'
 import {
   createWorkspaceProcesses,
@@ -402,6 +402,7 @@ import {
   onOrigin,
   pageSitePath,
   WORKSPACE_HEADER,
+  workspaceOriginOf,
 } from './workspaces.ts'
 
 export interface ServerHandle {
@@ -1949,7 +1950,15 @@ export async function createServer(
       const views = site.views
       if (result.status === 'ok') return { status: 'ok', html: result.html, views }
       if (result.status === 'error') return { status: 'error', error: result.error.message, views }
+      // Story 418: whether a page with no template is meant to have none.
+      if (result.status === 'noTemplate')
+        return { status: 'noTemplate', templates: await typeAllowsTemplates(result.content), views }
       return { status: result.status, views }
+    },
+    // Story 416: the page at a path, to hold a reader not in the workspace to their access.
+    pageAt: async (workspace, path) => {
+      const site = await workspaceSites.siteFor(workspace)
+      return (await site.cache.byRoute(new URL(path, 'http://site').pathname))?.key
     },
     onClosed: (key) => {
       workspaceProcesses?.stop(key)
@@ -1971,6 +1980,46 @@ export async function createServer(
     links: () => workspaceLinks,
   })
   // Story 386: a workspace's diff, conflicts and checks, for the command line.
+  /**
+   * A page as a check renders it (story 418): a page only members may see, as a member of
+   * the groups it allows would; a page with no template, saying whether its type allows any.
+   */
+  async function renderForCheck(
+    renderer: Pick<Renderer, 'render'>,
+    path: string,
+  ): Promise<WorkspaceRendered> {
+    let result = await renderer.render(path)
+    const content = 'content' in result ? result.content : undefined
+    const entry = content ? await new PublicAccessRepository(db).entryFor(content.key) : undefined
+    if (entry)
+      result = await renderer.render(path, undefined, {
+        member: {
+          key: '00000000-0000-0000-0000-000000000418',
+          name: 'A member',
+          username: entry.memberUserNames[0] ?? 'member',
+          email: '',
+          roles: [...entry.memberGroupNames],
+        },
+      })
+    if (result.status === 'ok') return { status: 'ok', html: result.html }
+    if (result.status === 'error') return { status: 'error', error: result.error.message }
+    if (result.status === 'noTemplate')
+      return { status: 'noTemplate', templates: await typeAllowsTemplates(result.content) }
+    return { status: result.status }
+  }
+
+  /** Whether a page's type allows any template: none, and the page is meant to have none. */
+  async function typeAllowsTemplates(content: { contentType: { alias: string } }) {
+    const rows = await db.q
+      .selectFrom('content_type_template as ctt')
+      .innerJoin('content_type as ct', 'ct.node_id', 'ctt.content_type_node_id')
+      .select('ctt.template_node_id')
+      .where('ct.alias', '=', content.contentType.alias)
+      .limit(1)
+      .execute()
+    return rows.length > 0
+  }
+
   const workspaceChecks = createWorkspaceChecks({
     db,
     nodeId: schema.nodeId,
@@ -1978,10 +2027,7 @@ export async function createServer(
     schema: () => workspaceSchema,
     async render(workspace, path) {
       const site = await workspaceSites.siteFor(workspace)
-      const result = await site.renderer.render(path)
-      if (result.status === 'ok') return { status: 'ok', html: result.html }
-      if (result.status === 'error') return { status: 'error', error: result.error.message }
-      return { status: result.status }
+      return renderForCheck(site.renderer, path)
     },
     async urlOf(workspace, key) {
       const site = await workspaceSites.siteFor(workspace)
@@ -2076,10 +2122,7 @@ export async function createServer(
       await snapshots.refresh()
     },
     async render(path) {
-      const result = await sharedRenderer.render(path)
-      if (result.status === 'ok') return { status: 'ok', html: result.html }
-      if (result.status === 'error') return { status: 'error', error: result.error.message }
-      return { status: result.status }
+      return renderForCheck(sharedRenderer, path)
     },
     async page(key) {
       const found = await sharedCache.byKey(key)
@@ -2362,13 +2405,14 @@ export async function createServer(
 
   const workspaceHostsOf = () => workspaceHosts(config.workspacesHost)
 
-  /** Where a workspace's site is, for a request on `origin`: its host, or the site's own. */
-  function workspaceOrigin(workspace: { key: string }, request: Request): URL {
-    const origin = new URL(publicOrigin(request, config))
-    const hosts = workspaceHostsOf()
-    if (hosts) origin.host = hosts.hostFor(workspace.key, origin.host)
-    return origin
-  }
+  /**
+   * Where a workspace's site is (story 415): on the address the request came to, forwarded
+   * host and scheme followed, or with none, `CROMBOLO_APPLICATION_URL`; never the SEO
+   * public address, which may be an app that serves no workspace. Its own host where
+   * workspaces have them.
+   */
+  const workspaceOrigin = (workspace: { key: string }, request?: Request): URL =>
+    workspaceOriginOf(workspace.key, request, config, workspaceHostsOf())
 
   /** A member's way in: a link with a single-use token, swapped for a cookie on first use. */
   async function workspaceOpenUrl(
@@ -2389,12 +2433,7 @@ export async function createServer(
       ...(asAdministrator ? { admin: true } : {}),
     })
     // Story 410: the hand-off signs the person in, so it goes on the workspace's own host only.
-    const url = onOrigin(
-      path,
-      request
-        ? workspaceOrigin(workspace, request)
-        : publicOrigin(new Request('http://localhost/'), config),
-    )
+    const url = onOrigin(path, workspaceOrigin(workspace, request))
     if (!url) return undefined
     url.searchParams.set(WORKSPACE_HANDOFF_PARAM, token)
     return url.toString()
@@ -2403,7 +2442,12 @@ export async function createServer(
   /** Links a member makes for someone else to look at the workspace's site. */
   const workspaceLinks = {
     maxDays: () => config.workspaceLinkMaxDays,
-    async make(workspace: { id: number; key: string }, principal: Principal, days: number) {
+    async make(
+      workspace: { id: number; key: string },
+      principal: Principal,
+      days: number,
+      request?: Request,
+    ) {
       const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')
       const link = await new WorkspaceLinkRepository(db).make({
         workspaceId: workspace.id,
@@ -2411,10 +2455,7 @@ export async function createServer(
         secretHash: linkSecretHash(secret),
         expiresAt: new Date(Date.now() + days * 86_400_000),
       })
-      const origin = new URL('/', publicOrigin(new Request('http://localhost/'), config))
-      const hosts = workspaceHostsOf()
-      if (hosts) origin.host = hosts.hostFor(workspace.key, origin.host)
-      const url = onOrigin('/', origin) as URL
+      const url = onOrigin('/', workspaceOrigin(workspace, request)) as URL
       url.searchParams.set(WORKSPACE_LINK_PARAM, secret)
       return { id: link.id, url: url.toString(), secret, expiresAt: link.expiresAt.toISOString() }
     },

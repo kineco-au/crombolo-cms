@@ -23,7 +23,57 @@ export interface WorkspaceRendered {
   status: string
   html?: string
   error?: string
+  /** Story 418: for a page with no template, whether its type allows any. */
+  templates?: boolean
 }
+
+/** Why a check did not look at something (story 418). */
+export type NotCheckedWhy =
+  | 'no-template'
+  | 'over-the-limit'
+  | 'not-published'
+  | 'at-merge'
+  | 'at-start'
+
+/** One thing a check did not look at, and why, in words (story 418). */
+export interface NotChecked {
+  kind: 'page' | 'file' | 'site'
+  item: string
+  why: NotCheckedWhy
+  says: string
+}
+
+/**
+ * What a check makes of a page's render (story 418): passed, failed with a sentence, or
+ * not checked, for a page there is nothing to render. One rule for both checks and the
+ * errors a render notes. Pure.
+ */
+export function pageVerdict(
+  result: WorkspaceRendered,
+): { ok: true; skipped?: 'no-template' } | { ok: false; says: string } {
+  switch (result.status) {
+    case 'ok':
+    case 'redirect':
+    case 'outcome':
+      return { ok: true }
+    case 'noTemplate':
+      return result.templates === false
+        ? { ok: true, skipped: 'no-template' }
+        : { ok: false, says: 'It has no template chosen.' }
+    case 'notFound':
+      return { ok: false, says: 'Nothing was found at its address.' }
+    case 'error':
+      return { ok: false, says: result.error ?? 'It failed to render.' }
+    default:
+      return { ok: false, says: result.error ?? 'It did not render.' }
+  }
+}
+
+/** The sentence for a page not checked, by why (story 418). */
+export const NOT_CHECKED_SAYS = {
+  'no-template': 'Its type has no template, so there is nothing to render.',
+  'not-published': 'It is not published, so it has no address to render.',
+} as const
 
 export interface WorkspaceCheckOptions {
   db: Db
@@ -46,6 +96,8 @@ export interface PageResult {
   ok: boolean
   ms: number
   error?: string
+  /** Story 418: not rendered, and why; it does not fail the check. */
+  skipped?: NotCheckedWhy
   /** Why it was looked at: it changed, or its type or template did. */
   because: 'changed' | 'type' | 'template'
 }
@@ -125,6 +177,22 @@ export async function pagesAffectedBy(
   return [...out.values()]
 }
 
+/** The pages a check did not render, as it lists them (story 418). Pure. */
+export function skippedPages(pages: readonly PageResult[]): NotChecked[] {
+  return pages.flatMap((p) =>
+    p.skipped === 'no-template' || p.skipped === 'not-published'
+      ? [
+          {
+            kind: 'page' as const,
+            item: p.url ?? p.key,
+            why: p.skipped,
+            says: `"${p.name}": ${NOT_CHECKED_SAYS[p.skipped]}`,
+          },
+        ]
+      : [],
+  )
+}
+
 export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
   const { db } = options
   const errors = new WorkspaceErrorRepository(db)
@@ -149,9 +217,18 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
       result = { status: 'error', error: String(error) }
     }
     const ms = Math.round(performance.now() - started)
-    const ok = result.status === 'ok' || result.status === 'redirect' || result.status === 'outcome'
-    if (!ok) await note(workspace, path, result.error ?? `answered ${result.status}`)
-    return { ...result, ok, ms }
+    const verdict = pageVerdict(result)
+    if (!verdict.ok) await note(workspace, path, verdict.says)
+    return {
+      ...result,
+      ok: verdict.ok,
+      ms,
+      ...(verdict.ok
+        ? verdict.skipped
+          ? { skipped: verdict.skipped }
+          : {}
+        : { error: verdict.says }),
+    }
   }
 
   /** The pages a workspace affects: those it changed, and a sample of each changed type's and template's. */
@@ -172,7 +249,14 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
     for (const page of await affected(workspace, all)) {
       const url = (await options.urlOf(workspace, page.key)) ?? null
       if (!url) {
-        results.push({ ...page, url: null, status: 'unpublished', ok: true, ms: 0 })
+        results.push({
+          ...page,
+          url: null,
+          status: 'unpublished',
+          ok: true,
+          ms: 0,
+          skipped: 'not-published',
+        })
         continue
       }
       const rendered = await renderOne(workspace, url)
@@ -183,6 +267,7 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
         ok: rendered.ok,
         ms: rendered.ms,
         ...(rendered.error ? { error: rendered.error } : {}),
+        ...('skipped' in rendered && rendered.skipped ? { skipped: rendered.skipped } : {}),
       })
     }
     return results
@@ -231,21 +316,28 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
           .map((p) => ({
             kind: 'page',
             item: p.url ?? p.key,
-            says: p.error ?? `It answered ${p.status}.`,
+            says: p.error ?? 'It did not render.',
           })),
         ...problems.map((p) => ({ kind: p.kind, item: '', says: String(p.says) })),
       ]
       const siteFiles = Object.keys(plan?.writes ?? {}).filter((path) => path.startsWith('site/'))
-      return {
-        ok: failures.length === 0,
-        pages: rendered,
-        failures,
-        // Not known until it is merged: so a clean result is not read as more than it is.
-        notChecked: [
-          ...siteFiles.map((path) => `${path.slice('site/'.length)} takes effect at the merge`),
-          'dependencies and routes the site reads as it starts',
-        ],
-      }
+      // Not known until it is merged: so a clean result is not read as more than it is.
+      const notChecked: NotChecked[] = [
+        ...skippedPages(rendered),
+        ...siteFiles.map((path) => ({
+          kind: 'file' as const,
+          item: path.slice('site/'.length),
+          why: 'at-merge' as const,
+          says: `${path.slice('site/'.length)} takes effect at the merge.`,
+        })),
+        {
+          kind: 'site',
+          item: '',
+          why: 'at-start',
+          says: 'Dependencies and routes the site reads as it starts are not checked until the merge.',
+        },
+      ]
+      return { ok: failures.length === 0, pages: rendered, failures, notChecked }
     },
 
     /** What rendering the workspace's pages said went wrong, on every node, oldest first. */

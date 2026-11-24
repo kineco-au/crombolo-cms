@@ -6,6 +6,57 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.78.0 — 2026-11-24
+
+### Features
+
+- **An approved publish is passed on (413).** When a page under a workflow is approved
+  and published, taken down or scheduled, the editor's change is closed and
+  `Crombolo.ChangePublished` raised for it, with `Change.ApprovedBy` and
+  `Change.Workflow`, so a host sends it to the serving site at once. From a person's own
+  workspace, it is the merge that took the page into Shared.
+
+- **A staged change read by the site's editors (416).** Staged with
+  `PUT changes?stage=true&visibility=editors`, a change from another site is listed for
+  the serving site's editors, who read it, run its check, render its pages and open its
+  site before it is applied, each held to their own access, and change nothing. Every
+  workspace shown to editors gains the same reads, the same list an administrator who
+  asks is given. Each workspace answers `staged`.
+
+- **A change that only schedules says so (417).** `Crombolo.ChangePublished` carries
+  `Change.Kind: schedule` for a change that set a time with nothing published now, and
+  `Change.Schedule` with the times (empty when cleared), so a host can say "scheduled for
+  Tuesday" rather than "live". A publish that also sets a time stays a publish and
+  carries the times too. A publish that clears a time now carries the clearing in its
+  change, so the serving copy's time is cleared too; a plain publish, which names no
+  time and finds none to clear, carries none, in Shared and from a workspace (414).
+
+### Fixes
+
+- **A check passes a page that has nothing to render (418).** A page of a type with no
+  template, as a headless site's pages are, no longer fails a workspace's check or the
+  Shared check: it is listed as not checked. A page of a type with templates and none
+  chosen fails, saying so in words, and a page only members may see is rendered as a
+  member would see it. No failure names an internal status any more.
+
+- **A workspace's link is on the site's own address (415).** A link made to share a
+  workspace's site was built on `localhost` on any site without an SEO public address, so
+  it opened nothing. A link and `open`'s address are now on the address the request came
+  to (forwarded host and scheme followed), or `CROMBOLO_APPLICATION_URL` with none.
+  **`open` no longer uses the SEO public address,** which may be an app that serves no
+  workspace's site.
+
+### Upgrade notes
+
+- **`notChecked` in a check's answer is now a list of `{ kind, item, why, says }`** (418),
+  where it was a list of sentences: in `POST workspaces/{key}/check`, `POST
+  changes/check`, the remote protocol's `changes/check`, and the command line's JSON
+  output. A reader that showed the sentences shows `says`.
+- **A workspace's `open` address no longer uses the SEO public address** (415): it is on
+  the address the request came to, or `CROMBOLO_APPLICATION_URL`.
+- **A workspace shown to editors is read only by those with the Content section** (416),
+  where any signed-in person could read it before.
+
 ## v0.77.0 — 2026-11-24
 
 ### Security

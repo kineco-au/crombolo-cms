@@ -7,7 +7,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ContentTypeRepository, DocumentRepository, UserGroupRepository } from '@crombolo/data'
+import {
+  ChangeRepository,
+  ContentTypeRepository,
+  DocumentRepository,
+  UserGroupRepository,
+} from '@crombolo/data'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -955,5 +960,155 @@ approvers = ["legal"]
     })
     expect(saved.status).toBe(200)
     expect((await tab(key)).request?.state).toBe('scheduled')
+  })
+})
+
+// Story 413: an approved publish is passed on as the editor's change, naming the approver.
+describe(`an approved publish is passed on (${dialectUnderTest}, story 413)`, () => {
+  const TIMED = `[workflow]
+alias = "timed"
+name = "Timed sign-off"
+applies-to = { branches = [], content-types = ["policy"] }
+publishers-may-skip = false
+scheduling = true
+unpublish = true
+
+[[stage]]
+alias = "legal"
+approvers = ["legal"]
+`
+  type Told = {
+    key: string
+    by?: string
+    kind?: string
+    workflow?: string
+    approvedBy?: { key: string; name: string }
+    schedule?: unknown[]
+  }
+  /** The changes announced since it last looked: events have no order of their own. */
+  const announcements = (h: Harness) => {
+    const seen = new Set<string>()
+    return async (): Promise<Told[]> => {
+      const rows = await h.server.db.q
+        .selectFrom('content_event')
+        .select(['id', 'facts'])
+        .where('kind', '=', 'change-published')
+        .execute()
+      const fresh = rows.filter((r) => !seen.has(String(r.id)))
+      for (const r of fresh) seen.add(String(r.id))
+      return fresh.map(
+        (e) => (JSON.parse(String(e.facts)) as { webhook: { change: Told } }).webhook.change,
+      )
+    }
+  }
+
+  test('approving a publish raises the editor’s change once, naming the approver and the workflow', async () => {
+    const { people, page, send, act, published } = await site(TIMED)
+    const key = await page('Policy')
+    const fresh = announcements(people.admin)
+    await fresh()
+    const sent = await send(key)
+    expect(await fresh()).toEqual([])
+    await act(sent.key, 'approve', people.legal)
+    expect(await published(key)).toBe('Published')
+    const told = await fresh()
+    expect(told).toHaveLength(1)
+    expect(told[0]).toMatchObject({
+      by: 'person',
+      workflow: 'Timed sign-off',
+      approvedBy: { name: expect.any(String) },
+    })
+    expect(told[0]?.kind).toBeUndefined()
+    const change = await new ChangeRepository(people.admin.server.db).byId(
+      (
+        await people.admin.server.db.q
+          .selectFrom('content_transfer_run')
+          .select('id')
+          .where('change_key', '=', told[0]?.key as string)
+          .executeTakeFirstOrThrow()
+      ).id as string,
+    )
+    expect(change?.kind).toBe('edit')
+    expect(change?.closedAt).not.toBeNull()
+
+    // Taking it down through the workflow says so.
+    const down = await send(key, people.writer, 'unpublish')
+    await act(down.key, 'approve', people.legal)
+    expect(await published(key)).not.toBe('Published')
+    const after = await fresh()
+    expect(after).toEqual([
+      expect.objectContaining({ kind: 'unpublish', workflow: 'Timed sign-off' }),
+    ])
+  })
+
+  test('approving with a time raises it at approval, saying schedule with its times', async () => {
+    const { people, page, act } = await site(TIMED)
+    const key = await page('Launch')
+    const at = new Date(Math.floor(Date.now() / 1000) * 1000 + 3_600_000)
+    const fresh = announcements(people.admin)
+    await fresh()
+    const sent = await people.writer.post(`${API}/page/${key}/send`, {
+      action: 'publish',
+      schedule: [{ culture: null, publishTime: at.toISOString() }],
+      cultures: null,
+    })
+    const view = (await sent.json()) as View
+    await act(view.key, 'approve', people.legal)
+    const told = await fresh()
+    expect(told).toEqual([
+      expect.objectContaining({
+        kind: 'schedule',
+        workflow: 'Timed sign-off',
+        schedule: [{ culture: null, publishTime: at.toISOString(), unpublishTime: null }],
+      }),
+    ])
+    // As it fires, the schedule names the same change (414).
+    await people.admin.server.jobs.runScheduledPublishing(new Date(at.getTime() + 1000))
+    const fired = await fresh()
+    expect(fired).toEqual([expect.objectContaining({ key: told[0]?.key })])
+  })
+
+  test('a request sent back raises nothing', async () => {
+    const { people, page, send, act } = await site(TIMED)
+    const key = await page('Draft')
+    const fresh = announcements(people.admin)
+    await fresh()
+    const sent = await send(key)
+    await act(sent.key, 'send-back', people.legal, { comment: 'Not yet' })
+    expect(await fresh()).toEqual([])
+  })
+
+  test('from a person’s own workspace, the merge that took the page in is the change passed on', async () => {
+    const { people, page, send, act } = await site(TIMED)
+    people.admin.server.config.workspaces = true
+    const key = await page('Own')
+    // Live in Shared first, through the workflow.
+    await act((await send(key)).key, 'approve', people.legal)
+    const fresh = announcements(people.admin)
+    await fresh()
+    const mine = { 'crombolo-workspace': 'mine', 'content-type': 'application/json' }
+    const saved = await people.editor.call(`${V1}/document/${key}`, {
+      method: 'PUT',
+      headers: mine,
+      body: JSON.stringify({
+        template: null,
+        values: [{ alias: 'body', culture: null, segment: null, value: 'Changed' }],
+        variants: [{ culture: null, segment: null, name: 'Own' }],
+      }),
+    })
+    expect(saved.status, await saved.clone().text()).toBe(200)
+    const pub = await people.editor.call(`${V1}/document/${key}/publish`, {
+      method: 'PUT',
+      headers: mine,
+      body: JSON.stringify({ publishSchedules: [{ culture: null }] }),
+    })
+    expect(pub.status, await pub.clone().text()).toBe(200)
+    const waiting = await people.legal.json<{ items: View[] }>(`${API}/waiting`)
+    const request = waiting.items[0]
+    expect(request, JSON.stringify(waiting)).toBeTruthy()
+    await act(request?.key as string, 'approve', people.legal)
+    expect(await fresh()).toEqual([
+      expect.objectContaining({ from: 'own-workspace', workflow: 'Timed sign-off' }),
+    ])
   })
 })

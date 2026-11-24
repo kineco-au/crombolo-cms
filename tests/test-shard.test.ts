@@ -133,7 +133,11 @@ describe('the release load matrix', () => {
     expect(job.env.CROMBOLO_LOAD_OPS).toBe('1500')
   })
 
-  test('requires the entire load matrix before publishing', () => {
+  test('requires the entire load matrix before publishing, unless the tagged commit skips it', () => {
     expect(workflow.jobs.publish.needs).toEqual(['load'])
+    const publish = workflow.jobs.publish as unknown as { if: string }
+    expect(publish.if).toContain("needs.load.result == 'success'")
+    expect(publish.if).toContain("needs.load.result == 'skipped'")
+    expect((job as unknown as { if: string }).if).toContain("'--skip-load-tests'")
   })
 })

@@ -756,6 +756,10 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
           ? immediate.flatMap((s) => (s.culture === null ? [] : [s.culture]))
           : request.cultures
         const before = scheduledOnly ? undefined : await options.redirects?.capture(key)
+        // Story 417: a time given, or one there to clear; a plain publish sends neither.
+        const touchesSchedule =
+          schedules.some((s) => s.publishTime !== null || s.unpublishTime !== null) ||
+          (schedules.length > 0 && (await repo.schedules(key)).length > 0)
         // The schedule and the publish are one change: neither lands without the other.
         const published = await commit(
           actor,
@@ -775,7 +779,15 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
             done === 'scheduled'
               ? [{ type: 'scheduled', key }]
               : done
-                ? [{ type: 'published', key, cultures }]
+                ? [
+                    {
+                      type: 'published',
+                      key,
+                      cultures,
+                      // Story 417: it set or cleared a time too, for its change to carry.
+                      ...(touchesSchedule ? { scheduled: true } : {}),
+                    },
+                  ]
                 : [],
         )
         if (published === 'scheduled') {

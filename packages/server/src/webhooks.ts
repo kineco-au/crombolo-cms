@@ -254,9 +254,18 @@ export interface WebhookFacts extends RaisedWebhookEvent {
     /** Story 397: published in the person's own workspace, merging that page alone. */
     from?: 'own-workspace'
     /** Story 411: what it did, other than a publish or a schedule. */
-    kind?: 'unpublish' | 'move' | 'reorder' | 'delete'
+    kind?: 'unpublish' | 'move' | 'reorder' | 'delete' | 'schedule'
+    /** Story 417: the times the change set, per language, in UTC; empty when it cleared them. */
+    schedule?: Array<{
+      culture: string | null
+      publishTime: string | null
+      unpublishTime: string | null
+    }>
     /** Story 411: the page a delete took, named as it was before it went. */
     page?: { key: string; name: string | null }
+    /** Story 413: who approved it, and through which workflow. */
+    approvedBy?: { key: string; name: string }
+    workflow?: string
   }
   /** Story 400: the workspace a workspace event is about, as it was then. */
   workspace?: {
@@ -291,6 +300,19 @@ const changeOf = (change: NonNullable<WebhookFacts['change']>) => ({
   ...(change.from ? { From: change.from } : {}),
   ...(change.kind ? { Kind: change.kind } : {}),
   ...(change.page ? { Page: { Key: change.page.key, Name: change.page.name } } : {}),
+  ...(change.approvedBy
+    ? { ApprovedBy: { Key: change.approvedBy.key, Name: change.approvedBy.name } }
+    : {}),
+  ...(change.workflow ? { Workflow: change.workflow } : {}),
+  ...(change.schedule
+    ? {
+        Schedule: change.schedule.map((e) => ({
+          Culture: e.culture,
+          PublishTime: e.publishTime,
+          UnpublishTime: e.unpublishTime,
+        })),
+      }
+    : {}),
 })
 
 /** An event as the site's own handler receives it (story 298). Pure. */

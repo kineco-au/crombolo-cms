@@ -533,9 +533,21 @@ export async function runWorkspaceMerge(
               },
               options.actor,
             )
-        } else if (alone && (alone.published || scheduled.includes(alone.key)))
-          // Story 414: a page only scheduled is announced as one published is.
-          await options.events.ownPublished?.(tx, { changeId, key: alone.key }, options.actor)
+        } else if (alone && (alone.published || scheduled.includes(alone.key))) {
+          // Story 414: a page only scheduled is announced as one published is; story 417:
+          // saying so, with its times, and a publish that set a time carrying them.
+          const times = schedules.flat().find((p) => p.key === alone.key)?.entries
+          await options.events.ownPublished?.(
+            tx,
+            {
+              changeId,
+              key: alone.key,
+              ...(alone.published ? {} : { kind: 'schedule' as const }),
+              ...(times ? { schedule: times } : {}),
+            },
+            options.actor,
+          )
+        }
         outcome = {
           ok: true,
           merged,

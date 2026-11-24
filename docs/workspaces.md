@@ -280,6 +280,11 @@ wrote it.
   from it must have the workspace's origin, or none is answered. A shared link's address
   is held to the same check. So no path a caller passes on can send the sign-in it
   carries to another host.
+- **The addresses are on the site's own address** (story 415): the one the request to
+  make them came to, `X-Forwarded-Host` and `-Proto` followed, or with no request
+  `CROMBOLO_APPLICATION_URL`, with the workspace's label where workspaces have hosts of
+  their own. Never the SEO public address, which may be an app that serves no workspace,
+  and never `localhost` stood in for a request.
 - **Every answer** is `private, no-store`, `X-Robots-Tag: noindex, nofollow`, with no ETag;
   `robots.txt` disallows everything and there is no sitemap. A workspace's publish fires
   no webhook, runs no schedule and changes nothing in Shared's search (story 375). A
@@ -331,7 +336,9 @@ the whole list; a fresh answer is still the merge preview. `crombolo workspaces`
 **A workspace's errors are the whole site's (story `408`).** `GET /{key}/errors?since=`
 answers what went wrong rendering the workspace's pages, oldest first, as
 `{ at, node, page, says }`: each page that failed in a `check` or a `pages`, and each
-that failed when asked for through `render`. They are rows (`workspace_error`, migration
+that failed when asked for through `render`. A page with nothing to render, of a type
+with no template, is not a failure and is noted nowhere; a check lists it in `notChecked`
+as `{ kind: "page", why: "no-template" }` (story 418, [`changes.md`](changes.md)). They are rows (`workspace_error`, migration
 096), written by the node that rendered and read by whichever node answers, so a site
 with several nodes gives one list and a restart loses none. The newest 200 are kept for
 a workspace, and none once it is merged or discarded. A note that cannot be written is
@@ -493,10 +500,22 @@ merged is checked together by `changes check --since <change>` (story `406`,
   (`workspaces.js`, which takes over `own-workspace.js`'s header). Outside Content nothing
   is in a workspace; with workspaces off, none of this shows.
 - **A workspace's privacy, its owner's** (migration 090): who can see it, its members or
-  everyone who may edit (listed, its changes readable, changed only by its members), and
+  everyone who may edit (listed, read, checked and opened, changed only by its members), and
   whether someone opening an item it changed is told "Also changed in a workspace by …",
   never what changed (`GET /touched/{page}`). Both are chosen as it opens and later, by
   `POST /` and `PATCH /{key}` `{ visibility, tellOthers }`.
+- **What an editor reads of one shown to editors** (story 416): everyone with the Content
+  section reads it, its `changes`, `diff`, `merge` preview, `conflicts`, `members`,
+  `pages`, `errors` and `files`, runs its `check`, `render`s a page and `open`s its site:
+  the same list an administrator who asks is given (`401`). Each is held to their own
+  access: a page they may not read in Shared is left out, and refused by `render` and
+  `open`; a type or code file is shown only to someone with its section. Nothing that
+  changes it is theirs. Someone without the Content section is answered as for any
+  workspace they are not in.
+- **A staged change shown to editors** (story 416): staged with
+  `PUT changes?stage=true&visibility=editors`, or set so later by its members, it is read
+  by the serving site's editors before it is applied, and stays read-only for everyone.
+  Each workspace answers `staged`: whether it holds a change staged from another site.
 - **In the trees,** an item the workspace changed carries the `Crombolo.Workspace.Changed`
   flag, drawn as a sign.
 - **The Changes panel** lists each change with what differs from Shared, and drops one

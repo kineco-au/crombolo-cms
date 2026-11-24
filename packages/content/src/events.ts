@@ -13,7 +13,8 @@ export type DocumentEvent =
   | { type: 'saved'; key: string }
   | { type: 'createdAndPublished'; key: string; cultures: readonly string[] | null }
   | { type: 'savedAndPublished'; key: string; cultures: readonly string[] | null }
-  | { type: 'published'; key: string; cultures: readonly string[] | null }
+  /** `scheduled`: it set or cleared a time as well (story 417). */
+  | { type: 'published'; key: string; cultures: readonly string[] | null; scheduled?: true }
   /** Only scheduled: nothing is published until the schedule fires. */
   | { type: 'scheduled'; key: string }
   /** A page and the pages below it: `published` names each one that went live. */
@@ -52,8 +53,14 @@ export interface EventSink {
       changeId: string
       key: string
       /** Story 411: what the page's merge did, other than a publish. */
-      kind?: 'unpublish' | 'move' | 'reorder' | 'delete'
+      kind?: 'unpublish' | 'move' | 'reorder' | 'delete' | 'schedule'
       page?: { key: string; name: string | null }
+      /** Story 417: the times the merge set, per language, in UTC; empty when cleared. */
+      schedule?: ReadonlyArray<{
+        culture: string | null
+        publishTime: string | null
+        unpublishTime: string | null
+      }>
     },
     actor: Actor,
   ): Promise<void>

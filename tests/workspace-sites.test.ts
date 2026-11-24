@@ -9,7 +9,13 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
-import { isSitePath, onOrigin, pageSitePath } from '../packages/server/src/workspaces.ts'
+import { workspaceHosts } from '../packages/server/src/workspace-access.ts'
+import {
+  isSitePath,
+  onOrigin,
+  pageSitePath,
+  workspaceOriginOf,
+} from '../packages/server/src/workspaces.ts'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -469,5 +475,55 @@ describe(`opening a workspace’s site at a path (${dialectUnderTest}, story 410
       await send('POST', `${WORKSPACES}/${sale.key}/open`, { path: '/about' })
     ).json()) as { url: string }
     expect(new URL(answered.url).host).toBe('localhost')
+  })
+})
+
+// Story 415: a workspace's addresses are on the site's own address, never `localhost`
+// stood in for it, nor the SEO public address.
+describe('where a workspace’s site is (story 415)', () => {
+  const KEY = '6b2f1f0e-3c1d-4a8e-9f00-000000000415'
+  const config = { applicationUrl: 'https://cms.acme.test/' }
+  test('the request’s address, forwarded or not, with the workspace’s label; with none, the application address', () => {
+    const forwarded = new Request('http://10.0.0.5:4000/x', {
+      headers: { 'x-forwarded-host': 'edit.acme.test', 'x-forwarded-proto': 'https' },
+    })
+    expect(workspaceOriginOf(KEY, forwarded, config).origin).toBe('https://edit.acme.test')
+    expect(
+      workspaceOriginOf(KEY, forwarded, config, workspaceHosts('{workspace}--{host}')).host,
+    ).toBe(`${label(KEY)}--edit.acme.test`)
+    expect(workspaceOriginOf(KEY, undefined, config).origin).toBe('https://cms.acme.test')
+    expect(
+      workspaceOriginOf(KEY, undefined, config, workspaceHosts('{workspace}--{host}')).origin,
+    ).toBe(`https://${label(KEY)}--cms.acme.test`)
+  })
+})
+
+describe(`a workspace’s link and its open address (${dialectUnderTest}, story 415)`, () => {
+  const behind = { 'x-forwarded-host': 'edit.acme.test', 'x-forwarded-proto': 'https' }
+  test('a link is on the address its request came to, never localhost', async () => {
+    const { h, opened } = await site({ host: null })
+    const sale = await opened('Spring sale')
+    const made = (await (
+      await h.call(`${WORKSPACES}/${sale.key}/links`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...behind },
+        body: JSON.stringify({ days: 2 }),
+      })
+    ).json()) as { url: string }
+    expect(new URL(made.url).origin).toBe('https://edit.acme.test')
+  })
+
+  test('open follows its request even with an SEO public address set', async () => {
+    const { h, opened } = await site({ host: null })
+    h.server.config.seo.publicUrl = 'https://www.acme-app.test'
+    const sale = await opened('Spring sale')
+    const answered = (await (
+      await h.call(`${WORKSPACES}/${sale.key}/open`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...behind },
+        body: JSON.stringify({ path: '/' }),
+      })
+    ).json()) as { url: string }
+    expect(new URL(answered.url).origin).toBe('https://edit.acme.test')
   })
 })

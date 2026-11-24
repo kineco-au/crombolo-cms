@@ -63,7 +63,9 @@ pushed. A failed release is fixed by a **new** patch version.
 6. **Only once both have passed,** `git tag v<version>` and
    `git push --no-verify origin v<version>`. The Release pipeline does not run CI again: it
    runs the load test and benchmarks, then publishes. A failure there costs a
-   version number, which this step is there to save.
+   version number, which this step is there to save. **Only when the maintainer asks**
+   to skip the load test, the tagged commit's message carries `--skip-load-tests`, and
+   the Release workflow publishes without it.
 
 ## Watch it
 

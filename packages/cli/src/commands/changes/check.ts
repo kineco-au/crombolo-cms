@@ -29,7 +29,14 @@ export default class ChangesCheck extends BaseCommand {
       { name: 'changes', type: 'integer' },
       { name: 'pages', type: 'array', items: { type: 'object' } },
       { name: 'failures', type: 'array', items: { type: 'object' } },
-      { name: 'notChecked', type: 'array', items: { type: 'string' } },
+      {
+        name: 'notChecked',
+        type: 'array',
+        items: {
+          type: 'object',
+          description: '{ kind, item, why, says }: what the check did not look at',
+        },
+      },
     ],
     outcomes: ['problems_found'],
     errors: ['usage', 'auth', 'not_found'],
@@ -45,12 +52,12 @@ export default class ChangesCheck extends BaseCommand {
         changes: number
         pages: Array<{ url: string | null; ok: boolean; ms: number; status: string }>
         failures: Array<{ kind: string; item: string; says: string }>
-        notChecked: string[]
+        notChecked: Array<{ kind: string; item: string; why: string; says: string }>
       }>('POST', 'changes/check', { since: flags.since, all: flags.all })
       for (const p of result.pages)
         this.say(`  ${p.ok ? 'ok  ' : 'FAIL'}  ${String(p.url).padEnd(40)} ${p.ms} ms`)
       for (const f of result.failures) this.say(`  ${f.kind}  ${f.item}  ${f.says}`)
-      for (const n of result.notChecked) this.say(`  not checked: ${n}`)
+      for (const n of result.notChecked) this.say(`  not checked: ${n.says}`)
       if (!result.ok) this.outcome = 'problems_found'
       return result
     })

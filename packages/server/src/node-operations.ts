@@ -165,6 +165,8 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
         }),
       unpublish: (key, cultures, actor) =>
         (documents as DocumentOperations).unpublish(actor, key, cultures),
+      schedule: (key, entries, actor) =>
+        (documents as DocumentOperations).schedule(actor, key, entries),
     },
   })
   documents = createDocumentOperations({

@@ -122,7 +122,10 @@ async function needsOf(tx: Db, key: string) {
 }
 
 /** Story 411: what a change did, as `Change.Kind` says; a publish or a schedule says none. */
-export type ChangeKind = 'unpublish' | 'move' | 'reorder' | 'delete'
+export type ChangeKind = 'unpublish' | 'move' | 'reorder' | 'delete' | 'schedule'
+
+/** A schedule's times as the event carries them (story 417). */
+type ScheduleTimes = ReturnType<typeof scheduleEntries>
 
 /**
  * Story 411: an unpublish, move, reorder, restore or delete straight in Shared, put in the
@@ -218,13 +221,26 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     const scheduled = event.type === 'scheduled'
     if (!PUBLISHES.has(event.type) && !scheduled) return
     const schedule = await new DocumentRepository(tx).schedules(key)
-    if (scheduled || schedule.length > 0)
-      await changes.scheduleOf(userKey, { key, kind: 'document' }, scheduleEntries(schedule))
+    const times = scheduleEntries(schedule)
+    // Story 417: a publish that cleared a time carries the clearing too.
+    const setTimes =
+      scheduled || schedule.length > 0 || ('scheduled' in event && event.scheduled === true)
+    if (setTimes) await changes.scheduleOf(userKey, { key, kind: 'document' }, times)
     const closed = await changes.publishedBy(userKey, { key, kind: 'document' })
     // Story 414: the schedule names the change that set it, for when it fires.
-    if (closed && (scheduled || schedule.length > 0))
-      await new DocumentRepository(tx).scheduleSetBy(key, closed.key)
-    if (closed) await announceChange(tx, key, closed, actor)
+    if (closed && setTimes) await new DocumentRepository(tx).scheduleSetBy(key, closed.key)
+    // Story 417: one that only scheduled says so; a publish that also set a time carries it.
+    if (closed)
+      await announceChange(
+        tx,
+        key,
+        {
+          ...closed,
+          ...(scheduled ? { kind: 'schedule' as const } : {}),
+          ...(setTimes ? { schedule: times } : {}),
+        },
+        actor,
+      )
   }
 
   /** `Crombolo.ChangePublished` for a page's change, as an outbox event in its transaction. */
@@ -237,6 +253,9 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
       from?: 'own-workspace'
       kind?: ChangeKind
       page?: { key: string; name: string | null }
+      schedule?: ScheduleTimes
+      approvedBy?: { key: string; name: string }
+      workflow?: string
     },
     actor: Actor,
   ) {
@@ -260,6 +279,47 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     })
   }
 
+  /**
+   * Story 413: what an approval did, passed on as the editor's change: the newest that
+   * holds the page, closed if open, announced naming the approver and the workflow. A
+   * time it set is kept in that change and names it.
+   */
+  async function passOnApproval(
+    tx: Db,
+    event: DocumentEvent,
+    actor: Actor,
+    approval: { editorKey: string; workflow: string },
+  ) {
+    if (event.type !== 'published' && event.type !== 'unpublished' && event.type !== 'scheduled')
+      return
+    const changes = new ChangeRepository(tx)
+    const held = await changes.closeHolding(approval.editorKey, event.key)
+    if (!held) return
+    const docs = new DocumentRepository(tx)
+    const timed = event.type === 'scheduled' || (event.type === 'published' && event.scheduled)
+    const times = timed ? scheduleEntries(await docs.schedules(event.key)) : undefined
+    if (times) {
+      await changes.scheduleIn(held.id, event.key, times)
+      await docs.scheduleSetBy(event.key, held.key)
+    }
+    const by = actor.kind === 'system' ? actor.user : undefined
+    await announceChange(
+      tx,
+      event.key,
+      {
+        key: held.key,
+        name: held.name,
+        ...(held.merged ? { from: 'own-workspace' as const } : {}),
+        ...(event.type === 'unpublished' ? { kind: 'unpublish' as const } : {}),
+        ...(event.type === 'scheduled' ? { kind: 'schedule' as const } : {}),
+        ...(times ? { schedule: times } : {}),
+        ...(by ? { approvedBy: { key: by.id, name: by.name } } : {}),
+        workflow: approval.workflow,
+      },
+      actor,
+    )
+  }
+
   return {
     async ownPublished(tx, published, actor) {
       if (!options.changes) return
@@ -274,12 +334,16 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
           from: 'own-workspace',
           ...(published.kind ? { kind: published.kind } : {}),
           ...(published.page ? { page: published.page } : {}),
+          ...(published.schedule ? { schedule: [...published.schedule] } : {}),
         },
         actor,
       )
     },
     async record(tx: Db, event, actor) {
       if (options.changes) await recordInChange(tx, event, actor as Actor)
+      // Story 413: an approval's publish, unpublish or times pass the editor's change on.
+      const approval = actor.kind === 'system' ? actor.approval : undefined
+      if (options.changes && approval) await passOnApproval(tx, event, actor as Actor, approval)
       // Story 414: a schedule firing names the change that set it.
       const fired = actor.kind === 'system' ? actor.change : undefined
       if (options.changes && fired && (event.type === 'published' || event.type === 'unpublished'))
