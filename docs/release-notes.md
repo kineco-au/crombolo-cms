@@ -8,6 +8,22 @@ point at `docs/stories/`.
 
 ## v0.79.0 — 2026-11-24
 
+### Features
+
+- **Content is what a workspace holds (419).** The menu under Content is the workspace switch,
+  then Pages, Media, Library, Translation, Structure and Code: what a workspace holds, a change
+  carries and a locked site refuses, in the workspace's colour while one is open. Library and
+  Translation moved under Content (`section/content/library`, `section/content/translation`),
+  languages moved from Structure to Translation, beside the dictionary, and Approvals is a tab
+  of its own (`section/approvals`). Old addresses forward.
+- **Workspaces are on unless turned off (420).** `CROMBOLO_WORKSPACES` is `true` unless set,
+  so every site, the demo sites and templates included, has workspaces from the start; set
+  `CROMBOLO_WORKSPACES=false` to turn them off. Editors still edit Shared directly unless
+  `CROMBOLO_WORKSPACES_REQUIRED=true`, and so does the command line. `crombolo status` and the
+  overview's System information say whether workspaces are on.
+- **Settings pages read as pages.** A Settings tool's breadcrumb, title, subheading and tabs
+  sit on the page itself, no longer as white bands that read as part of the white header.
+
 ### Fixes
 
 - **A change staged after another builds on it (421).** Staging a promotion one change at a
@@ -16,25 +32,8 @@ point at `docs/stories/`.
   500 on Postgres). A change staged there now counts as held, a page is found in the
   workspace first, staging one twice skips it, and a page that cannot be staged is a
   conflict rather than an error.
-
-### Features
-
-- **Settings pages read as pages.** A Settings tool's breadcrumb, title, subheading and tabs
-  sit on the page itself, no longer as white bands that read as part of the white header.
-
-- **Workspaces are on unless turned off (420).** `CROMBOLO_WORKSPACES` is `true` unless set,
-  so every site, the demo sites and templates included, has workspaces from the start; set
-  `CROMBOLO_WORKSPACES=false` to turn them off. Editors still edit Shared directly unless
-  `CROMBOLO_WORKSPACES_REQUIRED=true`, and so does the command line: a local change goes into
-  the person's own workspace only where the site requires one. `crombolo status` and the overview say whether
-  workspaces are on.
-
-- **Content is what a workspace holds (419).** The menu under Content is the workspace switch,
-  then Pages, Media, Library, Translation, Structure and Code: what a workspace holds, a change
-  carries and a locked site refuses, in the workspace's colour while one is open. Library and
-  Translation moved under Content (`section/content/library`, `section/content/translation`),
-  languages moved from Structure to Translation, and Approvals is a tab of its own
-  (`section/approvals`). Old addresses forward.
+- **The command line opens pages with the Pages grant (419),** as the back office has since
+  story 385, where it asked for Content.
 
 ### Upgrade notes
 
@@ -42,19 +41,31 @@ point at `docs/stories/`.
   `CROMBOLO_WORKSPACES`: the switch appears at the head of Content, and nothing changes for an
   editor who does not open one. Set `CROMBOLO_WORKSPACES=false` to keep them off. A value
   other than `true` or `false` now stops the site starting.
+- **A local `crombolo content` change goes into Shared** (420) unless
+  `CROMBOLO_WORKSPACES_REQUIRED=true`, where it goes into the person's own workspace. On a site
+  that had workspaces on before, such a change used to go into the person's own workspace
+  whether or not one was required; set `CROMBOLO_WORKSPACES_REQUIRED=true` to keep that.
 - **The request body limit is raised only with remote access** (420): a site accepts bodies
   up to `CROMBOLO_REMOTE_MAX_UPLOAD_BYTES` only when `CROMBOLO_REMOTE_ACCESS` is on, where
   workspaces alone used to raise it. A site without remote access keeps 32 MB on every route,
   so a change bundle larger than that needs remote access to be uploaded.
-- **The command line opens pages with the Pages grant** (419), as the back office has since
-  story 385, where it asked for Content; a group with Content and no Pages reads no pages
-  there.
 - **Migration 098** (`AddWorkspacePlaces`) gives Content to each user group holding Library or
-  Translation without it, and Translation to each holding Structure without it.
+  Translation without it, and Translation to each holding Structure without it. A new site's
+  Translators group holds Content beside Translation.
 - **Changing a language needs Translation** (419), where it needed Structure; the migration
   gives Translation to every group that could change languages before. A group kept in a
   site's `schema/user-groups/*.toml` is written from its file at the next sync: add
   `translation` (and `content` beside `library` or `translation`) there.
+- **A group with Content and no Pages reads no pages from the command line** (419), as in the
+  back office.
+
+### For contributors
+
+- **CI runs each suite in four jobs, each across two processes,** SQLite always and Postgres
+  for a release or `--postgres-tests`: SQLite takes about five minutes a job where it took
+  half an hour in one, Postgres about ten. `bun run test:ci:shard --shard <n>/4` runs a job's
+  share; `bun run ci:weights <run-id>` rewrites `tests/shard-weights.json` from the per-file
+  times a run's Postgres jobs upload, so the shards stay even (`docs/testing.md`).
 
 ## v0.78.0 — 2026-11-24
 
