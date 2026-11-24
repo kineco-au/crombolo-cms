@@ -87,6 +87,11 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 
 		// Crombolo: a section under another's address (`content/media`) is matched before it (story 385).
 		newRoutes.sort((a, b) => b.path.split('/').length - a.path.split('/').length);
+		// Crombolo: Approvals left Content (story 419); its old address, before Content takes it.
+		newRoutes.unshift({
+			path: 'section/content/approvals',
+			component: async () => (await import('./moved-sections.js')).UmbMovedSectionElement,
+		});
 
 		const home = this.#homeView();
 		if (home) {
@@ -106,7 +111,7 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 			});
 
 			// Crombolo: the addresses of a section that moved still open its screens.
-			for (const moved of ['media', 'forms', 'workflow'])
+			for (const moved of ['media', 'forms', 'workflow', 'library', 'translation'])
 				newRoutes.push({
 					path: `section/${moved}`,
 					component: async () => (await import('./moved-sections.js')).UmbMovedSectionElement,

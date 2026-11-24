@@ -1,4 +1,5 @@
 import { UMB_TRANSLATION_SECTION_ALIAS } from './constants.js';
+import { UMB_TRANSLATION_SECTION_PATHNAME } from './paths.js';
 import { UMB_SECTION_USER_PERMISSION_CONDITION_ALIAS } from '@umbraco-cms/backoffice/section';
 
 export const manifests: Array<UmbExtensionManifest> = [
@@ -9,7 +10,7 @@ export const manifests: Array<UmbExtensionManifest> = [
 		weight: 400,
 		meta: {
 			label: '#sections_translation',
-			pathname: 'translation',
+			pathname: UMB_TRANSLATION_SECTION_PATHNAME,
 		},
 		conditions: [
 			{

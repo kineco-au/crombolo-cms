@@ -18,8 +18,23 @@ describe('umbMovedSectionPath', () => {
 		expect(umbMovedSectionPath('/umbraco/section/packages')).to.equal('/umbraco/section/settings/dashboard/bundles');
 	});
 
+	it('sends Library and Translation under Content, and Approvals out of it (story 419)', () => {
+		expect(umbMovedSectionPath('/crombolo/section/library/workspace/element/edit/abc')).to.equal(
+			'/crombolo/section/content/library/workspace/element/edit/abc',
+		);
+		expect(umbMovedSectionPath('/crombolo/section/translation', '?q=1')).to.equal(
+			'/crombolo/section/content/translation?q=1',
+		);
+		expect(umbMovedSectionPath('/crombolo/section/content/approvals/view/list')).to.equal(
+			'/crombolo/section/approvals/view/list',
+		);
+		expect(umbMovedSectionPath('/crombolo/section/workflow')).to.equal('/crombolo/section/approvals');
+	});
+
 	it('leaves every other address alone', () => {
 		expect(umbMovedSectionPath('/umbraco/section/content')).to.equal(undefined);
+		expect(umbMovedSectionPath('/umbraco/section/content/library')).to.equal(undefined);
+		expect(umbMovedSectionPath('/umbraco/section/approvals')).to.equal(undefined);
 		expect(umbMovedSectionPath('/umbraco/section/packagesish')).to.equal(undefined);
 	});
 });

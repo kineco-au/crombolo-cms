@@ -4,13 +4,17 @@ import { css, customElement, html, ifDefined, repeat, state } from '@umbraco-cms
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element';
 import type { ManifestSection } from '@umbraco-cms/backoffice/section';
 
-/** Crombolo: the places under Content (story 385), reached from the row under it, with no tab of their own. */
+/**
+ * Crombolo: the places under Content (stories 385, 419), reached from the row under it,
+ * with no tab of their own: what a workspace holds. Approvals has its own tab.
+ */
 const CROMBOLO_NO_TAB = [
 	'Umb.Section.Media',
+	'Umb.Section.Library',
+	'Umb.Section.Translation',
 	'Crombolo.Section.Forms',
 	'Crombolo.Section.Structure',
 	'Crombolo.Section.Components',
-	'Crombolo.Section.Workflow',
 ];
 
 @customElement('umb-backoffice-header-sections')
