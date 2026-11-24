@@ -266,13 +266,15 @@ class Site {
 let served: Site
 const local = () => join(dir, 'local')
 
-/** The real command line in the local site's folder, with workspaces on there. */
+/** The real command line in the local site's folder, with a workspace required there. */
 async function crombolo(...args: string[]) {
   const proc = Bun.spawn(['bun', CLI, ...args, '-o', 'json'], {
     cwd: local(),
     env: {
       ...environment(),
       CROMBOLO_WORKSPACES: 'true',
+      // Story 420: a local change goes into one's own workspace where the site requires one.
+      CROMBOLO_WORKSPACES_REQUIRED: 'true',
       CROMBOLO_CREDENTIALS: 'file',
       CROMBOLO_CREDENTIALS_FILE: join(dir, 'credentials'),
     },
