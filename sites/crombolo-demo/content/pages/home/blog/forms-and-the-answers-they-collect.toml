@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "Forms, and the answers they collect", "es-ES" = "Los formularios y las respuestas que recogen" }
+order = 5
+
+[values]
+publishDate = "2026-09-11"
+author = ["nia-bello"]
+image = "/archive-binders.jpg"
+
+[values.en-US]
+title = "Forms, and the answers they collect"
+excerpt = "A form is only as useful as what happens to its answers."
+body = { html = "<p>Answers stay where they belong, under Forms in the back office, and can be downloaded when someone needs them elsewhere.</p><p>Sensitive fields are hidden from anyone who should not see them, so a form can ask what it needs to.</p>" }
+tags = ["forms"]
+
+[values.es-ES]
+title = "Los formularios y las respuestas que recogen"
+excerpt = "Un formulario solo es tan útil como lo que pasa con sus respuestas."
+body = { html = "<p>Las respuestas se quedan donde deben, en Formularios dentro del panel, y se pueden descargar cuando alguien las necesita en otro sitio.</p><p>Los campos sensibles quedan ocultos para quien no deba verlos, así que un formulario puede preguntar lo que necesita.</p>" }
+tags = ["formularios"]

@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "History", "es-ES" = "Historial" }
+order = 2
+
+[values]
+category = "editing"
+image = "/library-shelves.jpg"
+
+[values.en-US]
+title = "History"
+summary = "Every change is recorded, and every page keeps its history."
+body = { html = "<p>A page's history shows each earlier version, who saved it and when, and you can roll the page back to any of them.</p><p>Each change to the site is recorded with who made it, so nothing arrives without a name on it.</p>" }
+
+[values.es-ES]
+title = "Historial"
+summary = "Cada cambio queda registrado y cada página guarda su historial."
+body = { html = "<p>El historial de una página muestra cada versión anterior, quién la guardó y cuándo, y puedes devolver la página a cualquiera de ellas.</p><p>Cada cambio en el sitio queda registrado con quién lo hizo, así que nada llega sin un nombre.</p>" }

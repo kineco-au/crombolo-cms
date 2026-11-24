@@ -1,6 +1,6 @@
 type = "peoplePage"
 name = { "en-US" = "People", "es-ES" = "Equipo" }
-order = 2
+order = 3
 
 [values]
 people = ["ines-marchetti", "tomas-vidal", "asha-rao", "jonas-lind", "nia-bello"]

@@ -6,6 +6,7 @@ order = 10
 alias = "main"
 items = [
   { type = "menuItem", values = { link = ["/home/features"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/developers"], label = "", children = [] } },
   { type = "menuItem", values = { link = ["/home/people"], label = "", children = [] } },
   { type = "menuItem", values = { link = ["/home/blog"], label = "", children = [] } },
   { type = "menuItem", values = { link = ["/home/about"], label = "", children = [] } },

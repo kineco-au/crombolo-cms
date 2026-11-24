@@ -1,6 +1,6 @@
 type = "feature"
 name = { "en-US" = "The Library", "es-ES" = "La Biblioteca" }
-order = 2
+order = 4
 
 [values]
 category = "editing"

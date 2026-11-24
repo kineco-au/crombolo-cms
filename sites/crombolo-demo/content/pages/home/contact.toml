@@ -1,6 +1,6 @@
 type = "contactPage"
 name = { "en-US" = "Contact", "es-ES" = "Contacto" }
-order = 5
+order = 6
 
 [values]
 enquiryForm = "5e2c7a10-3f4b-4c6d-9a18-6b7d0e1f2a31"

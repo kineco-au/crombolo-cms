@@ -1,6 +1,6 @@
 type = "feature"
 name = { "en-US" = "Languages", "es-ES" = "Idiomas" }
-order = 4
+order = 6
 
 [values]
 category = "structure"
@@ -9,9 +9,9 @@ image = "/compass-map.jpg"
 [values.en-US]
 title = "Languages"
 summary = "Translate a page, a property or a single word."
-body = { html = "<p>Each property says whether it varies by language. This site is in English and Spanish, and the switch in the header moves you between the two versions of a page.</p><p>Words printed by the views come from the dictionary, and addresses can follow a hostname or a path such as /es.</p>" }
+body = { html = "<p>Each property says whether it varies by language. This site is in English and Spanish, and the switch in the header moves you between the two versions of a page.</p><p>Translators have a place of their own under Content, with the languages and the dictionary of words the site prints.</p>" }
 
 [values.es-ES]
 title = "Idiomas"
 summary = "Traduce una página, una propiedad o una sola palabra."
-body = { html = "<p>Cada propiedad indica si varía según el idioma. Este sitio está en inglés y en español, y el selector de la cabecera te lleva de una versión de la página a la otra.</p><p>Las palabras que muestran las vistas vienen del diccionario, y las direcciones pueden seguir un nombre de host o una ruta como /es.</p>" }
+body = { html = "<p>Cada propiedad indica si varía según el idioma. Este sitio está en inglés y en español, y el selector de la cabecera te lleva de una versión de la página a la otra.</p><p>Los traductores tienen su propio lugar dentro de Contenido, con los idiomas y el diccionario de palabras que muestra el sitio.</p>" }

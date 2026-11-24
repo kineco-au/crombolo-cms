@@ -1,0 +1,35 @@
+[content-type]
+alias = "landingPage"
+name = "Landing Page"
+description = "A page for one audience, built from blocks like the home page"
+icon = "icon-layout"
+varies-by-culture = true
+compositions = ["seoFields"]
+components = ["pages/homePage"]
+default-component = "pages/homePage"
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+description = "Shown as the page heading"
+type = "textstring"
+mandatory = true
+varies-by-culture = true
+site-search = "high"
+
+[[tab.property]]
+alias = "intro"
+name = "Description"
+description = "A sentence for search engines and sharing"
+type = "textarea"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "blocks"
+name = "Blocks"
+description = "Hero, feature rows, quotes and calls to action, in the order they should appear"
+type = "pageBlocks"
+varies-by-culture = true

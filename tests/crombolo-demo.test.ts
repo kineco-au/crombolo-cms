@@ -84,8 +84,17 @@ describe('the Crombolo demo, in English', () => {
       'class="call-to-action',
     ])
       expect(html).toContain(part)
-    expect(html).toContain('A CMS you can read, diff and deploy')
-    expect(html).toContain('href="/features/content-as-code"')
+    expect(html).toContain('Work on the next version of your site while this one stays live')
+    expect(html).toContain('href="/features/workspaces"')
+    expect(html).toContain('href="/for-developers"')
+  })
+
+  test('its page for developers is blocks too, about the command line', async () => {
+    const { status, html } = await page('/for-developers')
+    expect(status).toBe(200)
+    expect(html).toContain('Everything the back office does, from the command line')
+    expect(html).toContain('class="feature-row')
+    expect(html).toContain('<code>crombolo site deploy --profile production</code>')
   })
 
   test('its blocks have aliases, so a view can pick one out', async () => {
@@ -95,15 +104,18 @@ describe('the Crombolo demo, in English', () => {
       .where('text_value', 'like', '%call-to-action%')
       .where('is_current', '=', h.server.db.dialect.boolValue(true))
       .execute()
-    expect(rows.length).toBe(2)
+    // The home page and the page for developers, each in two languages.
+    expect(rows.length).toBe(4)
     for (const row of rows)
-      for (const alias of ['hero', 'files', 'blocks', 'library', 'quote', 'call-to-action'])
+      for (const alias of ['hero', 'quote', 'call-to-action'])
         expect(row.text_value).toContain(`"alias":"${alias}"`)
+    expect(rows.filter((row) => row.text_value?.includes('"alias":"workspace"')).length).toBe(2)
+    expect(rows.filter((row) => row.text_value?.includes('"alias":"deploy"')).length).toBe(2)
   })
 
   test('its header comes from the menu, and leaves out what the menu does', async () => {
     const { html } = await page('/')
-    for (const link of ['Features', 'People', 'Blog', 'About', 'Contact'])
+    for (const link of ['Features', 'For developers', 'People', 'Blog', 'About', 'Contact'])
       expect(html).toContain(`>${link}</a>`)
     expect(html).not.toContain('>Site Settings<')
   })
@@ -116,13 +128,13 @@ describe('the Crombolo demo, in English', () => {
 
   test('its features filter by category, with a page for each', async () => {
     const all = await page('/features')
-    expect(all.html).toContain('Content as code')
-    expect(all.html).toContain('Bundles')
+    expect(all.html).toContain('Workspaces')
+    expect(all.html).toContain('From staging to live')
     const structure = await page('/features?category=structure')
-    expect(structure.html).toContain('Content as code')
-    expect(structure.html).not.toContain('href="/features/bundles"')
+    expect(structure.html).toContain('Forms and workflows')
+    expect(structure.html).not.toContain('href="/features/from-staging-to-live"')
     const unknown = await page('/features?category=nonsense')
-    expect(unknown.html).toContain('href="/features/bundles"')
+    expect(unknown.html).toContain('href="/features/from-staging-to-live"')
     const one = await page('/features/search')
     expect(one.status).toBe(200)
     expect(one.html).toContain('Site search works over published pages')
@@ -138,20 +150,20 @@ describe('the Crombolo demo, in English', () => {
 
   test('its blog pages four at a time, newest first', async () => {
     const first = await page('/blog')
-    expect(first.html.indexOf('What a bundle tells you')).toBeGreaterThan(-1)
-    expect(first.html.indexOf('What a bundle tells you')).toBeLessThan(
-      first.html.indexOf('Forms that stay in the repository'),
+    expect(first.html.indexOf('When two people change the same page')).toBeGreaterThan(-1)
+    expect(first.html.indexOf('When two people change the same page')).toBeLessThan(
+      first.html.indexOf('From staging to live, one change at a time'),
     )
-    expect(first.html).not.toContain('Why content types belong in git')
+    expect(first.html).not.toContain('A workspace for every piece of work')
     expect(first.html).toContain('href="/blog?page=2"')
     const second = await page('/blog?page=2')
-    expect(second.html).toContain('Why content types belong in git')
-    expect(second.html).not.toContain('What a bundle tells you')
+    expect(second.html).toContain('A workspace for every piece of work')
+    expect(second.html).not.toContain('When two people change the same page')
   })
 
   test('its blog filters by tag, and each post names its author and tags', async () => {
     const tagged = await page('/blog?tag=forms')
-    expect(tagged.html).toContain('Forms that stay in the repository')
+    expect(tagged.html).toContain('Forms, and the answers they collect')
     expect(tagged.html).not.toContain('Rehearse your upgrades')
     const post = await page('/blog/rehearse-your-upgrades')
     expect(post.status).toBe(200)
@@ -161,8 +173,8 @@ describe('the Crombolo demo, in English', () => {
   })
 
   test('its search finds pages', async () => {
-    const { html } = await page('/search?q=bundle')
-    expect(html).toContain('href="/features/bundles"')
+    const { html } = await page('/search?q=staging')
+    expect(html).toContain('href="/features/from-staging-to-live"')
   })
 
   test('its contact page draws the form', async () => {
@@ -178,8 +190,10 @@ describe('the Crombolo demo, in Spanish at /es', () => {
     const { status, html } = await page('/es')
     expect(status).toBe(200)
     expect(html).toContain('<html lang="es-ES"')
-    expect(html).toContain('Un CMS que puedes leer, comparar y desplegar')
-    expect(html).not.toContain('A CMS you can read')
+    expect(html).toContain(
+      'Trabaja en la próxima versión de tu sitio mientras esta sigue publicada',
+    )
+    expect(html).not.toContain('Work on the next version')
     expect(html).toContain('href="/es/funciones/')
   })
 
@@ -205,9 +219,9 @@ describe('the Crombolo demo, in Spanish at /es', () => {
   })
 
   test('its search stays in Spanish', async () => {
-    const { html } = await page('/es/buscar?q=paquete')
-    expect(html).toContain('/es/funciones/paquetes')
-    expect(html).not.toContain('href="/features/bundles"')
+    const { html } = await page('/es/buscar?q=pruebas')
+    expect(html).toContain('/es/funciones/de-pruebas-a-produccion')
+    expect(html).not.toContain('href="/features/from-staging-to-live"')
   })
 
   test('its contact page draws the Spanish form', async () => {

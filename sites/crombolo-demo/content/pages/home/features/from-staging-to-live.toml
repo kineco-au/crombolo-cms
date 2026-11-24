@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "From staging to live", "es-ES" = "De pruebas a producción" }
+order = 9
+
+[values]
+category = "delivery"
+image = "/workbench.jpg"
+
+[values.en-US]
+title = "From staging to live"
+summary = "Move finished work from a staging site to the live one, safely."
+body = { html = "<p>Work finished on a staging site reaches the live site as it was made: its pages, media and files together.</p><p>If someone changed the same page on the live site in the meantime, it stops and says so, rather than overwriting their work.</p>" }
+
+[values.es-ES]
+title = "De pruebas a producción"
+summary = "Lleva el trabajo terminado de un sitio de pruebas al publicado, con seguridad."
+body = { html = "<p>El trabajo terminado en un sitio de pruebas llega al sitio publicado tal como se hizo: sus páginas, medios y archivos juntos.</p><p>Si alguien cambió la misma página en el sitio publicado mientras tanto, se detiene y lo dice, en lugar de sobrescribir su trabajo.</p>" }

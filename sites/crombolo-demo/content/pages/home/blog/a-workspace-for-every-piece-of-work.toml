@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "A workspace for every piece of work", "es-ES" = "Un espacio de trabajo para cada trabajo" }
+order = 0
+
+[values]
+publishDate = "2026-03-10"
+author = ["ines-marchetti"]
+image = "/drafting-compass.jpg"
+
+[values.en-US]
+title = "A workspace for every piece of work"
+excerpt = "Big changes no longer mean telling everyone to stop editing."
+body = { html = "<p>A new section used to mean a content freeze: nobody touched the site until it was ready. Now the work happens in a workspace, and everyone else carries on.</p><p>When it is ready, it goes live in one go, with sign-off where it is needed.</p>" }
+tags = ["workspaces", "editing"]
+
+[values.es-ES]
+title = "Un espacio de trabajo para cada trabajo"
+excerpt = "Los cambios grandes ya no obligan a que todos dejen de editar."
+body = { html = "<p>Una sección nueva solía significar congelar el contenido: nadie tocaba el sitio hasta que estuviera listo. Ahora el trabajo se hace en un espacio de trabajo y los demás siguen con lo suyo.</p><p>Cuando está listo, se publica de una vez, con aprobación donde haga falta.</p>" }
+tags = ["espacios de trabajo", "edición"]

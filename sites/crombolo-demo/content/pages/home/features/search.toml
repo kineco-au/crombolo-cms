@@ -1,6 +1,6 @@
 type = "feature"
 name = { "en-US" = "Search", "es-ES" = "Búsqueda" }
-order = 6
+order = 8
 
 [values]
 category = "delivery"

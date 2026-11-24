@@ -6,6 +6,15 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **The Crombolo demo, rewritten for what Crombolo does now.** The home page is for editors:
+  a workspace of their own, shown to colleagues, published with its approvals and dates. A
+  new page for developers is about the command line: every site from one command, coding
+  agents, workspaces, webhooks, checks, deploys and upgrades. Features and the blog follow
+  (Workspaces, Publishing and approvals, History, From staging to live), in English and
+  Spanish. A site made from the demo before keeps its own content.
+
 ## v0.79.0 — 2026-11-24
 
 ### Features

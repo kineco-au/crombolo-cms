@@ -1,6 +1,6 @@
 type = "feature"
 name = { "en-US" = "Forms and workflows", "es-ES" = "Formularios y flujos de trabajo" }
-order = 5
+order = 7
 
 [values]
 category = "structure"
@@ -9,9 +9,9 @@ image = "/archive-binders.jpg"
 [values.en-US]
 title = "Forms and workflows"
 summary = "Collect answers, and decide who signs off a page."
-body = { html = "<p>Forms are defined in files and rendered by the site, with validation on the server and entries kept in the back office.</p><p>A workflow names the stages a page passes through before it is published, and who decides at each one.</p>" }
+body = { html = "<p>Forms are built in the back office and drawn by the site, with answers checked as they arrive and kept under Forms.</p><p>A workflow names the stages a page passes through before it is published, and who decides at each one.</p>" }
 
 [values.es-ES]
 title = "Formularios y flujos de trabajo"
 summary = "Recoge respuestas y decide quién aprueba una página."
-body = { html = "<p>Los formularios se definen en archivos y los muestra el sitio, con validación en el servidor y las entradas guardadas en el panel.</p><p>Un flujo de trabajo indica las etapas que recorre una página antes de publicarse y quién decide en cada una.</p>" }
+body = { html = "<p>Los formularios se crean en el panel y los muestra el sitio; las respuestas se comprueban al llegar y se guardan en Formularios.</p><p>Un flujo de trabajo indica las etapas que recorre una página antes de publicarse y quién decide en cada una.</p>" }

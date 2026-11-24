@@ -1,6 +1,6 @@
 type = "feature"
 name = { "en-US" = "Blocks", "es-ES" = "Bloques" }
-order = 1
+order = 3
 
 [values]
 category = "editing"
@@ -8,10 +8,10 @@ image = "/letterpress-alphabet.jpg"
 
 [values.en-US]
 title = "Blocks"
-summary = "Editors build pages from parts a developer has defined."
-body = { html = "<p>A block is an element type with a view of its own. Add a file to the blocks folder and every page that lists blocks can use it.</p><p>The home page of this site is nothing but blocks.</p>" }
+summary = "Build pages from parts, in whatever order the page needs."
+body = { html = "<p>Banners, text, images, quotes and buttons are blocks a developer has set up once. Editors add them, reorder them and fill them in, without asking for a new template.</p><p>The home page of this site is nothing but blocks.</p>" }
 
 [values.es-ES]
 title = "Bloques"
-summary = "Los editores crean páginas con piezas definidas por un desarrollador."
-body = { html = "<p>Un bloque es un tipo de elemento con su propia vista. Añade un archivo a la carpeta de bloques y cualquier página que los use podrá mostrarlo.</p><p>La página de inicio de este sitio solo tiene bloques.</p>" }
+summary = "Crea páginas con piezas, en el orden que necesite cada página."
+body = { html = "<p>Portadas, textos, imágenes, citas y botones son bloques que un desarrollador prepara una vez. Los editores los añaden, los reordenan y los rellenan sin pedir una plantilla nueva.</p><p>La página de inicio de este sitio solo tiene bloques.</p>" }

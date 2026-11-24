@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "Publishing and approvals", "es-ES" = "Publicación y aprobaciones" }
+order = 1
+
+[values]
+category = "editing"
+image = "/archive-binders.jpg"
+
+[values.en-US]
+title = "Publishing and approvals"
+summary = "Bring a workspace's changes to the live site, with sign-off where it's needed."
+body = { html = "<p>When a workspace is published, pages that need sign-off are sent for approval, and pages set to go live on a date keep that date. Approvals has a tab of its own, listing every request still waiting, with those waiting on you first.</p><p>If someone else changed the same page while you worked, you see what each of you changed and choose which version of each part to keep.</p>" }
+
+[values.es-ES]
+title = "Publicación y aprobaciones"
+summary = "Lleva los cambios de un espacio de trabajo al sitio publicado, con aprobación donde haga falta."
+body = { html = "<p>Al publicar un espacio de trabajo, las páginas que necesitan aprobación se envían para aprobarlas, y las que tienen fecha de publicación la conservan. Las aprobaciones tienen su propia pestaña, con todas las solicitudes pendientes y primero las que te esperan a ti.</p><p>Si otra persona cambió la misma página mientras trabajabas, ves lo que cambió cada uno y eliges qué versión de cada parte quieres conservar.</p>" }

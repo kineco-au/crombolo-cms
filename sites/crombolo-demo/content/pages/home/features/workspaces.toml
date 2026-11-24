@@ -1,0 +1,17 @@
+type = "feature"
+name = { "en-US" = "Workspaces", "es-ES" = "Espacios de trabajo" }
+order = 0
+
+[values]
+category = "editing"
+image = "/drafting-compass.jpg"
+
+[values.en-US]
+title = "Workspaces"
+summary = "Work on the next version of the site without touching this one."
+body = { html = "<p>A workspace is your own space to safely edit in. Open one from the switch at the top of Content, and change pages, media, the Library and translations there. While it is open, the menu takes the workspace's colour, so you always know where you are editing.</p><p>Visitors keep seeing the live site until you publish. Share the workspace with colleagues, and they can click through the site as it will look.</p>" }
+
+[values.es-ES]
+title = "Espacios de trabajo"
+summary = "Trabaja en la próxima versión del sitio sin tocar esta."
+body = { html = "<p>Un espacio de trabajo es tu propio lugar para editar con tranquilidad. Ábrelo desde el selector de la parte superior de Contenido y cambia allí páginas, medios, la Biblioteca y las traducciones. Mientras está abierto, el menú toma el color del espacio de trabajo, para que siempre sepas dónde estás editando.</p><p>Los visitantes siguen viendo el sitio publicado hasta que publiques. Comparte el espacio de trabajo con tus compañeros y podrán recorrer el sitio tal como quedará.</p>" }

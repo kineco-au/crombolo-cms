@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "From staging to live, one change at a time", "es-ES" = "De pruebas a producción, cambio a cambio" }
+order = 6
+
+[values]
+publishDate = "2026-10-20"
+author = ["jonas-lind"]
+image = "/workbench.jpg"
+
+[values.en-US]
+title = "From staging to live, one change at a time"
+excerpt = "Work finished on staging reaches the live site as it was made."
+body = { html = "<p>A change carries its pages, media and files together, so nothing arrives half done.</p><p>If the live site changed the same page in the meantime, it stops and says so. Nobody's work is overwritten without them knowing.</p>" }
+tags = ["operations", "workspaces"]
+
+[values.es-ES]
+title = "De pruebas a producción, cambio a cambio"
+excerpt = "El trabajo terminado en pruebas llega al sitio publicado tal como se hizo."
+body = { html = "<p>Un cambio lleva juntas sus páginas, medios y archivos, así que nada llega a medias.</p><p>Si el sitio publicado cambió la misma página mientras tanto, se detiene y lo dice. El trabajo de nadie se sobrescribe sin que lo sepa.</p>" }
+tags = ["operaciones", "espacios de trabajo"]

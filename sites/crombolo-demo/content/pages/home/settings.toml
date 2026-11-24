@@ -1,14 +1,14 @@
 type = "siteSettings"
 name = { "en-US" = "Site Settings", "es-ES" = "Ajustes del sitio" }
-order = 7
+order = 8
 
 [values]
 repositoryUrl = "https://github.com/kineco-au/crombolo-cms"
 
 [values.en-US]
-tagline = "A CMS you can read, diff and deploy."
+tagline = "Change as much as you like. Publish when it's ready."
 footerNote = "A demonstration site. The people on it are invented."
 
 [values.es-ES]
-tagline = "Un CMS que puedes leer, comparar y desplegar."
+tagline = "Cambia todo lo que quieras. Publica cuando esté listo."
 footerNote = "Un sitio de demostración. Las personas que aparecen son inventadas."

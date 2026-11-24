@@ -1,0 +1,20 @@
+type = "blogPost"
+name = { "en-US" = "When two people change the same page", "es-ES" = "Cuando dos personas cambian la misma página" }
+order = 7
+
+[values]
+publishDate = "2026-11-12"
+author = ["asha-rao"]
+image = "/type-case.jpg"
+
+[values.en-US]
+title = "When two people change the same page"
+excerpt = "Nobody should lose their edits because someone else saved first."
+body = { html = "<p>If a page changed on the live site while you worked on it in your workspace, you see what each of you changed before anything goes live.</p><p>Then you choose, part by part, which version to keep: keep mine, or keep theirs.</p>" }
+tags = ["workspaces", "editing"]
+
+[values.es-ES]
+title = "Cuando dos personas cambian la misma página"
+excerpt = "Nadie debería perder sus cambios porque otra persona guardó antes."
+body = { html = "<p>Si una página cambió en el sitio publicado mientras la trabajabas en tu espacio de trabajo, ves lo que cambió cada uno antes de que nada se publique.</p><p>Después eliges, parte por parte, qué versión conservar: la tuya o la suya.</p>" }
+tags = ["espacios de trabajo", "edición"]

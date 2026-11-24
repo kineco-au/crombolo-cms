@@ -1,6 +1,6 @@
 type = "blogList"
 name = { "en-US" = "Blog", "es-ES" = "Blog" }
-order = 3
+order = 4
 
 [values]
 postsPerPage = 4
