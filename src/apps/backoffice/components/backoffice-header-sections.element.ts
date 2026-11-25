@@ -15,6 +15,7 @@ const CROMBOLO_NO_TAB = [
 	'Crombolo.Section.Forms',
 	'Crombolo.Section.Structure',
 	'Crombolo.Section.Components',
+	'Crombolo.Section.Workspaces',
 	'Umb.Section.Users',
 ];
 
