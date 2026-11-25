@@ -482,12 +482,17 @@ export class WorkspaceRepository {
       .execute()
   }
 
-  async dropPending(id: number, nodeId: number): Promise<void> {
-    await this.#db.q
+  async dropPending(
+    id: number,
+    nodeId: number,
+    kinds?: ReadonlyArray<WorkspacePending['kind']>,
+  ): Promise<void> {
+    let rows = this.#db.q
       .deleteFrom('workspace_pending')
       .where('workspace_id', '=', id)
       .where('node_id', '=', nodeId)
-      .execute()
+    if (kinds) rows = rows.where('kind', 'in', [...kinds])
+    await rows.execute()
   }
 
   /** A page merged alone from a person's own workspace (story 380): its rows there go. */

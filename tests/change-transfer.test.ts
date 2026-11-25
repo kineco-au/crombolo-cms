@@ -532,7 +532,7 @@ describe(`a change moved between sites (${dialectUnderTest})`, () => {
     expect((await target.read(HOME)).values).toBeDefined()
     const accepted = await target.put(made.bundle, '?accept=page-deleted')
     expect(accepted.status, await accepted.clone().text()).toBe(200)
-    expect((await target.h.call(`${V1}/document/${HOME}`)).status).toBe(404)
+    expect((await target.read(HOME)).isTrashed).toBe(true)
   }, 20_000)
 
   test('media the change added arrives with its file; what it never touched is unchanged', async () => {

@@ -281,9 +281,16 @@ way, with `Change.Kind` saying which (story `411`):
   'delete'`; a reorder is `orders: [{ parentKey, keys, before }]`.
 - **Applied on the other site,** each does the same there: the page is unpublished where
   it is published, moved where it is still where the change found it, put back from the
-  recycle bin (or made again, if deleted there for good), deleted once `page-deleted` is
-  accepted; the parent's children it has are put in the change's order, the rest after.
+  recycle bin (or made again, if deleted there for good), moved to the recycle bin once
+  `page-deleted` is accepted; the parent's children it has are put in the change's order, the rest after.
   A parent reordered there since the change began is a conflict, as a moved page is.
+- **A delete arrives in the recycle bin** (story `430`), with the page's history and the
+  branch below it, whether it was moved to the bin or deleted for good where it was made. A
+  change destroys nothing: removing a page for good is done on each site, by emptying its
+  bin. A blueprint has no bin and is deleted. One already in the bin stays there, and a
+  restore, a revert or a later change to a page in the bin takes it out; one that publishes it asks first, as for any page with
+  edits not published. A page named by a
+  value in use outside its own branch, draft or published, is not deleted.
 - **A page keeps its place** (story `425`). A change that makes a page, or moves one to
   another parent, holds that parent's children in order then (`siblings/<key>`,
   `siblings/root`), and its bundle carries them on the page (`siblings`). Taken on another

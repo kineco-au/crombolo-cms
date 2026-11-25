@@ -967,6 +967,24 @@ export class DocumentRepository {
     return true
   }
 
+  /** Whether the workspace moves the page, or one above it, out of the bin at its merge. */
+  async #leavesBin(node: NodeRow): Promise<boolean> {
+    const rows = await this.#db.q
+      .selectFrom('workspace_pending')
+      .select('id')
+      .where('workspace_id', '=', this.#workspace as number)
+      .where('kind', '=', 'move')
+      .where('node_id', 'in', [
+        node.id,
+        ...node.path
+          .split(',')
+          .map(Number)
+          .filter((id) => id > 0),
+      ])
+      .execute()
+    return rows.length > 0
+  }
+
   /**
    * Publishes a page in the workspace only (story 375): Shared's published
    * page, its flags and the published cache are untouched, and the usual rules
@@ -976,7 +994,8 @@ export class DocumentRepository {
     node: NodeRow,
     cultures: readonly string[] | null,
   ): Promise<DocumentAggregate | undefined> {
-    if (node.trashed) throw new PublishBlockedError('The document is in the recycle bin.')
+    if (node.trashed && !(await this.#leavesBin(node)))
+      throw new PublishBlockedError('The document is in the recycle bin.')
     if (!(await this.#ancestorsPublishedInWorkspace(node)))
       throw new PublishBlockedError('An ancestor is not published.')
     await this.#touch(node)

@@ -59,14 +59,28 @@ No migration, and no change to the bundle.
 
 ## Acceptance criteria
 
-- A page moved to the bin, its change staged and merged, or applied in one call, is in the
+- [x] A page moved to the bin, its change staged and merged, or applied in one call, is in the
   target's bin with its versions and the branch below it.
-- The same for a page deleted for good where it was made, for media and for a Library item.
-- The restore passed on later takes it out, to where it was, its history kept.
-- Reverting the delete on the source and passing that on takes it out of the bin too.
-- A delete of a page already in the target's bin merges, with nothing to accept.
-- A new page at the binned page's address is made with no clash.
-- The merge says the page is moved to the recycle bin; `page-deleted` still accepts it.
-- A blueprint is deleted, as now.
-- A change from an older version is staged the same way.
-- Tests on both dialects; `docs/changes.md` and the release notes say where a delete goes.
+- [x] The same for a page deleted for good where it was made, for media and for a Library item.
+- [x] The restore passed on later takes it out, to where it was, its history kept.
+- [x] Reverting the delete on the source and passing that on takes it out of the bin too.
+- [x] A delete of a page already in the target's bin merges, with nothing to accept.
+- [x] A new page at the binned page's address is made with no clash.
+- [x] The merge says the page is moved to the recycle bin; `page-deleted` still accepts it.
+- [x] A blueprint is deleted, as now.
+- [x] A change from an older version is staged the same way: the bundle is unchanged, so this has
+  no test of its own.
+- [x] Tests on both dialects; `docs/changes.md` and the release notes say where a delete goes.
+
+## Implementation
+
+- `change-transfer.ts`: `stagePage` stages the bin, leaves one already there, and takes a page
+  out for a restore, a revert or a later change; `comingOut`, `stillUsed`. A site bundle's
+  deletes are staged shallowest first, so a branch is binned whole.
+- `workspace-merge-run.ts`: moves out of the bin run before pages are written, as one in it
+  cannot be published; `planFor` no longer refuses them as "no longer in Shared", which had
+  stopped every restore passed on (story 411).
+- `documents.ts`: a page the workspace takes out of the bin can be published in it.
+- A page binned only with its parent is not taken out alone: the parent is restored first.
+- Publishing one taken out asks for `publishes-shared-draft`: binning marks it as edited.
+- Tests: `tests/content-locked.test.ts` (story 430), `tests/change-transfer.test.ts`.

@@ -23,6 +23,7 @@ import {
   DictionaryRepository,
   DocumentRepository,
   type DocumentRepositoryOptions,
+  fromDbBool,
   ORDER_PREFIX,
   type PagePlace,
   PLACE_PREFIX,
@@ -726,7 +727,27 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         const key = options.media.key(url)
         if (key) await options.media.store.put(key, bytes)
       }
-      for (const page of change.pages)
+      // Story 430: a branch is binned whole, so a page it deletes goes before those below it.
+      const deleted = new Map(
+        change.pages.filter((p) => p.action === 'delete').map((p) => [normaliseUuid(p.key), p]),
+      )
+      const depth = (page: ChangeBundlePage): number => {
+        let n = 0
+        for (let at = page; n <= deleted.size; n++) {
+          const above = at.parentKey ? deleted.get(normaliseUuid(at.parentKey)) : undefined
+          if (!above) break
+          at = above
+        }
+        return n
+      }
+      const ordered =
+        change.kind === 'site'
+          ? [
+              ...change.pages.filter((p) => p.action !== 'delete'),
+              ...[...deleted.values()].sort((a, b) => depth(a) - depth(b)),
+            ]
+          : change.pages
+      for (const page of ordered)
         try {
           await stagePage(workspace, page, conflict, moved)
         } catch (error) {
@@ -858,19 +879,23 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const target = (await here.byKey(page.key)) ?? (await shared.byKey(page.key))
     const label = `"${page.after?.name ?? page.before?.name ?? page.key}"`
 
+    const node = await shared.nodes.byKey(page.key)
     if (page.action === 'delete') {
-      if (!target) return
+      // Story 430: in this site's bin already, there it stays.
+      if (!target || (node?.trashed && !(await comingOut(workspace, node)))) return
       const now = stateOf(target)
       if (!same([...fieldsOf(now)].sort(), [...fieldsOf(page.before)].sort())) {
         moved(label)
         conflict(label, `${label} was changed here since, so it is not deleted.`)
         return
       }
-      if (await stillUsed(page.key)) {
+      if (await stillUsed(page)) {
         conflict(label, `${label} is still used here, so it is not deleted.`)
         return
       }
-      await here.delete(page.key)
+      // Story 430: a change destroys nothing; a blueprint has no bin.
+      if (page.kind === 'blueprint') await here.delete(page.key)
+      else await here.moveToRecycleBin(page.key)
       return
     }
 
@@ -897,11 +922,19 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       return
     }
 
+    // Story 430: an earlier change staged here that bins it is undone by one that brings it back.
+    if (node) await new WorkspaceRepository(db).dropPending(workspace.id, node.id, ['trash'])
     // Story 411: restored from the bin there, and in this site's bin, it comes out here too.
-    if (page.restored && (await shared.nodes.byKey(page.key))?.trashed) {
+    const binned = node?.trashed === true && !(await comingOut(workspace, node))
+    if (node && binned) {
+      const parent = page.parentKey ? await shared.nodes.byKey(page.parentKey) : undefined
+      if (parent?.trashed && !(await comingOut(workspace, parent))) {
+        conflict(label, `${label} is in the recycle bin here, and so is the page it belongs under.`)
+        return
+      }
       await here.move(page.key, page.parentKey)
       await placeAmong(here, page)
-      return
+      if (page.restored) return
     }
     const now = (await here.byKey(page.key)) ?? target
     const nowFields = fieldsOf(stateOf(now))
@@ -944,7 +977,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         variants,
       })
     }
-    if (page.beforeParentKey !== undefined && now.parentKey !== page.parentKey) {
+    if (!binned && page.beforeParentKey !== undefined && now.parentKey !== page.parentKey) {
       if (now.parentKey === page.beforeParentKey) {
         await here.move(page.key, page.parentKey)
         await placeAmong(here, page)
@@ -953,7 +986,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         conflict(label, `${label} was moved here since.`)
       }
     }
-    if (taken.size > 0 && after.published) await here.publish(page.key, null)
+    if ((taken.size > 0 || binned) && after.published) await here.publish(page.key, null)
     // Story 411: unpublished by the change, and published here, it is unpublished here too.
     if (page.before?.published && !after.published && now.published)
       await here.unpublish(page.key, null)
@@ -1034,23 +1067,63 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       ? Object.entries(state.names).map(([culture, name]) => ({ culture, segment: null, name }))
       : [{ culture: null, segment: null, name: state.name }]
 
-  /** Whether anything else on this site names the page. */
-  async function stillUsed(key: string): Promise<boolean> {
-    const plain = normaliseUuid(key)
+  /** Whether the workspace takes the page, or one above it, out of the bin. */
+  async function comingOut(workspace: Workspace, node: { id: number; path: string }) {
+    const branch = new Set(node.path.split(',').map(Number)).add(node.id)
+    return (await new WorkspaceRepository(db).pending(workspace.id)).some(
+      (p) => p.kind === 'move' && branch.has(p.nodeId),
+    )
+  }
+
+  /** Whether a value in use outside the page and its branch, draft or published, names the page. */
+  async function stillUsed(page: ChangeBundlePage): Promise<boolean> {
+    const plain = normaliseUuid(page.key)
+    const going = await repo(page.kind).nodes.byKey(page.key)
     const rows = await db.q
-      .selectFrom('property_value')
-      .select('id')
-      .where('workspace_id', 'is', null)
+      .selectFrom('property_value as v')
+      .innerJoin('node as n', 'n.id', 'v.node_id')
+      .select([
+        'v.id',
+        'v.node_id',
+        'v.property_type_id',
+        'v.language_id',
+        'v.segment',
+        'v.environment',
+        'v.event_id',
+        'v.is_current',
+        'n.unique_id',
+        'n.path',
+      ])
+      .where('v.workspace_id', 'is', null)
       .where((eb) =>
         eb.or([
-          eb('varchar_value', 'like', `%${plain}%`),
-          eb('text_value', 'like', `%${plain}%`),
-          eb('text_value', 'like', `%${plain.replaceAll('-', '')}%`),
+          eb('v.varchar_value', 'like', `%${plain}%`),
+          eb('v.text_value', 'like', `%${plain}%`),
+          eb('v.text_value', 'like', `%${plain.replaceAll('-', '')}%`),
         ]),
       )
-      .limit(1)
       .execute()
-    return rows.length > 0
+    for (const row of rows) {
+      if (going && `${row.path},`.startsWith(`${going.path},`)) continue
+      if (fromDbBool(row.is_current)) return true
+      const published = (await repo('document').eventMarkers(String(row.unique_id)))?.published
+      if (published === undefined || Number(row.event_id) > published) continue
+      // The published value is the latest at or before the published event.
+      const later = await db.q
+        .selectFrom('property_value')
+        .select('id')
+        .where('workspace_id', 'is', null)
+        .where('node_id', '=', row.node_id)
+        .where('property_type_id', '=', row.property_type_id)
+        .where('language_id', row.language_id === null ? 'is' : '=', row.language_id)
+        .where('segment', row.segment === null ? 'is' : '=', row.segment)
+        .where('environment', row.environment === null ? 'is' : '=', row.environment)
+        .where('event_id', '<=', published)
+        .where('id', '>', row.id)
+        .executeTakeFirst()
+      if (!later) return true
+    }
+    return false
   }
 
   /** The name of another page already at the address a new one would take. */

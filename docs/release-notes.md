@@ -6,6 +6,18 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Changes
+
+- A page, media item or Library item deleted where it is made goes to the recycle bin of
+  the site its change is applied to, with its history, instead of being deleted there for
+  good; a restore or a revert passed on takes it out again (430).
+
+### Upgrade notes
+
+- A deletion that must be permanent everywhere, for privacy say, now also needs the recycle
+  bin emptied on each site it was passed on to. A site that takes its content by change
+  allows that (430).
+
 ## v0.80.0 — 2026-11-25
 
 ### Features

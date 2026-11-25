@@ -223,6 +223,12 @@ const KIND_OF: Record<string, (typeof KINDS)[number]> = {
   [ObjectTypes.WorkspaceDocumentBlueprint]: 'blueprint',
 }
 
+const BINS: readonly number[] = [
+  SystemNodes.ContentRecycleBin,
+  SystemNodes.MediaRecycleBin,
+  SystemNodes.ElementRecycleBin,
+]
+
 async function planFor(
   shared: DocumentRepository,
   workspaces: WorkspaceRepository,
@@ -239,7 +245,9 @@ async function planFor(
     if (!node) continue
     const kind = KIND_OF[node.objectType ?? ''] ?? 'document'
     p.objectKind = kind
-    if (!node.trashed)
+    // Story 430: a move recorded while the page stood in the bin takes it out.
+    const leaves = p.kind === 'move' && p.baseParentId !== null && BINS.includes(p.baseParentId)
+    if (!node.trashed || leaves)
       where.set(p.nodeId, {
         parentId: node.parentId,
         head: await shared.ofKind(kind).sharedHeadEvent(node.id),
@@ -664,6 +672,27 @@ async function apply(
     removed: ChangeItemInput[]
   },
 ): Promise<void> {
+  const keyOf = async (id: number | null) =>
+    id === null || id === SystemNodes.Root ? null : ((await sharedAll.nodes.byId(id))?.key ?? null)
+  // Story 430: out of the recycle bin first, as a page in it cannot be published.
+  const outOfBin = new Map<
+    number,
+    {
+      from: { parentKey: string | null; trashed: boolean }
+      before: Awaited<ReturnType<DocumentRepository['eventMarkers']>>
+    }
+  >()
+  for (const { pending } of plan.pending) {
+    if (pending.kind !== 'move' || pending.key === null) continue
+    const shared = sharedAll.ofKind(pending.objectKind ?? 'document')
+    const node = await shared.nodes.byId(pending.nodeId)
+    if (!node?.trashed) continue
+    const from = { parentKey: await keyOf(node.parentId ?? null), trashed: true }
+    const before = await shared.eventMarkers(pending.key)
+    await shared.move(pending.key, await keyOf(pending.targetParentId))
+    await record({ type: 'moved', key: pending.key, from })
+    outOfBin.set(pending.nodeId, { from, before })
+  }
   for (const pagePlan of plan.pages) {
     const { page } = pagePlan
     // Each kind through its own repository: pages, media, Library items (story 390).
@@ -718,8 +747,6 @@ async function apply(
     })
   }
 
-  const keyOf = async (id: number | null) =>
-    id === null || id === SystemNodes.Root ? null : ((await sharedAll.nodes.byId(id))?.key ?? null)
   // Story 411: each parent's children's order before its first reorder, for the change.
   const orders = new Map<string, { parentKey: string | null; before: string[] }>()
   const childKeys = async (parentKey: string | null) =>
@@ -728,7 +755,8 @@ async function apply(
     const key = pending.key
     if (pending.kind === 'gone' || key === null) continue
     const shared = sharedAll.ofKind(pending.objectKind ?? 'document')
-    const before = await shared.eventMarkers(key)
+    const left = pending.kind === 'move' ? outOfBin.get(pending.nodeId) : undefined
+    const before = left ? left.before : await shared.eventMarkers(key)
     // A delete takes the page's history with it: its change keeps the page as it stood (story 383).
     // Story 411: so does one moved to the bin, which the bin may empty before the change is taken.
     if (pending.kind === 'delete' || pending.kind === 'trash') {
@@ -744,18 +772,24 @@ async function apply(
     }
     if (pending.kind === 'move') {
       const node = await shared.nodes.byId(pending.nodeId)
-      const from = {
+      const from = left?.from ?? {
         parentKey: await keyOf(node?.parentId ?? null),
         trashed: node?.trashed ?? false,
       }
       const to = await keyOf(pending.targetParentId)
-      await shared.move(key, to)
-      await record({ type: 'moved', key, from })
+      if (!left) {
+        await shared.move(key, to)
+        await record({ type: 'moved', key, from })
+      }
       const published = (await shared.byKey(key))?.published ?? false
       out.removed.push(
         placeItem(
           key,
-          { ...from, published, ...(from.trashed ? { trashed: true } : {}) },
+          {
+            ...from,
+            published: from.trashed ? false : published,
+            ...(from.trashed ? { trashed: true } : {}),
+          },
           { parentKey: to, published },
         ),
       )
@@ -767,7 +801,8 @@ async function apply(
       await shared.sort(parentKey, [{ key, sortOrder: pending.sortOrder }])
       await record({ type: 'sorted', parentKey })
     } else if (pending.kind === 'trash') {
-      await shared.moveToRecycleBin(key)
+      // One that went with its branch stays in it.
+      if (!(await shared.nodes.byId(pending.nodeId))?.trashed) await shared.moveToRecycleBin(key)
       await record({ type: 'trashed', key })
     } else if (pending.kind === 'delete') {
       await shared.delete(key)

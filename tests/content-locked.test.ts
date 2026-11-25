@@ -1248,3 +1248,248 @@ describe(`a change that only schedules says so (${dialectUnderTest}, story 417)`
     ])
   }, 30_000)
 })
+
+describe(`a promoted delete goes to the recycle bin (${dialectUnderTest}, story 430)`, () => {
+  type Site = Awaited<ReturnType<typeof site>>
+  const nodeOf = (s: Site, key: string) => new NodeRepository(s.h.server.db).byKey(key)
+  const CHILD = '6b2f1f0e-3c1d-4a8e-9f00-000000000430'
+
+  /** The changes `work` makes on a source with the three pages, each taken as its bundle. */
+  async function made(work: (s: Site, take: () => Promise<void>) => Promise<void>) {
+    const source = await site()
+    await threePages(source)
+    const told = announcements(source)
+    await told.fresh()
+    const bundles: Bytes[] = []
+    const take = async () => {
+      for (const { key } of await told.fresh()) {
+        const id = (await source.changes()).find((c) => c.key === key)?.id
+        bundles.push(await source.take(`changes/${id}/bundle`))
+      }
+    }
+    await work(source, take)
+    await take()
+    await source.close()
+    return bundles
+  }
+  const bin = async (s: Site) => {
+    const sent = await s.send('PUT', `${V1}/document/${GAMMA}/move-to-recycle-bin`, {})
+    expect(sent.status, await sent.clone().text()).toBe(200)
+  }
+  const apply = async (s: Site, bundle: Bytes, query = '?accept=page-deleted') => {
+    const applied = await s.put(bundle, query)
+    expect(applied.status, await applied.clone().text()).toBe(200)
+  }
+  const target = async () => {
+    const s = await site()
+    await threePages(s)
+    return s
+  }
+
+  test('one moved to the bin is binned with its history and branch, and the restore takes it out', async () => {
+    const [deleted, restored] = await made(async (s, take) => {
+      await bin(s)
+      await take()
+      const back = await s.send('PUT', `${V1}/recycle-bin/document/${GAMMA}/restore`, {
+        target: { id: HOME },
+      })
+      expect(back.status).toBe(200)
+    })
+    const s = await target()
+    await s.page('Only here', { title: 'D' }, { key: CHILD, parent: GAMMA })
+    const before = await nodeOf(s, GAMMA)
+    const head = await new DocumentRepository(s.h.server.db).eventMarkers(GAMMA)
+
+    // Staged, the merge says where it goes, and asks for it.
+    const staged = await s.put(deleted as Bytes, '?stage=true')
+    const { workspace } = (await staged.json()) as { workspace: string }
+    const refused = await s.send('POST', `${WORKSPACES}/${workspace}/merge`, { accept: [] })
+    expect(refused.status).toBe(409)
+    expect(await refused.text()).toContain('moved to the recycle bin')
+    await s.merge(workspace, ['page-deleted'])
+
+    const binned = await nodeOf(s, GAMMA)
+    expect(binned?.id).toBe(before?.id as number)
+    expect(binned?.trashed).toBe(true)
+    expect((await nodeOf(s, CHILD))?.trashed).toBe(true)
+    expect(await parentOf(s, CHILD)).toBe(GAMMA)
+
+    await apply(s, restored as Bytes)
+    expect((await nodeOf(s, GAMMA))?.trashed).toBe(false)
+    expect(await parentOf(s, GAMMA)).toBe(HOME)
+    expect((await new DocumentRepository(s.h.server.db).eventMarkers(GAMMA))?.head).toBe(
+      head?.head as number,
+    )
+  }, 60_000)
+
+  test('one deleted for good is binned; one already in the bin needs nothing; its address is free', async () => {
+    const [deleted] = await made(async (s) => {
+      expect((await s.send('DELETE', `${V1}/document/${GAMMA}`)).status).toBe(200)
+    })
+    let fresh: Bytes | undefined
+    const [again] = await made(async (src, take) => {
+      await src.send('DELETE', `${V1}/document/${GAMMA}`)
+      await take()
+      const w = await src.opened('Again')
+      await src.page('Gamma', { title: 'New' }, { key: CHILD, parent: HOME, workspace: w.key })
+      await src.merge(w.key)
+      const change = (await src.changes())[0]
+      fresh = await src.take(`changes/${change?.id}/bundle`)
+    })
+    expect(again).toBeDefined()
+    const other = await target()
+    await bin(other)
+    await apply(other, deleted as Bytes, '')
+    expect((await nodeOf(other, GAMMA))?.trashed).toBe(true)
+    await other.close()
+
+    const s = await target()
+    await apply(s, deleted as Bytes)
+    expect((await nodeOf(s, GAMMA))?.trashed).toBe(true)
+
+    await apply(s, fresh as Bytes)
+    expect(await parentOf(s, CHILD)).toBe(HOME)
+  }, 60_000)
+
+  test('reverting the delete takes it out of the bin, published as it was', async () => {
+    let reverted: Bytes | undefined
+    let asReverted: string | undefined
+    const [deleted] = await made(async (s, take) => {
+      await bin(s)
+      await take()
+      const change = (await s.changes())[0]
+      const sent = await s.send(
+        'POST',
+        `${BACKOFFICE}/crombolo/api/changes/${change?.id}/revert`,
+        {},
+      )
+      expect(sent.status, await sent.clone().text()).toBe(200)
+      const revert = (await s.changes()).find((c) => c.kind === 'revert')
+      reverted = await s.take(`changes/${revert?.id}/bundle`)
+      expect((await nodeOf(s, GAMMA))?.trashed).toBe(false)
+      asReverted = await stateOf(s, GAMMA)
+    })
+    const s = await target()
+    await apply(s, deleted as Bytes)
+    await apply(s, reverted as Bytes)
+    expect((await nodeOf(s, GAMMA))?.trashed).toBe(false)
+    expect(await stateOf(s, GAMMA)).toBe(asReverted as string)
+    expect(await parentOf(s, GAMMA)).toBe(HOME)
+
+    // Both staged into one workspace: nothing is left to bin.
+    await s.close()
+    const both = await target()
+    const { workspace } = (await (await both.put(deleted as Bytes, '?stage=true')).json()) as {
+      workspace: string
+    }
+    await apply(both, reverted as Bytes, `?stage=true&into=${workspace}`)
+    await both.merge(workspace)
+    expect((await nodeOf(both, GAMMA))?.trashed).toBe(false)
+  }, 60_000)
+
+  test('an old version naming the page does not hold it; a value in use does', async () => {
+    const [deleted] = await made((s) => bin(s))
+    const s = await target()
+    await s.edit(BETA, { title: GAMMA })
+    const held = await s.put(deleted as Bytes, '?accept=page-deleted')
+    expect(held.status).toBe(409)
+    expect(await held.text()).toContain('still used here')
+
+    await s.close()
+    const was = await target()
+    await was.edit(BETA, { title: GAMMA })
+    await was.edit(BETA, { title: 'B' })
+    await apply(was, deleted as Bytes)
+    expect((await nodeOf(was, GAMMA))?.trashed).toBe(true)
+  }, 60_000)
+
+  test('a later change to a page binned here takes it out, edited and published', async () => {
+    const [edited] = await made((s) => s.edit(GAMMA, { title: 'Later' }))
+    const s = await target()
+    await bin(s)
+    // Binned, it counts as edited since it was published: publishing it is asked for.
+    await apply(s, edited as Bytes, `?accept=publishes-shared-draft:${GAMMA}`)
+    expect((await nodeOf(s, GAMMA))?.trashed).toBe(false)
+    expect(await parentOf(s, GAMMA)).toBe(HOME)
+    expect(await s.fieldValue(GAMMA, 'title')).toBe('Later')
+    expect(await stateOf(s, GAMMA)).toBe('Published')
+  }, 60_000)
+
+  const CARD = {
+    'schema/content-types/card.toml':
+      '[content-type]\nalias = "card"\nname = "Card"\nis-element = true\nallow-in-library = true\n\n[[property]]\nalias = "title"\nname = "Title"\ntype = "textstring"\n',
+  }
+  test('a blueprint is deleted, and a Library item binned', async () => {
+    for (const kind of ['blueprint', 'element'] as const) {
+      const path = kind === 'blueprint' ? 'document-blueprint' : 'element'
+      const id = crypto.randomUUID()
+      const source = await site({}, CARD)
+      const typeKey = (
+        await new ContentTypeRepository(source.h.server.db).byAlias(
+          kind === 'element' ? 'card' : 'page',
+        )
+      )?.key as string
+      const step = async (
+        work: (headers: Record<string, string>) => Promise<Response>,
+      ): Promise<Bytes> => {
+        const w = await source.opened('Step')
+        const sent = await work({ 'crombolo-workspace': w.key })
+        expect(sent.status, await sent.clone().text()).toBeLessThan(300)
+        await source.merge(w.key, ['page-deleted'])
+        return source.take(`changes/${(await source.changes())[0]?.id}/bundle`)
+      }
+      const added = await step((h) =>
+        source.send(
+          'POST',
+          `${V1}/${path}`,
+          {
+            id,
+            documentType: { id: typeKey },
+            parent: null,
+            values: [],
+            variants: [{ culture: null, segment: null, name: 'One' }],
+          },
+          h,
+        ),
+      )
+      const gone = await step((h) =>
+        kind === 'blueprint'
+          ? source.send('DELETE', `${V1}/${path}/${id}`, undefined, h)
+          : source.send('PUT', `${V1}/${path}/${id}/move-to-recycle-bin`, {}, h),
+      )
+      await source.close()
+      const s = await site({}, CARD)
+      await apply(s, added)
+      await apply(s, gone)
+      const node = await nodeOf(s, id)
+      if (kind === 'blueprint') expect(node).toBeUndefined()
+      else expect(node?.trashed).toBe(true)
+      await s.close()
+    }
+  }, 60_000)
+
+  test('media goes to its own bin', async () => {
+    const source = await site()
+    const w = await source.opened('Image')
+    const { key } = await source.image('Photo', w.key)
+    await source.merge(w.key)
+    const take = async () => source.take(`changes/${(await source.changes())[0]?.id}/bundle`)
+    const added = await take()
+    const x = await source.opened('Remove')
+    const sent = await source.send(
+      'PUT',
+      `${V1}/media/${key}/move-to-recycle-bin`,
+      {},
+      { 'crombolo-workspace': x.key },
+    )
+    expect(sent.status, await sent.clone().text()).toBe(200)
+    await source.merge(x.key, ['page-deleted'])
+    const gone = await take()
+    await source.close()
+
+    const s = await site()
+    await apply(s, added)
+    await apply(s, gone)
+    expect((await nodeOf(s, key))?.trashed).toBe(true)
+  }, 60_000)
+})
