@@ -31,6 +31,13 @@ describe('umbMovedSectionPath', () => {
 		expect(umbMovedSectionPath('/crombolo/section/workflow')).to.equal('/crombolo/section/approvals');
 	});
 
+	it('sends Users into Settings (story 429)', () => {
+		expect(umbMovedSectionPath('/crombolo/section/user-management/workspace/user/edit/abc', '?a=1')).to.equal(
+			'/crombolo/section/settings/users/workspace/user/edit/abc?a=1',
+		);
+		expect(umbMovedSectionPath('/crombolo/section/user-management')).to.equal('/crombolo/section/settings/users');
+	});
+
 	it('leaves every other address alone', () => {
 		expect(umbMovedSectionPath('/umbraco/section/content')).to.equal(undefined);
 		expect(umbMovedSectionPath('/umbraco/section/content/library')).to.equal(undefined);

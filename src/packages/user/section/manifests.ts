@@ -12,7 +12,8 @@ export const manifests: Array<UmbExtensionManifest | UmbExtensionManifestKind> =
 		weight: 600,
 		meta: {
 			label: '#sections_users',
-			pathname: 'user-management',
+			// Crombolo: Users are in Settings (story 429), opened from a card there.
+			pathname: 'settings/users',
 		},
 		conditions: [
 			{

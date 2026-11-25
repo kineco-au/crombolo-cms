@@ -15,6 +15,7 @@ const CROMBOLO_NO_TAB = [
 	'Crombolo.Section.Forms',
 	'Crombolo.Section.Structure',
 	'Crombolo.Section.Components',
+	'Umb.Section.Users',
 ];
 
 @customElement('umb-backoffice-header-sections')

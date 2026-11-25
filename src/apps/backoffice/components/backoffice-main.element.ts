@@ -111,7 +111,7 @@ export class UmbBackofficeMainElement extends UmbLitElement {
 			});
 
 			// Crombolo: the addresses of a section that moved still open its screens.
-			for (const moved of ['media', 'forms', 'workflow', 'library', 'translation'])
+			for (const moved of ['media', 'forms', 'workflow', 'library', 'translation', 'user-management'])
 				newRoutes.push({
 					path: `section/${moved}`,
 					component: async () => (await import('./moved-sections.js')).UmbMovedSectionElement,
