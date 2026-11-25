@@ -854,11 +854,13 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 			this.#toldOf.add(error);
 		}
 
+		let status = 0;
 		const cause = error instanceof Error ? error.cause : undefined;
 		if (cause && UmbCancelError.isUmbCancelError(cause)) return;
 		if (cause && UmbApiError.isUmbApiError(cause)) {
 			// What the request notified of already; these statuses it leaves to the editor.
-			if (![401, 403, 404].includes(cause.problemDetails?.status ?? cause.status)) return;
+			status = cause.problemDetails?.status ?? cause.status;
+			if (![401, 403, 404].includes(status)) return;
 			if (cause.problemDetails?.operationStatus === 'CancelledByNotification') return;
 			message ??= cause.problemDetails?.detail ?? undefined;
 		}
@@ -868,7 +870,17 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 		notifications?.peek('danger', {
 			data: {
 				headline: localize.term('speechBubbles_contentNotSavedHeader'),
-				message: message ?? localize.term('speechBubbles_contentNotSavedText'),
+				message:
+					message ??
+					localize.term(
+						status === 403
+							? 'speechBubbles_contentNotSavedForbidden'
+							: status === 404
+								? 'speechBubbles_contentNotSavedGone'
+								: status === 401
+									? 'speechBubbles_contentNotSavedSignedOut'
+									: 'speechBubbles_contentNotSavedText',
+					),
 			},
 		});
 		localize.destroy();

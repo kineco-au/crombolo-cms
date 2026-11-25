@@ -147,13 +147,22 @@ export class UmbApiInterceptorController extends UmbControllerBase {
 		});
 	}
 
+	// Crombolo: the server's reason, kept for an editor to tell; undefined when it gave none.
+	async #detailOf(response: Response): Promise<string | undefined> {
+		const body = await response
+			.clone()
+			.json()
+			.catch(() => undefined);
+		return isProblemDetailsLike(body) ? body.detail : undefined;
+	}
+
 	/**
 	 * Interceptor which checks responses for 403 errors and displays them as a notification.
 	 * @param {umbHttpClient} client The OpenAPI client to add the interceptor to. It can be any client supporting Response and Request interceptors.
 	 * @internal
 	 */
 	addForbiddenResponseInterceptor(client: typeof umbHttpClient) {
-		client.interceptors.response.use((response): Response => {
+		client.interceptors.response.use(async (response): Promise<Response> => {
 			if (response.status !== 403) return response;
 
 			// Build a plain ProblemDetails object for the response body
@@ -162,7 +171,7 @@ export class UmbApiInterceptorController extends UmbControllerBase {
 				title:
 					response.statusText ||
 					'You do not have the necessary permissions to complete the requested action. If you believe this is in error, please reach out to your administrator.',
-				detail: undefined,
+				detail: await this.#detailOf(response),
 				errors: undefined,
 				type: 'Unauthorized',
 				stack: undefined,
@@ -209,7 +218,7 @@ export class UmbApiInterceptorController extends UmbControllerBase {
 				const notFoundProblemDetails: UmbProblemDetails = {
 					status: response.status,
 					title: response.statusText || 'The requested resource was not found.',
-					detail: undefined,
+					detail: await this.#detailOf(response),
 					errors: undefined,
 					type: 'NotFound',
 					stack: undefined,
