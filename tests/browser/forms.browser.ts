@@ -11,6 +11,8 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
   page,
   diagnostics,
 }) => {
+  // Its own on every try: a retry finds the one before still here.
+  const TRADE = `Cove – Trade ${Math.random().toString(36).slice(2, 7)}`
   await signIn(page)
   const types = await (
     await page.request.get(`${API}/document-type/allowed-at-root?take=100`)
@@ -42,7 +44,7 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
       documentType: { id: formType.id },
       parent: null,
       values: [{ alias: 'heading', culture: null, segment: null, value: 'Trade enquiries' }],
-      variants: [{ culture: null, segment: null, name: 'Cove – Trade' }],
+      variants: [{ culture: null, segment: null, name: TRADE }],
     },
   })
   expect(element.status()).toBe(201)
@@ -53,17 +55,26 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
     ).status(),
   ).toBe(200)
 
+  // Each save answered before anything else, so none is under way when the page is left.
+  const save = () =>
+    Promise.all([
+      page.waitForResponse(
+        (r) => r.request().method() === 'PUT' && r.url().endsWith(`/document/${key}`),
+        { timeout: 4_000 },
+      ),
+      page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click(),
+    ])
   const url = `/crombolo/section/content/workspace/document/edit/${key}`
   await page.goto(url)
   const picker = page.locator('crombolo-form-picker')
   const select = picker.getByRole('combobox', { name: 'Form', exact: true })
   await expect(select).toHaveValue(CONTACT)
   // Grouped choices come first in the select, and No form after them.
-  for (const choice of ['No form', 'Cove – Trade', "Write to the cove (the form's own words)"])
+  for (const choice of ['No form', TRADE, "Write to the cove (the form's own words)"])
     await expect(select).toContainText(choice)
   await expect(picker).toContainText('7 fields over 1 page')
 
-  await select.selectOption({ label: 'Cove – Trade' })
+  await select.selectOption({ label: TRADE })
   await picker.getByText('View form fields', { exact: true }).click()
   const preview = picker.locator('details')
   await expect(preview.locator('.fields > li')).toHaveCount(7)
@@ -73,7 +84,7 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
   await expect(preview).toContainText('Required')
   // A save clicked while the page is still settling is ignored, so it is clicked until it lands.
   await expect(async () => {
-    await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+    await save()
     const doc = await (await page.request.get(`${API}/document/${key}`)).json()
     expect(
       doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value,
@@ -85,7 +96,9 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
     await select.selectOption({ label: 'No form' })
     await expect(picker.locator('details')).toHaveCount(0, { timeout: 1_000 })
   }).toPass({ timeout: 15_000 })
-  await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+  await expect(async () => {
+    await save()
+  }).toPass({ timeout: 15_000 })
   await expect
     .poll(async () => {
       const doc = await (await page.request.get(`${API}/document/${key}`)).json()
@@ -94,10 +107,10 @@ test('a page picks a Library form, keeps a form it named itself, and reveals the
       )
     })
     .toBeNull()
-  await select.selectOption({ label: 'Cove – Trade' })
+  await select.selectOption({ label: TRADE })
   // A save clicked while the one before is under way is ignored, so it is clicked until it lands.
   await expect(async () => {
-    await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
+    await save()
     const doc = await (await page.request.get(`${API}/document/${key}`)).json()
     expect(
       doc.values.find((value: { alias: string }) => value.alias === 'enquiryForm')?.value,
