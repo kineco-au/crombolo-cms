@@ -40,7 +40,11 @@ export class UmbBackofficeContext extends UmbContextBase {
 						this,
 						umbExtensionsRegistry,
 						'section',
-						(manifest) => allowedSections.includes(manifest.alias),
+						// Crombolo: a section may come with another's grant, and have none of its own.
+						(manifest) =>
+							allowedSections.includes(
+								(manifest.meta as { allowedWith?: string } | undefined)?.allowedWith ?? manifest.alias,
+							),
 						async (sections) => {
 							this.#allowedSections.setValue(sections);
 						},
