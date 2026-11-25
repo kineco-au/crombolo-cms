@@ -289,13 +289,8 @@ export class UmbDocumentPublishingWorkspaceContext extends UmbContextBase implem
 		const workspaceContext = this.#documentWorkspaceContext;
 		const saveData = await workspaceContext.constructSaveData(variantIds);
 
-		try {
-			await workspaceContext.runMandatoryValidationForSaveData(saveData, variantIds);
-		} catch (error) {
-			// This throws before the submit flow starts, so nothing downstream tells the user why. [JOV]
-			this.#notify('danger', 'speechBubbles_editContentPublishedFailedByValidation');
-			throw error;
-		}
+		// Crombolo: it says why itself, and nothing was saved.
+		await workspaceContext.runMandatoryValidationForSaveData(saveData, variantIds);
 
 		await workspaceContext.askServerToValidate(saveData, variantIds);
 

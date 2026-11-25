@@ -53,6 +53,9 @@ import {
 	UmbServerModelValidatorContext,
 	UmbValidationController,
 } from '@umbraco-cms/backoffice/validation';
+import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification';
+import { UmbLocalizationController } from '@umbraco-cms/backoffice/localization-api';
+import { UmbApiError, UmbCancelError } from '@umbraco-cms/backoffice/resources';
 import type { ClassConstructor } from '@umbraco-cms/backoffice/extension-api';
 import type { Observable } from '@umbraco-cms/backoffice/external/rxjs';
 import type { UmbContentTypeDetailModel, UmbPropertyTypeModel } from '@umbraco-cms/backoffice/content-type';
@@ -841,6 +844,45 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 		return this.readOnlyGuard.getIsPermittedForVariant(UmbVariantId.Create(option)) === false;
 	};
 
+	// Crombolo: a save that fails always says so, once.
+	#toldOf = new WeakSet<object>();
+
+	async #tellNotSaved(error: unknown, message?: string): Promise<void> {
+		const isObject = typeof error === 'object' && error !== null;
+		if (isObject) {
+			if (this.#toldOf.has(error)) return;
+			this.#toldOf.add(error);
+		}
+
+		const cause = error instanceof Error ? error.cause : undefined;
+		if (cause && UmbCancelError.isUmbCancelError(cause)) return;
+		if (cause && UmbApiError.isUmbApiError(cause)) {
+			// What the request notified of already; these statuses it leaves to the editor.
+			if (![401, 403, 404].includes(cause.problemDetails?.status ?? cause.status)) return;
+			if (cause.problemDetails?.operationStatus === 'CancelledByNotification') return;
+			message ??= cause.problemDetails?.detail ?? undefined;
+		}
+
+		const localize = new UmbLocalizationController(this);
+		const notifications = await this.getContext(UMB_NOTIFICATION_CONTEXT);
+		notifications?.peek('danger', {
+			data: {
+				headline: localize.term('speechBubbles_contentNotSavedHeader'),
+				message: message ?? localize.term('speechBubbles_contentNotSavedText'),
+			},
+		});
+		localize.destroy();
+	}
+
+	async #tellingNotSaved<T>(work: () => Promise<T>): Promise<T> {
+		try {
+			return await work();
+		} catch (error) {
+			await this.#tellNotSaved(error);
+			throw error;
+		}
+	}
+
 	/* validation */
 
 	/**
@@ -861,7 +903,7 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 			throw new Error('One or more selected variants have not been created');
 		}
 		// Check variants have a name:
-		const variantsWithoutAName = saveData.variants.filter((x) => !x.name);
+		const variantsWithoutAName = saveData.variants.filter((x) => !x.name?.trim());
 		if (variantsWithoutAName.length > 0) {
 			const validationContext = await this.getContext(UMB_VALIDATION_CONTEXT);
 			if (!validationContext) {
@@ -874,10 +916,20 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 					UMB_VALIDATION_EMPTY_LOCALIZATION_KEY,
 				);
 			});
-			throw new Error(
+			const error = new Error(
 				'All variants must have a name, these variants are missing a name: ' +
 					variantsWithoutAName.map((x) => (x.culture ?? 'invariant') + '_' + (x.segment ?? '')).join(', '),
 			);
+			// Crombolo: told here, for every way of saving and publishing that checks it.
+			const languages = variantsWithoutAName.map((x) => x.culture).filter((x): x is string => !!x);
+			const localize = new UmbLocalizationController(this);
+			const message =
+				languages.length > 0
+					? localize.term('speechBubbles_contentNotSavedNoNameIn', [...new Set(languages)].join(', '))
+					: localize.term('speechBubbles_contentNotSavedNoName');
+			localize.destroy();
+			await this.#tellNotSaved(error, message);
+			throw error;
 		}
 	}
 
@@ -914,11 +966,11 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 	 * @returns {Promise<void>} a promise which resolves once it has been completed.
 	 */
 	public override requestSubmit(): Promise<void> {
-		return this._handleSubmit();
+		return this.#tellingSave(() => this._handleSubmit());
 	}
 
 	public override submit() {
-		return this._handleSubmit();
+		return this.#tellingSave(() => this._handleSubmit());
 	}
 
 	/**
@@ -927,7 +979,20 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 	 * @returns {Promise<void>} A promise which resolves once it has been completed.
 	 */
 	public requestSave(options?: UmbWorkspaceActionExecutionOptions) {
-		return this._handleSave(options);
+		return this.#tellingSave(() => this._handleSave(options));
+	}
+
+	/**
+	 * A string is how leaving the language picker rejects, which is a choice and not a failure.
+	 * @param {() => Promise<void>} save - The save to run.
+	 */
+	async #tellingSave(save: () => Promise<void>): Promise<void> {
+		try {
+			await save();
+		} catch (error) {
+			if (typeof error !== 'string') await this.#tellNotSaved(error);
+			throw error;
+		}
 	}
 
 	/**
@@ -997,7 +1062,12 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 			if (valid || this.#ignoreValidationResultOnSubmit) {
 				await this.performCreateOrUpdate(variantIds, saveData);
 			} else {
-				return Promise.reject('Validation issues prevent saving');
+				const error = new Error('Validation issues prevent saving');
+				await this.#tellNotSaved(
+					error,
+					new UmbLocalizationController(this).term('speechBubbles_contentNotSavedInvalid'),
+				);
+				throw error;
 			}
 		} else {
 			await this.performCreateOrUpdate(variantIds, saveData);
@@ -1090,9 +1160,11 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 		const parent = this._internal_getCreateUnderParent();
 		if (!parent) throw new Error('Parent is not set');
 
-		const persisted = overwriteCreate
-			? await overwriteCreate(saveData, variantIds, parent)
-			: await this.#defaultCreatePersistence(saveData, parent.unique);
+		const persisted = await this.#tellingNotSaved<DetailModelType | undefined>(() =>
+			overwriteCreate
+				? overwriteCreate(saveData, variantIds, parent)
+				: this.#defaultCreatePersistence(saveData, parent.unique),
+		);
 
 		// Set persisted AND current before flipping isNew: the flip triggers the new->edit redirect,
 		// whose navigation guard compares the two states with an order-sensitive comparison.
@@ -1110,9 +1182,9 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 		saveData: DetailModelType,
 		overwriteUpdate?: UmbContentWorkspaceCreateOrUpdatePersistMethods<DetailModelType>['update'],
 	) {
-		const persisted = overwriteUpdate
-			? await overwriteUpdate(saveData, variantIds)
-			: await this.#defaultUpdatePersistence(saveData);
+		const persisted = await this.#tellingNotSaved<DetailModelType | undefined>(() =>
+			overwriteUpdate ? overwriteUpdate(saveData, variantIds) : this.#defaultUpdatePersistence(saveData),
+		);
 
 		await this.#applyPersistedData(persisted, variantIds);
 
@@ -1130,14 +1202,14 @@ export abstract class UmbContentDetailWorkspaceContextBase<
 	async #defaultCreatePersistence(saveData: DetailModelType, parentUnique: string | null): Promise<DetailModelType> {
 		if (!this._detailRepository) throw new Error('Detail repository is not set');
 		const { data, error } = await this._detailRepository.create(saveData, parentUnique);
-		if (!data || error) throw new Error('Error creating content');
+		if (!data || error) throw new Error('Error creating content', { cause: error });
 		return data;
 	}
 
 	async #defaultUpdatePersistence(saveData: DetailModelType): Promise<DetailModelType> {
 		if (!this._detailRepository) throw new Error('Detail repository is not set');
 		const { data, error } = await this._detailRepository.save(saveData);
-		if (!data || error) throw new Error('Error saving content');
+		if (!data || error) throw new Error('Error saving content', { cause: error });
 		return data;
 	}
 
