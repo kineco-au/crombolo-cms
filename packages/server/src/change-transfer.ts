@@ -27,6 +27,7 @@ import {
   type PagePlace,
   PLACE_PREFIX,
   SCHEDULE_PREFIX,
+  SIBLINGS_PREFIX,
   TransferRunRepository,
   type Workspace,
   WorkspaceFileRepository,
@@ -238,6 +239,8 @@ export interface ChangeTransferOptions {
       }
     | undefined
   merge: () => WorkspaceMerging | undefined
+  /** Story 425: whether the site takes its content only by a change, so nobody reorders here. */
+  locked?: () => boolean
   /** Story 405: whether user groups are defined outside the site, so a change carrying one is refused. */
   groupsManaged?: () => boolean
 }
@@ -449,6 +452,15 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
           },
         ]),
     )
+    // Story 425: the order each parent's children stood in when it made or moved a page there.
+    const siblings = new Map(
+      items
+        .filter((i) => i.path.startsWith(SIBLINGS_PREFIX) && i.after)
+        .map((i) => [
+          i.path.slice(SIBLINGS_PREFIX.length),
+          JSON.parse(i.after as string) as string[],
+        ]),
+    )
     const orders: ChangeOrder[] = items
       .filter((i) => i.path.startsWith(ORDER_PREFIX) && i.before && i.after)
       .map((i) => {
@@ -464,6 +476,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         item.path.startsWith(REMOVED_PAGE_PREFIX) ||
         item.path.startsWith(SCHEDULE_PREFIX) ||
         item.path.startsWith(PLACE_PREFIX) ||
+        item.path.startsWith(SIBLINGS_PREFIX) ||
         item.path.startsWith(ORDER_PREFIX)
       )
         continue
@@ -506,6 +519,10 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       if (page.after && schedule) page.after.schedule = schedule
       const place = places.get(normaliseUuid(row.nodeKey))
       if (place) placeOn(page, place)
+      if (page.kind === 'document' && (action === 'create' || page.beforeParentKey !== undefined)) {
+        const among = siblings.get(page.parentKey ? normaliseUuid(page.parentKey) : 'root')
+        if (among) page.siblings = among
+      }
       pages.push(page)
       depends.push(...(await madeBy([page.after], change.key)))
       if (page.lastChange && page.action !== 'create') depends.push(page.lastChange)
@@ -876,12 +893,14 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         variants: variantsOf(after),
       })
       if (after.published) await here.publish(page.key, null)
+      await placeAmong(here, page)
       return
     }
 
     // Story 411: restored from the bin there, and in this site's bin, it comes out here too.
     if (page.restored && (await shared.nodes.byKey(page.key))?.trashed) {
       await here.move(page.key, page.parentKey)
+      await placeAmong(here, page)
       return
     }
     const now = (await here.byKey(page.key)) ?? target
@@ -926,8 +945,10 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       })
     }
     if (page.beforeParentKey !== undefined && now.parentKey !== page.parentKey) {
-      if (now.parentKey === page.beforeParentKey) await here.move(page.key, page.parentKey)
-      else {
+      if (now.parentKey === page.beforeParentKey) {
+        await here.move(page.key, page.parentKey)
+        await placeAmong(here, page)
+      } else {
         moved(label)
         conflict(label, `${label} was moved here since.`)
       }
@@ -939,9 +960,40 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
   }
 
   /**
+   * Story 425: a page a change made or moved, put where it stood among its parent's
+   * children there: after the nearest one before it that this site has, else before the
+   * nearest after it. The others keep their order, and it is never a conflict.
+   */
+  async function placeAmong(here: DocumentRepository, page: ChangeBundlePage) {
+    if (!page.siblings || page.kind !== 'document') return
+    const key = normaliseUuid(page.key)
+    const now = (await here.children(page.parentKey, 0, 10_000)).items.map((n) =>
+      normaliseUuid(n.key),
+    )
+    const wanted = page.siblings.map(normaliseUuid)
+    const at = wanted.indexOf(key)
+    if (at < 0 || !now.includes(key)) return
+    const rest = now.filter((k) => k !== key)
+    const before = wanted
+      .slice(0, at)
+      .reverse()
+      .find((k) => rest.includes(k))
+    const after = before ? undefined : wanted.slice(at + 1).find((k) => rest.includes(k))
+    if (!before && !after) return
+    const index = before ? rest.indexOf(before) + 1 : rest.indexOf(after as string)
+    const next = [...rest.slice(0, index), key, ...rest.slice(index)]
+    if (next.join() === now.join()) return
+    await here.sort(
+      page.parentKey,
+      next.map((k, sortOrder) => ({ key: k, sortOrder })),
+    )
+  }
+
+  /**
    * Story 411: a parent's children put in the order a change set, those this site has in
    * that order and the rest after; a parent reordered here since the change began is a
-   * conflict, as a moved page is.
+   * conflict, as a moved page is. Story 425: not where content is locked, where nobody
+   * reorders and another order is only pages having arrived in another.
    */
   async function stageOrder(
     workspace: Workspace,
@@ -958,7 +1010,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const both = new Set(now.filter((k) => found.has(k)))
     const seq = (keys: readonly string[]) => keys.filter((k) => both.has(k)).join()
     if (seq(now) === seq(wanted)) return
-    if (seq(now) !== seq(order.before.map(normaliseUuid))) {
+    if (!options.locked?.() && seq(now) !== seq(order.before.map(normaliseUuid))) {
       const parent = order.parentKey ? await here.byKey(order.parentKey) : undefined
       const named = parent
         ? `"${(parent.variants.find((v) => v.culture === null) ?? parent.variants[0])?.name ?? order.parentKey}"`

@@ -576,5 +576,5 @@ it.
 | `421` | A change staged after another builds on it | must | S | done | 383, 399, 403 |
 | `422` | A large change is taken wherever workspaces are on | should | S | done | 383, 399, 420 |
 | `423` | A staged change's schedule is set however it is merged | must | S | done | 395, 414 |
-| `425` | A page that arrives by a change takes its place in the order | must | M | ready | 411 |
+| `425` | A page that arrives by a change takes its place in the order | must | M | done | 411 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

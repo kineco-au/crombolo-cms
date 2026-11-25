@@ -16,6 +16,7 @@ import {
   Locks,
   type ScheduleEntryAt,
   SystemNodes,
+  siblingsPath,
   TransferRunRepository,
   type Workspace,
   WorkspaceRepository,
@@ -526,6 +527,33 @@ export async function runWorkspaceMerge(
             pages,
             removed: items,
           })
+          // Story 425: each page it made or moved, with its parent's children in order now.
+          const placed = [
+            ...plan.pages
+              .filter((p) => p.page.made && p.page.kind === 'document')
+              .map((p) => p.page.key),
+            ...plan.pending.flatMap(({ pending }) =>
+              pending.kind === 'move' && pending.key !== null ? [pending.key] : [],
+            ),
+          ]
+          for (const key of placed) {
+            const page = await shared.byKey(key)
+            if (!page) continue
+            const path = siblingsPath(page.parentKey)
+            const held = items.findIndex((i) => i.path === path)
+            if (held >= 0) items.splice(held, 1)
+            items.push({
+              path,
+              kind: 'page',
+              class: 'none',
+              before: null,
+              after: JSON.stringify(
+                (await shared.children(page.parentKey, 0, 10_000)).items.map((n) =>
+                  normaliseUuid(n.key),
+                ),
+              ),
+            })
+          }
           // Story 423: the schedules of the changes staged in it, each naming its change.
           for (const change of workspace.stagedChanges ?? []) {
             if (!applying.has(change.key)) continue

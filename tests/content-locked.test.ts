@@ -1103,6 +1103,83 @@ approvers = ["admin"]
   }, 60_000)
 })
 
+// Story 425: a page that arrives by a change takes its place in the order.
+describe(`a page that arrives by a change takes its place in the order (${dialectUnderTest}, story 425)`, () => {
+  type Site = Awaited<ReturnType<typeof site>>
+  const sort = (s: Site, keys: string[]) =>
+    s.send('PUT', `${V1}/document/sort`, {
+      parent: { id: HOME },
+      sorting: keys.map((id, sortOrder) => ({ id, sortOrder })),
+    })
+  const lastBundle = async (s: Site, told: ReturnType<typeof announcements>) => {
+    const [announced] = await told.fresh()
+    const id = (await s.changes()).find((c) => c.key === announced?.key)?.id
+    return s.take(`changes/${id}/bundle`)
+  }
+  const taken = async (s: Site, bundle: Bytes) => {
+    const applied = await s.put(bundle)
+    expect(applied.status, await applied.clone().text()).toBe(200)
+  }
+
+  test('pages that arrive in another order end in the order they were made in, and a reorder follows', async () => {
+    const source = await site()
+    const told = announcements(source)
+    await told.fresh()
+    const made: Bytes[] = []
+    for (const [name, key] of [
+      ['Alpha', ALPHA],
+      ['Beta', BETA],
+      ['Gamma', GAMMA],
+    ] as const) {
+      await source.page(name, { title: name }, { key, parent: HOME })
+      made.push(await lastBundle(source, told))
+    }
+    expect((await sort(source, [GAMMA, ALPHA, BETA])).status).toBe(200)
+    const reordered = await lastBundle(source, told)
+    // Moved under Alpha, it is kept with its place there too.
+    await source.send('PUT', `${V1}/document/${GAMMA}/move`, { target: { id: ALPHA } })
+    const moved = await lastBundle(source, told)
+    await source.close()
+
+    const served = await site(LOCKED)
+    // Beta last, as one that waited for something a later change brought.
+    for (const bundle of [made[0], made[2], made[1]]) await taken(served, bundle as Bytes)
+    expect(await childrenOf(served, HOME)).toEqual([ALPHA, BETA, GAMMA])
+    await taken(served, reordered)
+    expect(await childrenOf(served, HOME)).toEqual([GAMMA, ALPHA, BETA])
+    await taken(served, moved)
+    expect(await childrenOf(served, HOME)).toEqual([ALPHA, BETA])
+    expect(await childrenOf(served, ALPHA)).toEqual([GAMMA])
+  }, 90_000)
+
+  test('where content is locked a reorder is applied over another order; a merge keeps the place of a page it made', async () => {
+    const source = await site()
+    await threePages(source)
+    const told = announcements(source)
+    await told.fresh()
+    expect((await sort(source, [GAMMA, ALPHA, BETA])).status).toBe(200)
+    const reordered = await lastBundle(source, told)
+    const named = await source.opened('Spring')
+    await source.page('Delta', { title: 'D' }, { parent: HOME, workspace: named.key })
+    await source.merge(named.key)
+    const merged = (await source.changes()).find((c) => c.kind === 'merge')
+    const items = await new ChangeRepository(source.h.server.db).itemsOf(merged?.id as string, {
+      pages: true,
+    })
+    expect(items.map((i) => i.path)).toContain(`siblings/${HOME}`)
+    await source.close()
+
+    // Its pages in another order, as ones that arrived so: nobody sorts a locked site.
+    const served = await site(LOCKED)
+    await threePages(served)
+    served.h.server.config.contentEditing = 'editable'
+    expect((await sort(served, [BETA, ALPHA, GAMMA])).status).toBe(200)
+    served.h.server.config.contentEditing = 'locked'
+    await taken(served, reordered)
+    expect(await childrenOf(served, HOME)).toEqual([GAMMA, ALPHA, BETA])
+  }, 60_000)
+})
+
 // Story 417: a change that only schedules says so, with its times.
 describe(`a change that only schedules says so (${dialectUnderTest}, story 417)`, () => {
   const later = () => new Date(Math.floor(Date.now() / 1000) * 1000 + 3_600_000).toISOString()

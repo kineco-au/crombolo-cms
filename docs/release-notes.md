@@ -24,6 +24,13 @@ point at `docs/stories/`.
 - **An update says how many rows it changed (426).** The query builder's writes reported no
   count, so code that asked got nothing; the save above was one. They report it now. Renaming
   or removing a trusted signer and removing a CI trust rule answer truly whether one was there.
+- **A page that arrives by a change takes its place in the order (425).** A page a change
+  made or moved landed last among its siblings on the site taking it, so two sites drifted
+  apart whenever pages arrived in another order, and a later reorder was refused as a
+  conflict ("put in another order here since") that nobody on a locked site could settle. A
+  change now carries the page's place and it is put there; and where content is locked a
+  reorder is always applied, which puts right a site already out of step. A site that is not
+  locked still answers the conflict.
 - **A staged change's schedule is set however it is merged (423).** A change carrying a
   publish or unpublish time, staged on another site and merged through the workspace's own
   merge (`POST workspaces/{key}/merge`, the back office, the command line), arrived without

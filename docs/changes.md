@@ -284,6 +284,15 @@ way, with `Change.Kind` saying which (story `411`):
   recycle bin (or made again, if deleted there for good), deleted once `page-deleted` is
   accepted; the parent's children it has are put in the change's order, the rest after.
   A parent reordered there since the change began is a conflict, as a moved page is.
+- **A page keeps its place** (story `425`). A change that makes a page, or moves one to
+  another parent, holds that parent's children in order then (`siblings/<key>`,
+  `siblings/root`), and its bundle carries them on the page (`siblings`). Taken on another
+  site, the page is put after the nearest one before it that the site has, else before
+  the nearest after it; the others keep their order, and it is never a conflict. So pages
+  that arrive in another order than they were made end in the order they were made in.
+- **Where content is locked, a reorder is always applied** (story `425`): nobody reorders
+  there, so another order is only pages having arrived in another. A site that is not
+  locked still answers a conflict.
 - **The recycle bin is the delete.** Emptying it announces nothing more; restoring from it
   is announced as a move.
 - **In a person's own workspace,** done to a page Shared has, each merges that page at

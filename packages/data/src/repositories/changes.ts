@@ -35,6 +35,13 @@ export interface PagePlace {
   trashed?: boolean
 }
 
+/** Story 425: where a change keeps the order a page it made or moved stood in: `siblings/<parent>` or `siblings/root`. */
+export const SIBLINGS_PREFIX = 'siblings/'
+
+/** The item path for the order a parent's children stood in when a change put a page among them. */
+export const siblingsPath = (parentKey: string | null) =>
+  `${SIBLINGS_PREFIX}${parentKey ? normaliseUuid(parentKey) : 'root'}`
+
 /** The item path for a parent's children's order. */
 export const orderPath = (parentKey: string | null) =>
   `${ORDER_PREFIX}${parentKey ? normaliseUuid(parentKey) : 'root'}`
@@ -286,6 +293,21 @@ export class ChangeRepository {
     await this.#keepItem(id, `${PLACE_PREFIX}${normaliseUuid(page.key)}`, before, after)
     await this.#touch(id, now)
     return true
+  }
+
+  /**
+   * Story 425: a page a person made or moved straight in Shared, with its parent's children
+   * in order then, so it takes the same place where the change is taken.
+   */
+  async amongSiblings(
+    madeBy: string,
+    parentKey: string | null,
+    keys: readonly string[],
+    now = new Date(),
+  ): Promise<void> {
+    const id = await this.#openEdit(madeBy, now)
+    await this.#keepItem(id, siblingsPath(parentKey), null, keys)
+    await this.#touch(id, now)
   }
 
   /** A parent's children a person reordered straight in Shared (story 411), before and now. */

@@ -2043,6 +2043,7 @@ export async function createServer(
     schema: () => workspaceSchema,
     merge: () => core.operations.merge,
     groupsManaged: () => groupsManaged(config),
+    locked: () => contentLocked(config),
   })
   // Story 394: the remote's change routes, on the Management API for a bearer token.
   const managementChanges = createChangeRoutes({

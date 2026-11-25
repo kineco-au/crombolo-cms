@@ -127,6 +127,10 @@ export type ChangeKind = 'unpublish' | 'move' | 'reorder' | 'delete' | 'schedule
 /** A schedule's times as the event carries them (story 417). */
 type ScheduleTimes = ReturnType<typeof scheduleEntries>
 
+/** A parent's children in order, by key. */
+const childKeys = async (docs: DocumentRepository, parentKey: string | null) =>
+  (await docs.children(parentKey, 0, 10_000)).items.map((n) => normaliseUuid(n.key))
+
 /**
  * Story 411: an unpublish, move, reorder, restore or delete straight in Shared, put in the
  * person's change with where the page stood; what to announce, or undefined for any other.
@@ -175,6 +179,7 @@ async function placeInChange(
       }
       const after = { parentKey: doc.parentKey, published: doc.published }
       if (!(await changes.placed(userKey, page(event.key), before, after))) return undefined
+      await changes.amongSiblings(userKey, doc.parentKey, await childKeys(docs, doc.parentKey))
       return { key: event.key, says: { kind: 'move' } }
     }
     case 'trashed': {
@@ -217,6 +222,13 @@ export function createContentEventSink(options: ContentEventSinkOptions): EventS
     }
     if (!key) return
     if (SAVES.has(event.type)) await changes.pageSavedBy(userKey, { key, kind: 'document' })
+    // Story 425: one just made is kept with its place among its parent's children.
+    if (event.type === 'created' || event.type === 'createdAndPublished') {
+      const docs = new DocumentRepository(tx)
+      const made = await docs.byKey(key)
+      if (made)
+        await changes.amongSiblings(userKey, made.parentKey, await childKeys(docs, made.parentKey))
+    }
     // Story 395: setting or clearing a schedule is passed on as a publish is.
     const scheduled = event.type === 'scheduled'
     if (!PUBLISHES.has(event.type) && !scheduled) return

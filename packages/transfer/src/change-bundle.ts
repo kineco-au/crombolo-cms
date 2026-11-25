@@ -59,6 +59,11 @@ export interface ChangeBundlePage {
   beforeParentKey?: string | null
   /** Story 411: taken out of the recycle bin by the change. */
   restored?: true
+  /**
+   * Story 425: its parent's children in order where the change made or moved it, itself
+   * among them, so it takes the same place where the change is taken.
+   */
+  siblings?: string[]
   contentTypeKey: string
   contentTypeAlias: string
   componentKey: string | null
