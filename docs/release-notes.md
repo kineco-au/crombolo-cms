@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.79.1 — 2026-11-25
+
 ### Features
 
 - **The Crombolo demo, rewritten for what Crombolo does now.** The home page is for editors:
@@ -37,8 +39,8 @@ point at `docs/stories/`.
   site that had made a type since could not be levelled with the one it was copied from. A
   replace now applies the file's schema as it applies everything else, with no option to
   pass: the types the file lacks are retired and the site's schema version becomes the
-  file's. The check before a replace reports it (`summary.schema`). A file with no schema is
-  refused where the site has one, saying so. An import that is not a replace is unchanged.
+  file's. The check before a replace reports it (`summary.schema`). A file with no schema
+  is treated as before, and where it is refused the reason now says it carries no schema. An import that is not a replace is unchanged.
 - **A staged change's schedule is set however it is merged (423).** A change carrying a
   publish or unpublish time, staged on another site and merged through the workspace's own
   merge (`POST workspaces/{key}/merge`, the back office, the command line), arrived without
@@ -48,6 +50,28 @@ point at `docs/stories/`.
   for a page a workflow covers, from a staged change or from a workspace, used to be set on
   the page and publish it at that time unapproved. It now waits with the approval request
   the merge sends.
+
+### Migrations
+
+None.
+
+### Upgrade notes
+
+- **A replace can take a site's schema back (424).** `--replace` and `--replace-all`, and a
+  host's `contentImport` with `replace`, now apply a file whose schema is older than the
+  site's, retiring the types the file lacks. Look at the check first (`summary.schema`). The
+  replaced schema stays only where the site's schema is kept, in its schema store or a
+  folder that outlives the node; a node that starts again from newer schema files of its own
+  applies those over it.
+- **A host that takes changes** needs to change nothing: a change's bundle gains
+  `pages[].siblings`, which an older site ignores, and a bundle from an older site is taken
+  as before, its new pages last.
+- **On a locked site a reorder from another site is always applied (425),** where it used
+  to answer a conflict when the order differed.
+- **Approvals:** a time a merge brings for a page a workflow covers is on the approval
+  request, not the page, until it is approved (423).
+- **Code that wraps the database handle** (`Db`) must pass `run` through, as it does `exec`
+  (426).
 
 ## v0.79.0 — 2026-11-24
 

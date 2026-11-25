@@ -250,9 +250,12 @@ describe(`a workspace on a site of several thousand files (${dialectUnderTest})`
             .execute()
         )[0]?.n,
       )
-    const blobs = await count('file_blob')
-    expect(blobs).toBeGreaterThan(3000)
-    expect(await count('workspace_file')).toBe(blobs * 2)
+    // The texts the workspaces hold: a change keeps what else it records beside them.
+    const texts = (await db.q.selectFrom('workspace_file').select('hash').distinct().execute())
+      .length
+    expect(texts).toBeGreaterThan(3000)
+    expect(await count('workspace_file')).toBe(texts * 2)
+    expect(await count('file_blob')).toBeLessThan(texts + 20)
     expect(took).toBeLessThan(30_000)
   }, 120_000)
 })

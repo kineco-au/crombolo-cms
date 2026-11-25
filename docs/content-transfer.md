@@ -930,8 +930,9 @@ the same version with other definitions, as well as newer. The types the file la
 retired and the site's schema version becomes the file's, lower though it may be. An
 import that is not a replace still refuses both. The check before a replace says so
 (`summary.schema`: `from`, `to`, `retiredTypes`), and `crombolo site import` prints it. A
-file with no schema at all is refused where the site has one of its own, since it would
-retire every type. A replace stays only where the site's schema is kept: in its schema
+file with no schema at all is held to the version rules as before: it is taken where the
+site has no schema files either, and refused, saying the file carries no schema, where
+the site is at a schema version of its own, since it would retire every type. A replace stays only where the site's schema is kept: in its schema
 store, which the replace publishes to, or in a folder that outlives the node. A node that
 starts again from newer schema files of its own, as one with its schema in its image
 does, applies those over the replace; deploy it with the replaced schema.

@@ -450,6 +450,35 @@ describe(`a replace and the schema's version (${dialectUnderTest}, story 424)`, 
     expect(existsSync(join(b.root, 'schema', 'content-types', 'article.toml'))).toBe(false)
   }, 30_000)
 
+  test('a site with no schema files is exported and replaced from its own file, as before', async () => {
+    const root = temp('plain')
+    for (const dir of ['schema', 'components', 'css', 'scripts', 'media'])
+      mkdirSync(join(root, dir), { recursive: true })
+    const h = await signedInServer({
+      config: {
+        siteDir: root,
+        schemaDir: join(root, 'schema'),
+        componentsDir: join(root, 'components'),
+        stylesheetsDir: join(root, 'css'),
+        scriptsDir: join(root, 'scripts'),
+        mediaDir: join(root, 'media'),
+        sqliteFile: join(root, 'site.sqlite'),
+      },
+    })
+    open.push(h)
+    const out = join(temp('file'), 'site.tgz')
+    await exportSite(h.server.db, h.server.config, { out })
+    const { summary } = await siteReplaceCheck(h.server.config, { bundle: out, replace: 'replace' })
+    expect(summary.schema?.refused).toBeUndefined()
+    const replaced = await contentImport(h.server.config, {
+      bundle: out,
+      replace: 'replace',
+      backupTaken: true,
+    })
+    expect(replaced.problems).toEqual([])
+    expect(replaced.runId).toBeDefined()
+  }, 30_000)
+
   test('a file with no schema is refused, saying so', async () => {
     const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
     a.h.server.config.schemaDir = temp('no-schema')

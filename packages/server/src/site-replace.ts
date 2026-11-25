@@ -146,7 +146,7 @@ export async function recordPruned(tx: Db, runId: string, pruned: PrunedNode[]):
 
 /** Why a replace from a file with no schema is refused (story 424). */
 export const NO_SCHEMA =
-  'this file carries no schema, so replacing this site with it would retire every type it has; export it from a site that has its schema'
+  'this file carries no schema, and this site has one: replacing the site with it would retire every type it has; export it from a site that has its schema files'
 
 /** Story 424: what a replace would do to the site's schema, which it takes whatever its version. */
 export interface ReplaceSchema {
@@ -165,10 +165,9 @@ export async function replaceSchema(
   config: CromboloConfig,
   carried: CarriedSections,
 ): Promise<ReplaceSchema> {
-  const current = await currentSchemaState(db)
-  const from = current.version
-  if ((carried.carries.schema ?? []).length === 0 && current.hash !== null)
-    return { from, to: from, retiredTypes: [], refused: NO_SCHEMA }
+  const from = (await currentSchemaState(db)).version
+  // One with no schema is held to the version rules, or it would retire every type.
+  const carriesSchema = (carried.carries.schema ?? []).length > 0
   const dir = mkdtempSync(join(tmpdir(), 'crombolo-replace-check-'))
   try {
     const staged = stagedConfig(config, stageSections(config, carried, { replace: true }, dir))
@@ -177,14 +176,20 @@ export async function replaceSchema(
       db,
       loaded,
       { nodeId: config.nodeId, version: loaded.set.version, revision: config.schemaRevision },
-      { ...syncOptionsFor(staged), forceRetireTypes: true, takeFiles: true, dryRun: true },
+      {
+        ...syncOptionsFor(staged),
+        forceRetireTypes: true,
+        takeFiles: carriesSchema,
+        dryRun: true,
+      },
     )
+    const refused = report.action === 'refused' || report.action === 'skipped-older'
     return {
       from,
-      to: loaded.set.version,
+      to: carriesSchema ? loaded.set.version : from,
       retiredTypes: report.retiredTypes,
-      ...(report.action === 'refused'
-        ? { refused: report.reason ?? 'the schema has problems' }
+      ...(refused
+        ? { refused: carriesSchema ? (report.reason ?? 'the schema has problems') : NO_SCHEMA }
         : {}),
     }
   } finally {

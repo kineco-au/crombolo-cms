@@ -815,15 +815,6 @@ export async function installBundleContent(
       ],
       backup,
     )
-  // Story 424: a replace takes the file's schema whatever its version, so one with none
-  // would retire every type of a site that has its own.
-  if (
-    replace &&
-    !effective.withoutSchema &&
-    (carried.carries.schema ?? []).length === 0 &&
-    (await currentSchemaState(db)).hash !== null
-  )
-    return refuse([NO_SCHEMA], backup)
   const needingPermission = [
     ...(plan ? replacementsNeedingPermission(plan, effective) : []),
     ...(effective.replaceFiles ? [] : code.filter((file) => file.action === 'overwrite')),
@@ -860,6 +851,7 @@ export async function installBundleContent(
     rmSync(runDir, { recursive: true, force: true })
   }
 
+  const carriesSchema = (carried.carries.schema ?? []).length > 0
   // ---- 2. One transaction
   let schemaAction: string | undefined
   let dictionary: SectionResult['dictionary']
@@ -877,11 +869,15 @@ export async function installBundleContent(
               tx,
               stagedConfig(config, staged),
               { nodeId: config.nodeId, revision: config.schemaRevision },
-              { forceRetireTypes: Boolean(replace), takeFiles: Boolean(replace) },
+              // Story 424: a replace takes the file's schema whatever its version. One with
+              // no schema is held to the version rules, or it would retire every type.
+              { forceRetireTypes: Boolean(replace), takeFiles: Boolean(replace) && carriesSchema },
             )
             if (report.action === 'refused' || report.action === 'skipped-older')
               throw new InstallRefused([
-                `the schema this bundle carries was not applied: ${report.reason ?? report.action}`,
+                replace && !carriesSchema
+                  ? NO_SCHEMA
+                  : `the schema this bundle carries was not applied: ${report.reason ?? report.action}`,
               ])
             schemaAction = report.action
           }

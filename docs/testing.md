@@ -1104,7 +1104,9 @@ The Postgres runs use `--timeout 20000`. They are roughly four times slower than
 SQLite's private in-memory databases and every test boots a server — migrations,
 then a seed — so several sit at one to two seconds. Bun's 5s default leaves too
 little headroom, and the heaviest tests time out when the host is busy rather than
-when anything is wrong. The SQLite runs keep the default.
+when anything is wrong. The local SQLite run (`bun run test`) uses `--timeout 10000`
+for the same reason: its tests that start the command line sit near the default when six
+shards share the host. CI's SQLite jobs keep the default.
 
 Both dialects are exercised from day one, and it has paid for itself: it caught
 `SET search_path` not surviving Bun's connection pool, Postgres refusing to infer

@@ -607,6 +607,8 @@ export class ChangeRepository {
       .selectFrom('change_item')
       .select(['run_id', (eb) => eb.fn.countAll<number>().as('n')])
       .where('run_id', 'in', ids)
+      // Story 425: where a page stood among its siblings is not something a change lists.
+      .where('path', 'not like', `${SIBLINGS_PREFIX}%`)
       .groupBy('run_id')
       .execute())
       items.set(String(row.run_id), Number(row.n))

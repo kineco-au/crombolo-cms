@@ -76,8 +76,9 @@ Going back has consequences the rules were hiding:
 - [x] A replace's sync applies the same version with other definitions on a site not in
       development.
 - [x] An import that is not a replace is refused, as today.
-- [x] A replace from a file with no schema, onto a site that has one, is refused, saying
-      the file carries no schema.
+- [x] A replace from a file with no schema, onto a site at a schema version of its own,
+      is refused, saying the file carries no schema; onto a site with no schema files it is
+      taken, as before.
 - [x] The replace check names the version going back and the types to be retired, and
       changes nothing.
 - [x] Tests on both dialects; `docs/content-transfer.md` and the release notes say a
@@ -88,9 +89,13 @@ Going back has consequences the rules were hiding:
 - `SyncOptions.takeFiles` (`packages/schema/src/sync.ts`): skips `skipped-older` and the
   refusal of a same-version change in production. Only the install passes it, on a
   replace (`packages/server/src/bundle-install.ts`).
-- **No schema:** the install refuses (`NO_SCHEMA`, `site-replace.ts`) a replace whose file
-  carries no schema section where the site's schema state was synced from files. A site
-  that has never had schema files takes such a file as before.
+- **No schema:** a replace whose file carries no schema section is not given `takeFiles`,
+  so it is held to the version rules as before 424: taken where the site has no schema
+  files either (a site whose types are only in its database is exported and replaced from
+  its own file), and refused where the site is at a version of its own, the reason now
+  `NO_SCHEMA` (`site-replace.ts`). Reported by Crombolo Cloud on 2026-11-25 against an
+  earlier cut that refused every such file. An export that carries the database's schema
+  where the site has no files is not built: a story of its own if wanted.
 - **The check:** `replaceSchema` (`site-replace.ts`) stages the file's sections apart,
   runs the sync as a replace would with `dryRun`, and answers `from`, `to`,
   `retiredTypes` and `refused`; `siteReplaceCheck` puts it on `summary.schema` and
