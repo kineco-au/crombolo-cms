@@ -28,6 +28,7 @@ import { ObjectTypes } from '@crombolo/core'
 import {
   answersByNode,
   ChangeRepository,
+  currentSchemaState,
   type Db,
   DictionaryRepository,
   describeRefFailure,
@@ -106,6 +107,7 @@ import { publishSchema } from './schema-store.ts'
 import { applySiteData, type SiteDataApplied } from './site-data.ts'
 import {
   carriesAdministrator,
+  NO_SCHEMA,
   prunePeople,
   pruneSite,
   type ReplaceMode,
@@ -813,6 +815,15 @@ export async function installBundleContent(
       ],
       backup,
     )
+  // Story 424: a replace takes the file's schema whatever its version, so one with none
+  // would retire every type of a site that has its own.
+  if (
+    replace &&
+    !effective.withoutSchema &&
+    (carried.carries.schema ?? []).length === 0 &&
+    (await currentSchemaState(db)).hash !== null
+  )
+    return refuse([NO_SCHEMA], backup)
   const needingPermission = [
     ...(plan ? replacementsNeedingPermission(plan, effective) : []),
     ...(effective.replaceFiles ? [] : code.filter((file) => file.action === 'overwrite')),
@@ -866,7 +877,7 @@ export async function installBundleContent(
               tx,
               stagedConfig(config, staged),
               { nodeId: config.nodeId, revision: config.schemaRevision },
-              { forceRetireTypes: Boolean(replace) },
+              { forceRetireTypes: Boolean(replace), takeFiles: Boolean(replace) },
             )
             if (report.action === 'refused' || report.action === 'skipped-older')
               throw new InstallRefused([

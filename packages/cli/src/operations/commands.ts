@@ -65,6 +65,7 @@ import {
   readBlobs,
   readBundle,
   recordAudit,
+  replaceSchema,
   replaceSummary,
   type SiteExportOptions,
   type SiteExportResult,
@@ -234,7 +235,10 @@ export async function siteReplaceCheck(
       ],
       input.replace,
     )
-    return { check, summary }
+    return {
+      check,
+      summary: { ...summary, schema: await replaceSchema(db, config, resolved.carried) },
+    }
   } finally {
     await db.close()
   }

@@ -6,7 +6,8 @@
  * brings them back, and keeps the site's people. `--replace-all` deletes them,
  * and the members and users the file does not carry too.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { discoverBundles } from '@crombolo/backoffice-host/registry'
 import {
@@ -18,7 +19,12 @@ import {
   TransferRunRepository,
   UserRepository,
 } from '@crombolo/data'
+import { loadSchemaDirectory, syncSchema } from '@crombolo/schema'
 import type { BundleManifest, BundlePeople, ContentSet } from '@crombolo/transfer'
+import { type CarriedSections, stagedConfig, stageSections } from './bundle-sections.ts'
+import type { CromboloConfig } from './config.ts'
+import { formTypesFor } from './form-types.ts'
+import { syncOptionsFor } from './schema.ts'
 
 export type ReplaceMode = 'replace' | 'replace-all'
 
@@ -138,6 +144,54 @@ export async function recordPruned(tx: Db, runId: string, pruned: PrunedNode[]):
     })
 }
 
+/** Why a replace from a file with no schema is refused (story 424). */
+export const NO_SCHEMA =
+  'this file carries no schema, so replacing this site with it would retire every type it has; export it from a site that has its schema'
+
+/** Story 424: what a replace would do to the site's schema, which it takes whatever its version. */
+export interface ReplaceSchema {
+  /** The site's schema version, and the file's, which the site would be at. */
+  from: string
+  to: string
+  /** Types the site has that the file does not: retired, though pages of them existed. */
+  retiredTypes: string[]
+  /** Why the file's schema would not be applied. */
+  refused?: string
+}
+
+/** Read-only: the file's schema staged apart and synced as a replace would, then undone. */
+export async function replaceSchema(
+  db: Db,
+  config: CromboloConfig,
+  carried: CarriedSections,
+): Promise<ReplaceSchema> {
+  const current = await currentSchemaState(db)
+  const from = current.version
+  if ((carried.carries.schema ?? []).length === 0 && current.hash !== null)
+    return { from, to: from, retiredTypes: [], refused: NO_SCHEMA }
+  const dir = mkdtempSync(join(tmpdir(), 'crombolo-replace-check-'))
+  try {
+    const staged = stagedConfig(config, stageSections(config, carried, { replace: true }, dir))
+    const loaded = loadSchemaDirectory(staged.schemaDir, { formTypes: formTypesFor(staged) })
+    const report = await syncSchema(
+      db,
+      loaded,
+      { nodeId: config.nodeId, version: loaded.set.version, revision: config.schemaRevision },
+      { ...syncOptionsFor(staged), forceRetireTypes: true, takeFiles: true, dryRun: true },
+    )
+    return {
+      from,
+      to: loaded.set.version,
+      retiredTypes: report.retiredTypes,
+      ...(report.action === 'refused'
+        ? { refused: report.reason ?? 'the schema has problems' }
+        : {}),
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 export interface ReplaceSummary {
   /** What the site has that the file does not, by kind: recycled, or deleted. */
   leaving: Record<string, number>
@@ -145,6 +199,8 @@ export interface ReplaceSummary {
   filesRemoved: string[]
   /** Members and users `--replace-all` would delete. */
   people: { members: number; users: number }
+  /** Story 424: the schema version the site would go from and to, and the types retired. */
+  schema?: ReplaceSchema
 }
 
 /** Read-only: what replacing this site with the file would take out. */

@@ -68,6 +68,11 @@ export interface SyncOptions {
   componentAliases?: ReadonlySet<string>
   /** Retire a type even though documents of it exist. */
   forceRetireTypes?: boolean
+  /**
+   * A replace (story 424): the files are what the site is to be, so they are applied
+   * though the database is at a newer version, or at the same one with other definitions.
+   */
+  takeFiles?: boolean
   /** Compute the report and roll back: `types check`. */
   dryRun?: boolean
   /**
@@ -201,13 +206,13 @@ export async function syncSchema(
         const cutOver = preparedHere !== undefined && status === 'current'
         const cmp = workspace ? 1 : compareStates(fileState, current)
         const neverSynced = current.hash === null
-        if (cmp < 0)
+        if (cmp < 0 && !options.takeFiles)
           return emptySyncReport('skipped-older', {
             reason: `files are at ${fileState.version}+${fileState.revision}, database at ${current.version}+${current.revision}; running in compatibility mode`,
           })
         if (cmp === 0 && !neverSynced && !cutOver) {
           if (hash === current.hash) return emptySyncReport('skipped-same')
-          if (options.mode === 'production')
+          if (options.mode === 'production' && !options.takeFiles)
             return emptySyncReport('refused', {
               reason: `the definitions changed without a new version (still ${set.version}); \`crombolo site build\` or \`crombolo push\` from the site gives them one, or deploy with a newer revision`,
             })

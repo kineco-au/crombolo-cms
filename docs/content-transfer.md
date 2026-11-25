@@ -925,6 +925,17 @@ are untouched, the check reports what was left out (`peopleExcluded`, by count),
 and a file whose content is open needs no passphrase for the people it leaves.
 `--replace-all` refuses it, since it would delete everyone the file lacks.
 
+Both take the file's schema whatever its version (story `424`): older than the site's, or
+the same version with other definitions, as well as newer. The types the file lacks are
+retired and the site's schema version becomes the file's, lower though it may be. An
+import that is not a replace still refuses both. The check before a replace says so
+(`summary.schema`: `from`, `to`, `retiredTypes`), and `crombolo site import` prints it. A
+file with no schema at all is refused where the site has one of its own, since it would
+retire every type. A replace stays only where the site's schema is kept: in its schema
+store, which the replace publishes to, or in a folder that outlives the node. A node that
+starts again from newer schema files of its own, as one with its schema in its image
+does, applies those over the replace; deploy it with the replaced schema.
+
 `--replace-all` asks for the site's name typed back (or `--yes`), and refuses
 outright when the file carries no enabled back-office administrator. Both take the
 file's side of every difference, make each node's values exactly the file's, and

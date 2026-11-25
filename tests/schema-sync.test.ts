@@ -186,6 +186,37 @@ describe(`schema sync (${dialectUnderTest})`, () => {
     expect(type?.properties.map((p) => p.alias)).toEqual(['title'])
   })
 
+  test('a replace takes the files though they are older, or the same version with other definitions (story 424)', async () => {
+    const db = await prepared()
+    await sync(db, schemaDir('2.0.0', { 'content-types/article.toml': KEYED() }), {
+      ...NODE,
+      version: '2.0.0',
+    })
+    const taking: SyncOptions = { mode: 'production', takeFiles: true }
+    const older = await sync(
+      db,
+      schemaDir('1.0.0', { 'content-types/article.toml': KEYED(SUMMARY_KEYED) }),
+      NODE,
+      taking,
+    )
+    expect(older.action).toBe('applied')
+    expect(older.created.properties).toBe(1)
+    expect((await currentSchemaState(db)).version).toBe('1.0.0')
+
+    const same = await sync(
+      db,
+      schemaDir('1.0.0', { 'content-types/article.toml': KEYED() }),
+      NODE,
+      {
+        ...taking,
+        forceRetireTypes: true,
+      },
+    )
+    expect(same.action).toBe('applied')
+    const type = await new ContentTypeRepository(db).byAlias('article')
+    expect(type?.properties.map((p) => p.alias)).toEqual(['title'])
+  })
+
   test('a changed schema without a version bump applies in development and refuses in production', async () => {
     const db = await prepared()
     await sync(db, schemaDir('1.0.0', { 'content-types/article.toml': KEYED() }))

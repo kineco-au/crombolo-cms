@@ -70,17 +70,30 @@ Going back has consequences the rules were hiding:
 
 ## Acceptance criteria
 
-- A replace from a file whose schema is older than the site's applies it: the types the
-  file lacks are retired, the site's schema version is the file's, and a `runId` is
-  returned.
-- A replace from a file at the site's version with other definitions applies it, on a
-  site not in development.
-- An import that is not a replace is refused in both cases, as today.
-- A replace from a file with no `schema/schema.toml` is refused, saying the file carries
-  no schema.
-- The replace check names the version going back and the types to be retired, and
-  changes nothing.
-- After the replace a node started from the site's schema store reads the file's schema
-  and does not apply the older one's successor over it.
-- Tests on both dialects; `docs/content-transfer.md` and
-  the release notes say a replace can take the schema back.
+- [x] A replace from a file whose schema is older than the site's applies it: the types
+      the file lacks are retired, the site's schema version is the file's, and a `runId`
+      is returned.
+- [x] A replace's sync applies the same version with other definitions on a site not in
+      development.
+- [x] An import that is not a replace is refused, as today.
+- [x] A replace from a file with no schema, onto a site that has one, is refused, saying
+      the file carries no schema.
+- [x] The replace check names the version going back and the types to be retired, and
+      changes nothing.
+- [x] Tests on both dialects; `docs/content-transfer.md` and the release notes say a
+      replace can take the schema back, and where it stays.
+
+## Implementation
+
+- `SyncOptions.takeFiles` (`packages/schema/src/sync.ts`): skips `skipped-older` and the
+  refusal of a same-version change in production. Only the install passes it, on a
+  replace (`packages/server/src/bundle-install.ts`).
+- **No schema:** the install refuses (`NO_SCHEMA`, `site-replace.ts`) a replace whose file
+  carries no schema section where the site's schema state was synced from files. A site
+  that has never had schema files takes such a file as before.
+- **The check:** `replaceSchema` (`site-replace.ts`) stages the file's sections apart,
+  runs the sync as a replace would with `dryRun`, and answers `from`, `to`,
+  `retiredTypes` and `refused`; `siteReplaceCheck` puts it on `summary.schema` and
+  `crombolo site import` prints it.
+- Tests: `tests/schema-sync.test.ts` (the two rules, with `takeFiles`),
+  `tests/site-replace.test.ts`, story 424's block.

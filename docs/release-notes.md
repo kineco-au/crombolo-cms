@@ -31,6 +31,14 @@ point at `docs/stories/`.
   change now carries the page's place and it is put there; and where content is locked a
   reorder is always applied, which puts right a site already out of step. A site that is not
   locked still answers the conflict.
+- **A replace takes the file's schema whatever its version (424).** Replacing a site from a
+  file whose schema was older than the site's, or the same version with other definitions,
+  was refused ("the schema this bundle carries was not applied … compatibility mode"), so a
+  site that had made a type since could not be levelled with the one it was copied from. A
+  replace now applies the file's schema as it applies everything else, with no option to
+  pass: the types the file lacks are retired and the site's schema version becomes the
+  file's. The check before a replace reports it (`summary.schema`). A file with no schema is
+  refused where the site has one, saying so. An import that is not a replace is unchanged.
 - **A staged change's schedule is set however it is merged (423).** A change carrying a
   publish or unpublish time, staged on another site and merged through the workspace's own
   merge (`POST workspaces/{key}/merge`, the back office, the command line), arrived without

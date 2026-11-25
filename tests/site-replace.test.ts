@@ -14,6 +14,7 @@ import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import {
   ChangeRepository,
   ContentTypeRepository,
+  currentSchemaState,
   DictionaryRepository,
   DomainRepository,
   MemberRepository,
@@ -64,11 +65,20 @@ type = "textstring"
 `
 
 /** A site with one type, its component, a stylesheet, and the given pages. */
-async function site(options: { types: string[]; css: string; pages: string[]; title?: string }) {
+async function site(options: {
+  types: string[]
+  css: string
+  pages: string[]
+  title?: string
+  version?: string
+}) {
   const root = temp('site')
   for (const dir of ['schema/content-types', 'components', 'css', 'scripts', 'media'])
     mkdirSync(join(root, dir), { recursive: true })
-  writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
+  writeFileSync(
+    join(root, 'schema', 'schema.toml'),
+    `[schema]\nversion = "${options.version ?? '1.0.0'}"\n`,
+  )
   for (const alias of options.types) {
     writeFileSync(join(root, 'schema', 'content-types', `${alias}.toml`), type(alias, alias))
     writeFileSync(join(root, 'components', `${alias}.tsx`), 'export default () => <main />\n')
@@ -400,6 +410,65 @@ const hostnamesOf = async (h: Harness, key: string) => {
  * them, so a copy cannot route as the original, and a replace leaves the
  * target's on every page the file also has.
  */
+// Story 424: a replace takes the file's schema whatever its version.
+describe(`a replace and the schema's version (${dialectUnderTest}, story 424)`, () => {
+  test('a file whose schema is older is taken by a replace, said beforehand, and refused by any other import', async () => {
+    const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
+    const file = await exportAndClose(a.h)
+    const b = await site({
+      types: ['article', 'page'],
+      css: 'site.css',
+      pages: ['Old news'],
+      version: '2.0.0',
+    })
+    const db = b.h.server.db
+
+    const { summary } = await siteReplaceCheck(b.config, { bundle: file, replace: 'replace' })
+    expect(summary.schema).toEqual({ from: '2.0.0', to: '1.0.0', retiredTypes: ['article'] })
+    expect((await currentSchemaState(db)).version).toBe('2.0.0')
+    expect(await live(b.config, db)).toEqual(['Old news'])
+
+    const plain = await contentImport(b.config, {
+      bundle: file,
+      resolveAll: 'take-bundle',
+      replaceFiles: true,
+      backupTaken: true,
+    })
+    expect(plain.runId).toBeUndefined()
+    expect(plain.problems.join(' ')).toContain('was not applied')
+
+    const replaced = await contentImport(b.config, {
+      bundle: file,
+      replace: 'replace',
+      backupTaken: true,
+    })
+    expect(replaced.problems).toEqual([])
+    expect(replaced.runId).toBeDefined()
+    expect((await currentSchemaState(db)).version).toBe('1.0.0')
+    expect(await live(b.config, db)).toEqual(['Home'])
+    expect(readFileSync(join(b.root, 'schema', 'schema.toml'), 'utf8')).toContain('1.0.0')
+    expect(existsSync(join(b.root, 'schema', 'content-types', 'article.toml'))).toBe(false)
+  }, 30_000)
+
+  test('a file with no schema is refused, saying so', async () => {
+    const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
+    a.h.server.config.schemaDir = temp('no-schema')
+    const file = await exportAndClose(a.h)
+    const b = await site({ types: ['page'], css: 'site.css', pages: ['Old news'] })
+    const { summary } = await siteReplaceCheck(b.config, { bundle: file, replace: 'replace' })
+    expect(summary.schema?.refused).toContain('carries no schema')
+    const refused = await contentImport(b.config, {
+      bundle: file,
+      replace: 'replace',
+      backupTaken: true,
+    })
+    expect(refused.runId).toBeUndefined()
+    expect(refused.problems.join(' ')).toContain('carries no schema')
+    expect(await live(b.config, b.h.server.db)).toEqual(['Old news'])
+    expect(await new ContentTypeRepository(b.h.server.db).byAlias('page')).toBeDefined()
+  }, 30_000)
+})
+
 describe(`hostnames (${dialectUnderTest})`, () => {
   test('never travel in the file, and a replace keeps the target’s', async () => {
     const a = await site({ types: ['page'], css: 'site.css', pages: ['Home', 'About'] })

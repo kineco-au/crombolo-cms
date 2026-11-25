@@ -123,6 +123,12 @@ export default class SiteImport extends BaseCommand {
     const fate = replace === 'replace-all' ? 'deleted' : 'recycled'
     if (Object.keys(summary.leaving).length > 0)
       this.say(`  ${fate.padEnd(8)} ${counted(summary.leaving)} not in the file`)
+    const schema = summary.schema
+    if (schema?.refused) this.say(`  schema   not applied: ${schema.refused}`)
+    else if (schema && (schema.from !== schema.to || schema.retiredTypes.length > 0))
+      this.say(
+        `  schema   ${schema.from === schema.to ? `stays at ${schema.to}` : `goes from ${schema.from} to ${schema.to}`}${schema.retiredTypes.length > 0 ? `, retiring ${schema.retiredTypes.join(', ')}` : ''}`,
+      )
     if (summary.filesRemoved.length > 0) {
       this.say(
         `  removes  ${summary.filesRemoved.length} file(s) not in the file, kept for a revert:`,
