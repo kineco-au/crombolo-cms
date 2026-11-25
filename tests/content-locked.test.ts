@@ -65,7 +65,7 @@ interface Bytes {
 }
 
 /** One copy of the site, holding Home as both copies began. */
-async function site(extra: Record<string, unknown> = {}) {
+async function site(extra: Record<string, unknown> = {}, files: Record<string, string> = {}) {
   mkdirSync(join(process.cwd(), 'output'), { recursive: true })
   const root = mkdtempSync(join(process.cwd(), 'output', 'content-locked-'))
   dirs.push(root)
@@ -74,6 +74,10 @@ async function site(extra: Record<string, unknown> = {}) {
   writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
   writeFileSync(join(root, 'schema', 'content-types', 'page.toml'), PAGE_TOML)
   writeFileSync(join(root, 'components', 'page.tsx'), 'export default () => <main />\n')
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(join(root, path, '..'), { recursive: true })
+    writeFileSync(join(root, path), text)
+  }
   const h = await signedInServer({
     config: {
       siteDir: root,
@@ -952,6 +956,151 @@ describe(`a schedule set in a workspace goes with its change (${dialectUnderTest
     })
     expect(items.map((i) => i.path)).toContain(`schedules/${BETA}`)
   }, 30_000)
+})
+
+// Story 423: a staged change's schedule is set however it is merged.
+describe(`a staged change’s schedule is set however it is merged (${dialectUnderTest}, story 423)`, () => {
+  const inAnHour = () => new Date(Math.floor(Date.now() / 1000) * 1000 + 3_600_000)
+  const mine = { 'crombolo-workspace': 'mine' }
+  type Site = Awaited<ReturnType<typeof site>>
+  const entriesOf = (s: Site, key: string) =>
+    new DocumentRepository(s.h.server.db).scheduleEntries(key)
+  const schedule = (
+    s: Site,
+    key: string,
+    times: { publishTime?: string; unpublishTime?: string } | null,
+  ) =>
+    s.send(
+      'PUT',
+      `${V1}/document/${key}/publish`,
+      { publishSchedules: [{ culture: null, schedule: times }] },
+      mine,
+    )
+  /** A page of a type made in the person's own workspace, only scheduled. */
+  const madeScheduled = async (s: Site, type: string, parent: string | null, at: Date) => {
+    const made = await s.send(
+      'POST',
+      `${V1}/document`,
+      {
+        documentType: { id: (await new ContentTypeRepository(s.h.server.db).byAlias(type))?.key },
+        parent: parent ? { id: parent } : null,
+        values: [],
+        variants: [{ culture: null, segment: null, name: 'Coming soon' }],
+      },
+      mine,
+    )
+    expect(made.status, await made.clone().text()).toBe(201)
+    const key = made.headers.get('umb-generated-resource') as string
+    const set = await schedule(s, key, { publishTime: at.toISOString() })
+    expect(set.status, await set.clone().text()).toBe(200)
+    return key
+  }
+  /** The bundle of the change last announced. */
+  const lastBundle = async (s: Site, told: ReturnType<typeof announcements>) => {
+    const [announced] = await told.fresh()
+    const id = (await s.changes()).find((c) => c.key === announced?.key)?.id
+    return { key: announced?.key as string, bundle: await s.take(`changes/${id}/bundle`) }
+  }
+  /** Staged, then merged through the workspace's own merge. */
+  const stagedAndMerged = async (s: Site, bundle: Bytes) => {
+    const staged = await s.put(bundle, '?stage=true')
+    expect(staged.status, await staged.clone().text()).toBe(200)
+    const { workspace } = (await staged.json()) as { workspace: string }
+    return workspace
+  }
+
+  test('staged and merged through the workspace’s merge, the schedule is set, named and fired; a rehearsal sets nothing', async () => {
+    const source = await site()
+    await threePages(source)
+    const told = announcements(source)
+    await told.fresh()
+    const at = inAnHour()
+    const key = await madeScheduled(source, 'page', HOME, at)
+    const made = await lastBundle(source, told)
+    expect((await schedule(source, ALPHA, { unpublishTime: at.toISOString() })).status).toBe(200)
+    const down = await lastBundle(source, told)
+    expect((await schedule(source, ALPHA, null)).status).toBe(200)
+    const cleared = await lastBundle(source, told)
+    await source.close()
+
+    const served = await site(LOCKED)
+    await threePages(served)
+    const workspace = await stagedAndMerged(served, made.bundle)
+    const rehearsed = await served.send('POST', `${WORKSPACES}/${workspace}/merge`, {
+      accept: [],
+      rehearse: true,
+    })
+    expect(rehearsed.status, await rehearsed.clone().text()).toBe(200)
+    expect(await entriesOf(served, key)).toEqual([])
+    await served.merge(workspace)
+    expect(await stateOf(served, key)).toBe('Draft')
+    expect(await entriesOf(served, key)).toEqual([
+      { culture: null, publishTime: at.toISOString(), unpublishTime: null },
+    ])
+    // The change it made here holds the schedule, for a site that takes it from here.
+    const here = (await served.changes()).find((c) => c.key === made.key)
+    const items = await new ChangeRepository(served.h.server.db).itemsOf(here?.id as string, {
+      pages: true,
+    })
+    expect(items.map((i) => i.path)).toContain(`schedules/${normaliseUuid(key)}`)
+
+    const firing = announcements(served)
+    await firing.fresh()
+    await served.h.server.jobs.runScheduledPublishing(new Date(at.getTime() + 1000))
+    expect(await stateOf(served, key)).toBe('Published')
+    expect(await firing.fresh()).toEqual([expect.objectContaining({ key: made.key })])
+
+    // A time to come down at, on a page nothing else changed; then its clearing.
+    await served.merge(await stagedAndMerged(served, down.bundle))
+    expect(await entriesOf(served, ALPHA)).toEqual([
+      { culture: null, publishTime: null, unpublishTime: at.toISOString() },
+    ])
+    await served.merge(await stagedAndMerged(served, cleared.bundle))
+    expect(await entriesOf(served, ALPHA)).toEqual([])
+  }, 90_000)
+
+  test('a page a workflow covers is not scheduled: its time waits with its approval', async () => {
+    const NOTICE = PAGE_TOML.replace('alias = "page"', 'alias = "notice"').replace(
+      'name = "Page"',
+      'name = "Notice"',
+    )
+    const WORKFLOW = `[workflow]
+alias = "notices"
+name = "Notices"
+applies-to = { branches = [], content-types = ["notice"] }
+publishers-may-skip = false
+scheduling = true
+
+[[stage]]
+alias = "legal"
+approvers = ["admin"]
+`
+    const source = await site({}, { 'schema/content-types/notice.toml': NOTICE })
+    const told = announcements(source)
+    await told.fresh()
+    const at = inAnHour()
+    const key = await madeScheduled(source, 'notice', null, at)
+    const made = await lastBundle(source, told)
+    await source.close()
+
+    const served = await site(LOCKED, {
+      'schema/content-types/notice.toml': NOTICE,
+      'schema/workflows/notices.toml': WORKFLOW,
+    })
+    await served.merge(await stagedAndMerged(served, made.bundle))
+    expect(await entriesOf(served, key)).toEqual([])
+    const tab = (await (
+      await served.h.call(`${BACKOFFICE}/crombolo/api/approvals/page/${key}`)
+    ).json()) as { request?: { state: string; action: string; schedule: unknown } }
+    expect(tab.request).toMatchObject({
+      state: 'waiting',
+      action: 'publish',
+      schedule: [{ culture: null, publishTime: at.toISOString(), unpublishTime: null }],
+    })
+    // Its time passes with nobody having approved it: it stays as it arrived.
+    await served.h.server.jobs.runScheduledPublishing(new Date(at.getTime() + 1000))
+    expect(await stateOf(served, key)).toBe('Draft')
+  }, 60_000)
 })
 
 // Story 417: a change that only schedules says so, with its times.

@@ -335,6 +335,16 @@ which ones it applied (story `395`), so editors there are offered only what is l
   nothing is published yet; a page made there arrives unpublished, with its schedule. A
   schedule Shared changed since the workspace set its own is a conflict, settled by
   accepting `schedule-changed`, which keeps the workspace's.
+- **A staged change's schedule is set by the merge** (story `423`), however the workspace
+  it was staged in is merged: `PUT changes` with no `stage`, `POST workspaces/{key}/merge`,
+  the back office or the command line. It replaces what Shared had for the page, names
+  the change that carried it when it fires, and is held by the change the merge makes,
+  so a site taking it from here has it too. A rehearsal sets nothing.
+- **A schedule never publishes a page a workflow covers** (story `423`). Where a merge
+  brings a time for such a page, from a staged change or a workspace, the time is not set
+  on the page: it goes with the approval request the merge sends, and takes effect once
+  that is approved (at once, when the time has passed by then). Where the workflow takes
+  no time, the request's comment says when it was to be.
 - **Both sites fire a schedule,** each its own, at the same instant: times are kept and
   carried in UTC. As it fires, each raises the page's ordinary webhooks and
   `Crombolo.ChangePublished` naming the change that set it (`Kind: "unpublish"` for a

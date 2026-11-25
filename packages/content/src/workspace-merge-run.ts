@@ -58,7 +58,10 @@ export interface WorkspaceMergeOptions {
    * exported before it merged is known as the same change.
    */
   changeKey?: string
-  /** The changes from other sites this merge applies, recorded so each is applied once (story 383). */
+  /**
+   * The changes from other sites this merge applies, recorded so each is applied once
+   * (story 383). The schedules each one staged are set with it (story 423).
+   */
   appliedChanges?: ReadonlyArray<{ key: string; name: string | null }>
 }
 
@@ -93,6 +96,8 @@ export type WorkspaceMergeOutcome =
         name: string
         action: 'publish' | 'unpublish'
         cultures: string[] | null
+        /** Story 423: the times it is to be published or taken down at, once approved. */
+        schedule?: ScheduleEntryAt[]
       }>
       done: Array<{ key: string | null; name: string; kind: string }>
       rehearsed: boolean
@@ -434,6 +439,74 @@ export async function runWorkspaceMerge(
         const done: Done['done'] = []
         const pages: PageChange[] = []
         const items: ChangeItemInput[] = []
+        const applying = new Set((options.appliedChanges ?? []).map((c) => c.key))
+        /**
+         * A page's schedule set in Shared and held by the merge's change. Story 423: one a
+         * workflow covers is not set: its times go with the approval its publish waits for.
+         */
+        const schedule = async (
+          repo: DocumentRepository,
+          page: { key: string; name: string; kind: ContentKind; entries: ScheduleEntryAt[] },
+        ): Promise<boolean> => {
+          if (!merged.some((m) => m.key === page.key))
+            merged.push({ key: page.key, name: page.name, published: false, unpublished: false })
+          const action = page.entries.some((e) => e.publishTime)
+            ? 'publish'
+            : page.entries.some((e) => e.unpublishTime)
+              ? 'unpublish'
+              : undefined
+          const waiting = forApproval.find((f) => f.key === page.key && f.action === 'publish')
+          if (action && waiting) {
+            waiting.schedule = page.entries
+            return false
+          }
+          if (action && (await options.publishRefusal?.(page.key, action))) {
+            forApproval.push({
+              key: page.key,
+              name: page.name,
+              action,
+              cultures: page.entries.some((e) => e.culture === null)
+                ? null
+                : page.entries.flatMap((e) => (e.culture === null ? [] : [e.culture])),
+              schedule: page.entries,
+            })
+            return false
+          }
+          const had = await repo.scheduleEntries(page.key)
+          await repo.setSchedule(page.key, [
+            ...had
+              .filter((h) => !page.entries.some((e) => e.culture === h.culture))
+              .map((h) => ({ culture: h.culture, publishTime: null, unpublishTime: null })),
+            ...page.entries.map((e) => ({
+              culture: e.culture,
+              publishTime: e.publishTime ? new Date(e.publishTime) : null,
+              unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
+            })),
+          ])
+          await record({ type: 'scheduled', key: page.key })
+          const path = `schedules/${page.key}`
+          const held = items.findIndex((i) => i.path === path)
+          if (held >= 0) items.splice(held, 1)
+          items.push({
+            path,
+            kind: 'page',
+            class: 'none',
+            before: null,
+            after: JSON.stringify(page.entries),
+          })
+          if (!pages.some((p) => p.key === page.key)) {
+            const at = await repo.eventMarkers(page.key)
+            pages.push({
+              key: page.key,
+              kind: page.kind,
+              action: 'update',
+              beforeEventId: at?.head ?? null,
+              beforePublishedEventId: at?.published ?? null,
+              eventId: at?.head ?? null,
+            })
+          }
+          return true
+        }
         for (const [n, workspace] of list.entries()) {
           // Its files first, so its pages are written against the types they need.
           if (files) {
@@ -453,41 +526,23 @@ export async function runWorkspaceMerge(
             pages,
             removed: items,
           })
+          // Story 423: the schedules of the changes staged in it, each naming its change.
+          for (const change of workspace.stagedChanges ?? []) {
+            if (!applying.has(change.key)) continue
+            for (const page of change.schedules ?? []) {
+              const repo = shared.ofKind(page.kind as ContentKind)
+              const here = await repo.byKey(page.key)
+              if (!here) continue
+              const name =
+                (here.variants.find((v) => v.culture === null) ?? here.variants[0])?.name ??
+                page.key
+              if (await schedule(repo, { ...page, kind: page.kind as ContentKind, name }))
+                await repo.scheduleSetBy(page.key, change.key)
+            }
+          }
           // Story 414: its schedules set in Shared, and held by its change.
           for (const page of schedules[n] ?? []) {
-            const had = await shared.scheduleEntries(page.key)
-            await shared.setSchedule(page.key, [
-              ...had
-                .filter((h) => !page.entries.some((e) => e.culture === h.culture))
-                .map((h) => ({ culture: h.culture, publishTime: null, unpublishTime: null })),
-              ...page.entries.map((e) => ({
-                culture: e.culture,
-                publishTime: e.publishTime ? new Date(e.publishTime) : null,
-                unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
-              })),
-            ])
-            await record({ type: 'scheduled', key: page.key })
-            items.push({
-              path: `schedules/${page.key}`,
-              kind: 'page',
-              class: 'none',
-              before: null,
-              after: JSON.stringify(page.entries),
-            })
-            if (!pages.some((p) => p.key === page.key)) {
-              const at = await shared.eventMarkers(page.key)
-              pages.push({
-                key: page.key,
-                kind: 'document',
-                action: 'update',
-                beforeEventId: at?.head ?? null,
-                beforePublishedEventId: at?.published ?? null,
-                eventId: at?.head ?? null,
-              })
-            }
-            if (!merged.some((m) => m.key === page.key))
-              merged.push({ key: page.key, name: page.name, published: false, unpublished: false })
-            scheduled.push(page.key)
+            if (await schedule(shared, { ...page, kind: 'document' })) scheduled.push(page.key)
             if (options.only !== undefined) await workspaces.dropSchedule(workspace.id, page.nodeId)
           }
           if (options.only === undefined)

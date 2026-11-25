@@ -25,6 +25,7 @@ import {
   workspaceAuditSink,
 } from '@crombolo/content'
 import {
+  type ApprovalScheduleEntry,
   appendCacheInstruction,
   type Db,
   type NodeSchemaState,
@@ -33,7 +34,13 @@ import {
 } from '@crombolo/data'
 import type { PublishedCache } from '@crombolo/render'
 import { createElementPort } from './adapters/elements.ts'
-import { type Approvals, approvalsGate, createApprovals } from './approvals.ts'
+import {
+  ApprovalRefused,
+  type Approvals,
+  approvalsGate,
+  createApprovals,
+  describeSchedule,
+} from './approvals.ts'
 import type { CromboloConfig } from './config.ts'
 import {
   createElementEventSink,
@@ -301,14 +308,28 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
       if (!outcome.ok || outcome.rehearsed) return outcome
       cache?.invalidate()
       // A page a workflow covers arrives as a draft, and its publish waits for approval.
-      for (const page of outcome.forApproval)
-        await approvals.send(
-          principal,
-          page.key,
-          page.action,
-          page.cultures,
-          `Merged from ${list.length > 1 ? 'the workspaces' : 'the workspace'} ${names}`,
-        )
+      for (const page of outcome.forApproval) {
+        const comment = `Merged from ${list.length > 1 ? 'the workspaces' : 'the workspace'} ${names}`
+        const send = (said: string, schedule?: ApprovalScheduleEntry[]) =>
+          approvals.send(principal, page.key, page.action, page.cultures, said, schedule)
+        // Story 423: the times it carries wait for the approval with it.
+        const schedule = (page.schedule ?? []).map((e) => ({
+          culture: e.culture,
+          publishTime: e.publishTime ? new Date(e.publishTime) : null,
+          unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
+        }))
+        if (schedule.length === 0) {
+          await send(comment)
+          continue
+        }
+        try {
+          await send(comment, schedule)
+        } catch (error) {
+          if (!(error instanceof ApprovalRefused) || error.status !== 400) throw error
+          // A time the workflow does not take, or one already past: said, for its approvers.
+          await send(`${comment}\n\nIt was to be ${describeSchedule(page.action, schedule)}.`)
+        }
+      }
       return outcome
     },
   }

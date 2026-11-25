@@ -15,6 +15,18 @@ point at `docs/stories/`.
   (Workspaces, Publishing and approvals, History, From staging to live), in English and
   Spanish. A site made from the demo before keeps its own content.
 
+### Fixes
+
+- **A staged change's schedule is set however it is merged (423).** A change carrying a
+  publish or unpublish time, staged on another site and merged through the workspace's own
+  merge (`POST workspaces/{key}/merge`, the back office, the command line), arrived without
+  its schedule; only `PUT changes` with no `stage` set it. The merge itself sets it now, in
+  the same transaction as the pages, and the change it makes holds it.
+- **A merge no longer schedules a page that needs approval (423).** A time a merge brings
+  for a page a workflow covers, from a staged change or from a workspace, used to be set on
+  the page and publish it at that time unapproved. It now waits with the approval request
+  the merge sends.
+
 ## v0.79.0 — 2026-11-24
 
 ### Features

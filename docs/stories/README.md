@@ -318,6 +318,7 @@ requests, only server-side and build-time front ends can call it.
 | `226` | Picked packages carry forms and approval workflows | should | M | done | 233 |
 | `233` | A Bundle Editor of Crombolo's own | should | L | done | — |
 | `283` | Library folders travel with their elements | should | M | done | — |
+| `424` | A replace takes the file's schema whatever its version | should | M | ready | 105 |
 
 ### Epic L — Routing
 
@@ -502,6 +503,7 @@ implementation; creating them does not settle those architectural choices.
 | `221` | Kysely as the query layer | should | XL | done | — |
 | `230` | No render waits seconds through a burst of publishes | could | M | done | 175 |
 | `231` | The local Postgres suite fits the database's connections | could | S | done | — |
+| `426` | An update says how many rows it changed | should | S | ready | 221 |
 
 ### Epic S — Workspaces and changes
 
@@ -573,4 +575,6 @@ it.
 | `420` | Workspaces are on unless turned off | should | M | done | 375, 380 |
 | `421` | A change staged after another builds on it | must | S | done | 383, 399, 403 |
 | `422` | A large change is taken wherever workspaces are on | should | S | done | 383, 399, 420 |
+| `423` | A staged change's schedule is set however it is merged | must | S | done | 395, 414 |
+| `425` | A page that arrives by a change takes its place in the order | must | M | ready | 411 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

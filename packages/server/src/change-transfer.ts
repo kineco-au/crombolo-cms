@@ -727,7 +727,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     if (schemaTouched) await options.schema()?.build({ id: workspace.id, key: workspace.key })
     const staged = [...(workspace.stagedChanges ?? [])]
     for (const { change } of todo) {
-      // Story 395: a schedule is set on Shared once the change is merged, as a merge drops a workspace's.
+      // Story 395: a schedule is set on Shared by the merge (story 423), which drops a workspace's.
       const schedules = change.pages.flatMap((p) =>
         p.after?.schedule ? [{ key: p.key, kind: p.kind, entries: p.after.schedule }] : [],
       )
@@ -1077,32 +1077,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         conflicts: outcome.blockers.map((says) => ({ change: workspace.key, item: '', says })),
         workspace: workspace.key,
       }
-    for (const change of applied)
-      for (const page of change.schedules ?? []) await scheduleHere(page, change.key)
     return { ok: true, skipped, changeId: outcome.changeId ?? null }
-  }
-
-  /** A page's schedule as a change carries it, replacing what Shared had for the page. */
-  async function scheduleHere(
-    page: { key: string; kind: string; entries: PageSchedule },
-    changeKey: string,
-  ) {
-    const here = repo(page.kind as PageKind)
-    if (!(await here.byKey(page.key))) return
-    const had = await here.schedules(page.key)
-    const cleared = [...new Set(had.map((s) => s.culture))]
-      .filter((culture) => !page.entries.some((e) => e.culture === culture))
-      .map((culture) => ({ culture, publishTime: null, unpublishTime: null }))
-    await here.setSchedule(page.key, [
-      ...cleared,
-      ...page.entries.map((e) => ({
-        culture: e.culture,
-        publishTime: e.publishTime ? new Date(e.publishTime) : null,
-        unpublishTime: e.unpublishTime ? new Date(e.unpublishTime) : null,
-      })),
-    ])
-    // Story 414: it names the change it came with, for when it fires.
-    await here.scheduleSetBy(page.key, changeKey)
   }
 
   /** A page as Shared has it now, as a site bundle would carry it. */
