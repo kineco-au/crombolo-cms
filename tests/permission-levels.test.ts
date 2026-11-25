@@ -122,7 +122,7 @@ describe('the places under Content (story 385)', () => {
   const area = (label: string) => AREAS.find((a) => a.label === label) as (typeof AREAS)[number]
 
   test('each is listed under Content, Settings among the site-wide areas', () => {
-    expect(AREAS.filter((a) => a.under).map((a) => a.label)).toEqual([
+    expect(AREAS.filter((a) => a.under === 'Umb.Section.Content').map((a) => a.label)).toEqual([
       'Pages',
       'Media',
       'Library',
@@ -145,6 +145,9 @@ describe('the places under Content (story 385)', () => {
     ).toBeUndefined()
     expect(needsContent(area('Media'), ['Umb.Section.Settings'])).toBeUndefined()
     expect(needsContent(area('Settings'), ['Umb.Section.Settings'])).toBeUndefined()
+    expect(needsContent(area('Users'), ['Umb.Section.Users'])).toBe(
+      'Users is in Settings, so the group needs Settings too.',
+    )
   })
 })
 

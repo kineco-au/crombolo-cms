@@ -4,7 +4,7 @@ order = 5
 
 [values]
 category = "editing"
-image = "/library-shelves.jpg"
+image = "/media-library.jpg"
 
 [values.en-US]
 title = "Media with crops"

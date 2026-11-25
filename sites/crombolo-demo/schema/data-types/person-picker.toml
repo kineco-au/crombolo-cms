@@ -1,5 +1,5 @@
-# People are Library elements, so one person can sit on the people page and sign
-# a blog post, and a change to them shows in both.
+# People are Library elements, so one person can sign several blog posts, and a
+# change to them shows on each.
 [data-type]
 alias = "personPicker"
 name = "Person Picker"

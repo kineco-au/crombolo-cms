@@ -15,6 +15,7 @@ export const TABS = [
 ]
 
 const CONTENT = 'Umb.Section.Content'
+const SETTINGS = 'Umb.Section.Settings'
 
 /**
  * The areas of the back office, as Access lists them, by section alias. The
@@ -75,7 +76,7 @@ export const AREAS = [
     line: 'People who sign in to the site itself.',
   },
   {
-    section: 'Umb.Section.Settings',
+    section: SETTINGS,
     label: 'Settings',
     line: "Redirects, logs, webhooks, extensions and the site's other tools.",
   },
@@ -83,17 +84,20 @@ export const AREAS = [
     section: 'Umb.Section.Users',
     label: 'Users',
     line: 'The people who use the back office, and their groups.',
+    under: SETTINGS,
   },
 ]
 
 /**
- * What to say of a place under Content the group holds without Content, which
- * can't be saved (story 385); undefined when nothing needs saying. Pure.
+ * What to say of a place the group holds without what it is under, Content or Settings,
+ * which can't be saved (stories 385, 429); undefined when nothing needs saying. Pure.
  */
 export function needsContent(area, sections) {
   if (!area.under || !sections.includes(area.section) || sections.includes(area.under))
     return undefined
-  return `${area.label} is under Content, so the group needs Content too.`
+  return area.under === SETTINGS
+    ? `${area.label} is in Settings, so the group needs Settings too.`
+    : `${area.label} is under Content, so the group needs Content too.`
 }
 
 const D = (verb) => `Umb.Document.${verb}`

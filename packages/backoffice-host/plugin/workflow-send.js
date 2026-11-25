@@ -139,7 +139,7 @@ class CromboloSendForApprovalDialogElement extends LitElement {
     const unpublish = this.action === 'unpublish'
     const title = unpublish ? 'Request unpublish' : 'Send for approval'
     return html`<dialog aria-label=${title} @cancel=${() => this.#done(undefined)}>
-      <h3>${title}</h3>
+      <uui-dialog-layout headline=${title}>
       <p>The page is saved first, and what is saved is what the approvers see.</p>
       <uui-textarea
         label="A note for the approvers"
@@ -170,9 +170,9 @@ class CromboloSendForApprovalDialogElement extends LitElement {
             </div>`
           : nothing
       }
-      <div class="actions">
-        <uui-button look="secondary" label="Cancel" @click=${() => this.#done(undefined)}>Cancel</uui-button>
+        <uui-button slot="actions" look="secondary" label="Cancel" @click=${() => this.#done(undefined)}>Cancel</uui-button>
         <uui-button
+          slot="actions"
           look="primary"
           label=${title}
           @click=${() =>
@@ -183,14 +183,14 @@ class CromboloSendForApprovalDialogElement extends LitElement {
             })}
           >${title}</uui-button
         >
-      </div>
+      </uui-dialog-layout>
     </dialog>`
   }
 
   static styles = css`
     dialog {
       width: min(32rem, calc(100vw - 2rem));
-      padding: var(--uui-size-space-5);
+      padding: 0;
       border: 1px solid var(--uui-color-border);
       border-radius: var(--uui-border-radius);
       background: var(--uui-color-surface);
@@ -199,9 +199,6 @@ class CromboloSendForApprovalDialogElement extends LitElement {
     }
     dialog::backdrop {
       background: rgb(0 0 0 / 0.35);
-    }
-    h3 {
-      margin: 0 0 var(--uui-size-space-3);
     }
     p,
     small {
@@ -215,12 +212,6 @@ class CromboloSendForApprovalDialogElement extends LitElement {
       flex-wrap: wrap;
       gap: var(--uui-size-space-4);
       margin-top: var(--uui-size-space-4);
-    }
-    .actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: var(--uui-size-space-3);
-      margin-top: var(--uui-size-space-5);
     }
   `
 }

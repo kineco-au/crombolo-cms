@@ -694,6 +694,25 @@ describe('a bundle that runs code on the server (story 194)', () => {
     expect(outcome.message).toContain(SCREENS_NOTICE)
   })
 
+  test('back-office code that uses the browser’s confirm is removed again (AGENTS.md)', async () => {
+    const root = site()
+    const landing = leaves(root, false)
+    const { market } = marketplace({
+      root,
+      installs: () => {
+        const done = landing()
+        const code = join(root, 'node_modules', '@acme/tasks', 'src', 'backoffice')
+        mkdirSync(code, { recursive: true })
+        writeFileSync(join(code, 'd.js'), "if (confirm('Sure?')) go()\n")
+        return done
+      },
+    })
+    const outcome = await market.install('@acme/tasks', undefined)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.message).toContain('was removed again')
+    expect(outcome.message).toContain('src/backoffice/d.js uses confirm')
+  })
+
   test('never runs install scripts', () => {
     expect(installCommand('add', '@acme/tasks@1.2.3')).toEqual([
       'bun',

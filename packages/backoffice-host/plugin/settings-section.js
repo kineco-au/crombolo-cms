@@ -7,6 +7,7 @@
  * every page; Settings sends their old addresses there.
  */
 
+import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import {
   createExtensionApi,
   createExtensionElement,
@@ -34,6 +35,7 @@ import {
 import './breadcrumb.js'
 import './settings-title.js'
 import { readOnlyWords } from './definition-tree-model.js'
+import { SPLIT_STYLES, savedPosition, savePosition } from './section-split.js'
 import './settings-card.js'
 import { needsAttention } from './email-settings-words.js'
 
@@ -48,25 +50,6 @@ const emailStatus = async () => {
   })
   if (!response.ok) throw new Error(`email responded ${response.status}`)
   return response.json()
-}
-
-/** Where Umbraco's sections keep the sidebar's width, so every section shares one. */
-const SPLIT_POSITION = 'umb-split-panel-position'
-
-const savedPosition = () => {
-  try {
-    return localStorage.getItem(SPLIT_POSITION) ?? undefined
-  } catch {
-    return undefined
-  }
-}
-
-const savePosition = (event) => {
-  try {
-    localStorage.setItem(SPLIT_POSITION, String(event.detail.position))
-  } catch {
-    // A browser that keeps nothing starts at the default width each time.
-  }
 }
 
 const menuOf = (manifest, menu) => manifest.meta?.menus?.includes(menu) === true
@@ -99,6 +82,8 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
   #menuItems = []
   #sectionRoutes = []
   #landing
+  /** Whether this user holds Users, whose card is here (story 429). */
+  #users = false
   #viewContexts = new Map()
   #providedView
   #manifest
@@ -119,6 +104,12 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
 
   constructor() {
     super()
+    this.consumeContext(UMB_CURRENT_USER_CONTEXT, (user) => {
+      this.observe(user?.currentUser, (current) => {
+        this.#users = current?.allowedSections?.includes('Umb.Section.Users') ?? false
+        this.#refreshLanding()
+      })
+    })
     // An explanation, not a control: a failure leaves it out.
     fetch(`${base()}/crombolo/api/site-files`, { credentials: 'include' })
       .then((response) => (response.ok ? response.json() : { writable: true }))
@@ -225,6 +216,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
         path: this.#dashboardPath(d),
       })),
       advanced: this.#advanced(),
+      users: this.#users,
     })
   }
 
@@ -427,23 +419,12 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
 
   static styles = [
     UmbTextStyles,
+    SPLIT_STYLES,
     css`
       :host {
         flex: 1 1 auto;
         height: 100%;
         display: flex;
-      }
-      /* As Umbraco's own sections draw the split, so the width is the same in each. */
-      umb-split-panel {
-        --umb-split-panel-start-min-width: 200px;
-        --umb-split-panel-start-max-width: 400px;
-        --umb-split-panel-end-min-width: 600px;
-        --umb-split-panel-slot-overflow: visible;
-      }
-      @media only screen and (min-width: 800px) {
-        umb-split-panel {
-          --umb-split-panel-initial-position: 300px;
-        }
       }
       umb-section-sidebar[hidden],
       .tree[hidden] {

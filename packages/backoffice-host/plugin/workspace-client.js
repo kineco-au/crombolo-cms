@@ -104,29 +104,170 @@ export const onceKnown = (asked, storage) => async (request) => {
 
 /**
  * What the switch offers, in order. Merge only where the person may merge and the
- * workspace has changes; Share only to its owner. Pure.
+ * workspace has changes. Opening a new one and sharing are buttons beside the menu
+ * (story 428), and every workspace is on the Workspaces page. Pure.
  */
 export function menuFor({ current, workspaces, mayMerge, changes, required }) {
   const items = []
+  // Three sections, each divided from the one before: Shared, the workspaces, what to do.
   items.push({
     action: 'shared',
+    section: 'shared',
     label: required ? 'Shared (to look at)' : 'Shared',
     current: !current,
   })
   for (const w of workspaces)
     if (w.state === 'open' && w.member)
-      items.push({ action: 'enter', workspace: w, label: w.name, current: current?.key === w.key })
-  items.push({ action: 'new', label: 'New workspace' })
+      items.push({
+        action: 'enter',
+        section: 'workspaces',
+        workspace: w,
+        label: w.name,
+        current: current?.key === w.key,
+      })
   if (current) {
-    items.push({ action: 'changes', label: `Changes (${changes})` })
+    items.push({ action: 'changes', section: 'actions', label: `Changes (${changes})` })
     if (mayMerge && changes > 0)
-      items.push({ action: 'merge', label: `Merge into Shared (${changes})` })
-    items.push({ action: 'address', label: 'Open at its address' })
-    const mine = workspaces.find((w) => w.key === current.key)
-    if (mine?.mine) items.push({ action: 'share', label: 'Share' })
+      items.push({
+        action: 'merge',
+        section: 'actions',
+        label: `Merge into Shared (${changes})`,
+      })
+    items.push({ action: 'address', section: 'actions', label: 'Open at its address' })
   }
-  items.push({ action: 'all', label: 'All workspaces' })
   return items
+}
+
+/**
+ * Story 428: which of the buttons beside the Content menu work where the tab is, and why
+ * one does not. `current` is the workspace the tab is in, none in Shared.
+ */
+export function controlsFor({ current, workspaces, mayMerge = false, changes = 0 }) {
+  const view = current ? workspaces.find((w) => w.key === current.key) : undefined
+  const inShared = 'Shared is everyone’s: open a workspace first.'
+  return {
+    merge: !current
+      ? { enabled: false, why: inShared }
+      : !mayMerge
+        ? { enabled: false, why: 'You may not merge workspaces.' }
+        : changes === 0
+          ? { enabled: false, why: 'It holds no changes to merge.' }
+          : { enabled: true },
+    share: !current
+      ? { enabled: false, why: inShared }
+      : view?.mine
+        ? { enabled: true }
+        : { enabled: false, why: 'Only its owner shares a workspace.' },
+    remove: !current
+      ? { enabled: false, why: inShared }
+      : view?.personal
+        ? { enabled: false, why: 'Your own workspace stays: every edit here goes in it.' }
+        : { enabled: true },
+  }
+}
+
+/**
+ * Told on `window` when what the workspaces hold or are called may have changed: something
+ * was saved through the Management API, or a workspace was opened, renamed or deleted.
+ */
+export const WORKSPACES_CHANGED = 'crombolo:workspaces-changed'
+
+export const tellWorkspacesChanged = () =>
+  globalThis.window?.dispatchEvent(new CustomEvent(WORKSPACES_CHANGED))
+
+/** The workspace a tab is in: the one chosen, or with one required, the person's own. Pure but for the tab's choice. */
+export const tabWorkspace = (mine, storage) => {
+  const chosen = currentWorkspace(storage)
+  if (chosen?.key === 'shared') return null
+  if (chosen) return chosen
+  return mine?.required && mine.workspace ? mine.workspace : null
+}
+
+/** What a tree's mark says of an item, by the mark the site gave it. */
+export const MARK_WORDS = {
+  changed: { tag: '', says: 'Changed' },
+  new: { tag: 'New', says: 'New' },
+  moved: { tag: 'Moved', says: 'Moved' },
+  deleted: { tag: 'Deleted', says: 'Deleted' },
+  below: { tag: '', says: 'Something below it is changed' },
+}
+
+/**
+ * The mark an item carries, from what the workspace holds: by its key, or its path as a
+ * tree names a file (`%2Fsite%dot%css` is `/site.css`). `below` for one that only holds a
+ * marked item beneath it; nothing for one that is as Shared has it. Pure.
+ */
+export function markOf(marks, unique) {
+  if (!marks || unique === undefined || unique === null) return undefined
+  let id = String(unique).replaceAll('%dot%', '.')
+  try {
+    id = decodeURIComponent(id)
+  } catch {}
+  const found = marks.items?.[id] ?? marks.items?.[id.toLowerCase()]
+  if (found) return found
+  return (marks.below ?? []).includes(id.toLowerCase()) ? 'below' : undefined
+}
+
+/** Who can see a workspace, as the back office words the two choices. */
+export const VISIBILITY = [
+  { value: 'members', label: 'Admins' },
+  { value: 'editors', label: 'Admins and Editors' },
+]
+
+/**
+ * The Workspaces page's list, in order: Shared, then each open workspace the person can
+ * see, the one the tab is in marked `here`. `note` says what stands out: conflicts, or
+ * that it is someone else's to look at. Pure.
+ */
+export function workspaceRows({ current, workspaces }) {
+  return [
+    { key: 'shared', name: 'Shared', here: !current, note: '' },
+    ...workspaces
+      .filter((w) => w.state === 'open')
+      .map((w) => ({
+        key: w.key,
+        name: w.name,
+        here: current?.key === w.key,
+        note: !w.member
+          ? 'to look at'
+          : w.conflicts > 0
+            ? `${w.conflicts} conflict${w.conflicts === 1 ? '' : 's'}`
+            : '',
+      })),
+  ]
+}
+
+/**
+ * What the Workspaces page says of one, as three cards: each a label, its words and a
+ * line below. `members` are the people it is shared with, its owner among them. Pure.
+ */
+export function workspaceFacts(view, members = [], changes = 0, when = (iso) => iso) {
+  const owner = members.find((m) => m.owner)
+  const others = members.filter((m) => !m.owner).map((m) => m.name)
+  const conflicts =
+    view.conflicts > 0
+      ? `${view.conflicts} conflict${view.conflicts === 1 ? '' : 's'} with Shared`
+      : 'no conflicts'
+  return [
+    { label: 'Created by', value: owner?.name ?? 'Its owner', note: when(view.createdAt) },
+    {
+      label: 'Last changed',
+      value: when(view.updatedAt),
+      note:
+        changes === 0
+          ? 'No changes yet'
+          : `${changes} change${changes === 1 ? '' : 's'}, ${conflicts}`,
+    },
+    {
+      label: 'Shared with',
+      value: others.length > 0 ? others.join(', ') : 'Nobody else',
+      note: view.staged
+        ? 'Holds a change from another site, to look at'
+        : view.personal
+          ? 'Your own: every edit of yours goes in it'
+          : '',
+    },
+  ]
 }
 
 async function call(path, init = {}) {
@@ -148,9 +289,13 @@ async function call(path, init = {}) {
 export const workspacesApi = {
   mine: () => call('/mine'),
   list: () => call(''),
-  open: (name, privacy = {}) => call('', { method: 'POST', body: { name, ...privacy } }),
+  open: (name, more = {}) => call('', { method: 'POST', body: { name, ...more } }),
+  describe: (key, description) => call(`/${key}`, { method: 'PATCH', body: { description } }),
+  rename: (key, name) => call(`/${key}`, { method: 'PATCH', body: { name } }),
   privacy: (key, privacy) => call(`/${key}`, { method: 'PATCH', body: privacy }),
+  discard: (key) => call(`/${key}`, { method: 'DELETE' }),
   changes: (key) => call(`/${key}/changes`),
+  marks: (key) => call(`/${key}/marks`),
   diff: (key) => call(`/${key}/diff?against=shared`),
   drop: (key, page) => call(`/${key}/changes/${page}`, { method: 'DELETE' }),
   dropPending: (key, id) => call(`/${key}/pending/${id}`, { method: 'DELETE' }),

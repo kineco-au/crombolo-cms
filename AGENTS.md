@@ -77,3 +77,12 @@
 
 - You must not bring in any dotnet dependencies
 - Don't leak implementation details or tech jargon into the user interface - keep the UI user focused.
+- Never use the browser's own `confirm`, `alert` or `prompt` in the back office: ask with
+  `ask()` (`packages/backoffice-host/plugin/ask.js`, the back office's own confirmation)
+  and say things in the screen itself. A native `<dialog>` the plugin opens outside a
+  component's shadow root carries the `crombolo-dialog` class and calls
+  `useDialogStyles()` (`dialog-styles.js`), so it looks like the rest of the back office.
+  `tests/backoffice-dialogs.test.ts` enforces both
+- The same holds for extensions: `extensionDialogProblems` (`native-dialogs.ts` in
+  `@crombolo/backoffice-host`) refuses back-office code using any of them in
+  `crombolo extension check` and at every install, from the command line or the Marketplace

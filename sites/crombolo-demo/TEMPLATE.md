@@ -1,10 +1,10 @@
 ## What is in it
 
-- a site about Crombolo in English and Spanish: a home page for editors and a page for developers, both built from blocks, features filtered by category, a people page, a blog with tags and paging, an about page, search and a contact form;
+- a site about Crombolo in English and Spanish: a home page for editors and a page for developers, both built from blocks, features filtered by category, a blog with tags and paging, an about page, search and a contact form;
 - people kept in the Library, a menu in the header, a dictionary for the words the views print, and site settings in the footer;
 - search and sharing details, a sitemap, and a language switch on every page.
 
-The people and the quote are invented, and the photographs are public domain.
+The people and the quotes are invented, and every image is a screenshot of Crombolo itself.
 
 ## Where to look first
 

@@ -5,7 +5,7 @@ order = 3
 [values]
 publishDate = "2026-06-23"
 author = ["tomas-vidal"]
-image = "/compass-map.jpg"
+image = "/translation-dictionary.jpg"
 
 [values.en-US]
 title = "Translating without a second site"

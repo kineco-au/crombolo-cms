@@ -4,7 +4,7 @@ order = 6
 
 [values]
 category = "structure"
-image = "/compass-map.jpg"
+image = "/translation-dictionary.jpg"
 
 [values.en-US]
 title = "Languages"

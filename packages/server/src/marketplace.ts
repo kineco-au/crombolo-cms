@@ -26,6 +26,7 @@ import {
   describePermissions,
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
+  extensionDialogProblems,
   forgetExtension,
   groupsOf,
   LEGACY_EXTENSION_KEYWORD,
@@ -751,6 +752,16 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       undo()
       options.extensions.invalidate()
       return schema3Refused(name, `${name}@${found.version} turned out to`)
+    }
+    // Its back-office code asks and tells in the back office's own dialogs (AGENTS.md).
+    const dialogs = extensionDialogProblems(found.directory)
+    if (dialogs.length > 0) {
+      undo()
+      options.extensions.invalidate()
+      return {
+        ok: false,
+        message: `${name}@${found.version} was removed again: ${dialogs.join('; ')}.`,
+      }
     }
     if (!consented(request, declaredEntries(found))) {
       undo()

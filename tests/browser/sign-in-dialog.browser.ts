@@ -114,6 +114,9 @@ test('no section of the backoffice names Umbraco', async ({ page, diagnostics })
         .click()
     // Forms, Media, Library and Translation have no tab: they are places under Content
     // (stories 289, 385, 419).
+    // Users are in Settings (story 429).
+    else if (section === 'Users')
+      await page.goto('/crombolo/section/settings/users/workspace/user-root')
     else if (section === 'Forms') await page.goto('/crombolo/section/content/forms')
     else if (section === 'Media') await page.goto('/crombolo/section/content/media')
     else if (section === 'Library') await page.goto('/crombolo/section/content/library')

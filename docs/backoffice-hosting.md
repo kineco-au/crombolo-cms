@@ -81,6 +81,16 @@ bun run vendor:backoffice
     `backofficeEntryPoint` has finished its `onInit`. So on a slow fresh load an
     editor's first read already goes in the tab's workspace and is taken as its
     own load (`workspaces.js`, `edit-conflicts.js`).
+  - **Users are in Settings** (story 429): the section's address is `settings/users`, it has no
+    tab, and `section/user-management/...` forwards (`moved-sections.ts`). It needs Settings.
+  - **A section may come with another's grant:** `meta.allowedWith` names it, as Workspaces
+    names Content, so it is a section with no grant of its own.
+  - **A save that fails always says so, once:** the content editors' base notifies of a
+    missing name, of fields that stop a save, and of what a request leaves unsaid (401, 403,
+    404, anything thrown); what the request told of already is not told again.
+  - **Every tree's rows carry the workspace's marks:** the shared tree row puts
+    `crombolo-item-marks` after an item's name, given the item's `unique`. The plugin
+    defines it (`item-marks.js`, `docs/workspaces.md`); where it defines none, nothing shows.
   - **A section's layout from a manifest:** `sectionLayout`, which Settings'
     landing page uses (see "Settings" below).
   - **What the theme reaches** (story 237): the header's hairline, its

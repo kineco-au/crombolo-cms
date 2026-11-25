@@ -137,13 +137,13 @@ export class CromboloDictionaryChipElement extends LitElement {
       <dialog aria-label=${`Dictionary item ${this.name}`} @close=${() => {
         this._item = undefined
       }}>
-        <h3>${this.name}</h3>
+        <uui-dialog-layout headline=${this.name}>
         ${this.#overlay()}
-        <div class="actions">
-          <uui-button look="secondary" label="Close" @click=${this.#close}>Close</uui-button>
+          <uui-button slot="actions" look="secondary" label="Close" @click=${this.#close}>Close</uui-button>
           ${
             this._item?.mayChange
               ? html`<uui-button
+                  slot="actions"
                   look="primary"
                   color="positive"
                   label="Save"
@@ -153,7 +153,7 @@ export class CromboloDictionaryChipElement extends LitElement {
                 >`
               : nothing
           }
-        </div>
+        </uui-dialog-layout>
       </dialog>`
   }
 
@@ -199,7 +199,7 @@ export class CromboloDictionaryChipElement extends LitElement {
     }
     dialog {
       width: min(36rem, calc(100vw - 2rem));
-      padding: var(--uui-size-space-5);
+      padding: 0;
       border: 1px solid var(--uui-color-border);
       border-radius: var(--uui-border-radius);
       background: var(--uui-color-surface);
@@ -209,9 +209,6 @@ export class CromboloDictionaryChipElement extends LitElement {
     dialog::backdrop {
       background: rgb(0 0 0 / 0.35);
     }
-    h3 {
-      margin: 0 0 var(--uui-size-space-4);
-    }
     uui-textarea {
       width: 100%;
       margin-top: var(--uui-size-space-4);
@@ -219,12 +216,6 @@ export class CromboloDictionaryChipElement extends LitElement {
     .note {
       color: var(--uui-color-text-alt);
       font-size: var(--uui-type-small-size);
-    }
-    .actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: var(--uui-size-space-3);
-      margin-top: var(--uui-size-space-5);
     }
   `
 }

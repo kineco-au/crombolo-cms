@@ -66,6 +66,7 @@
   --uui-box-header-background: var(--crombolo-card-header-background);
   --uui-box-header-color: var(--crombolo-card-header-text);
   --crombolo-terracotta-tint: var(--crombolo-night-alt);
+  --uui-dialog-title-background: var(--crombolo-terracotta-tint);
 
   /* The SEO view's search-result preview, in Google's dark-mode link blue. */
   --crombolo-snippet-title: #8ab4f8;

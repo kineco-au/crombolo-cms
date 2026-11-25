@@ -357,6 +357,7 @@ function parseManifest(text: string, problems: BundleProblem[]): BundleManifest 
       schemaVersion: str(provenance.schemaVersion) ?? '',
       schemaRevision: str(provenance.schemaRevision) ?? '',
       schemaHash: nullableStr(provenance.schemaHash) ?? null,
+      ...(provenance.schemaFrom === 'database' ? { schemaFrom: 'database' as const } : {}),
       ...(str(provenance.cmsVersion) ? { cmsVersion: str(provenance.cmsVersion) as string } : {}),
     },
     selector: {

@@ -5,7 +5,7 @@ order = 4
 [values]
 publishDate = "2026-08-05"
 author = ["tomas-vidal"]
-image = "/workbench.jpg"
+image = "/cli-upgrade.jpg"
 
 [values.en-US]
 title = "Rehearse your upgrades"

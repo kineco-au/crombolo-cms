@@ -315,6 +315,14 @@ export const DEPENDENCY_PATCHES: DependencyPatch[] = [
     replace:
       '      #header {\n        display: flex;\n        align-items: center;\n        column-gap: var(--uui-size-space-5);\n        border-bottom: 1px solid var(--uui-color-divider-standalone);\n        background: var(--uui-box-header-background, transparent);\n        color: var(--uui-box-header-color, inherit);\n        border-radius: calc(var(--uui-box-border-radius, var(--uui-border-radius-3)) - var(--uui-box-border-width, 1px))\n          calc(var(--uui-box-border-radius, var(--uui-border-radius-3)) - var(--uui-box-border-width, 1px)) 0 0;\n',
   },
+  // Every dialog is laid out by this one element: a title bar, the content, its actions.
+  {
+    file: 'external/uui/index.js',
+    source: '@umbraco-ui/uui/dist/components/dialog-layout/dialog-layout.element.js',
+    find: '      :host {\n        display: block;\n        padding: var(--uui-size-10) var(--uui-size-14);\n        color: var(--uui-color-text);\n      }\n\n      #actions {\n        margin-top: var(--uui-size-8);\n',
+    replace:
+      '      :host {\n        display: block;\n        padding: 0 !important;\n        overflow: hidden;\n        border-radius: inherit;\n        color: var(--uui-color-text);\n      }\n\n      h3 {\n        margin: 0;\n        padding: var(--uui-size-space-4) var(--uui-size-space-6);\n        background: var(--uui-dialog-title-background, var(--uui-color-surface-alt));\n        border-bottom: 1px solid var(--uui-color-border);\n        border-radius: inherit;\n        border-bottom-left-radius: 0;\n        border-bottom-right-radius: 0;\n        color: var(--uui-color-text);\n        font-size: var(--uui-type-h5-size);\n        font-weight: 700;\n        line-height: 1.4;\n      }\n\n      slot:not([name]) {\n        display: block;\n        padding: var(--uui-size-space-5) var(--uui-size-space-6);\n      }\n\n      #actions {\n        margin: 0;\n        padding: 0 var(--uui-size-space-6) var(--uui-size-space-5);\n',
+  },
 ]
 
 /**

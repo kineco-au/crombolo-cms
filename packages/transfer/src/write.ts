@@ -184,6 +184,7 @@ export function writeManifest(manifest: BundleManifest): string {
       schemaRevision: manifest.provenance.schemaRevision,
       schemaHash: manifest.provenance.schemaHash,
       ...(manifest.provenance.cmsVersion ? { cmsVersion: manifest.provenance.cmsVersion } : {}),
+      ...(manifest.provenance.schemaFrom ? { schemaFrom: manifest.provenance.schemaFrom } : {}),
     },
     selector: {
       roots: manifest.selector.roots,

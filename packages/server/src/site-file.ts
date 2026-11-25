@@ -39,6 +39,12 @@ import { type StoredFile, streamOf } from './media-store.ts'
 import { signPathWithKey } from './provenance.ts'
 import { readSiteData } from './site-data.ts'
 import { publicSources } from './site-public.ts'
+import {
+  giveSchemaFiles,
+  holdsDefinitions,
+  schemaBundleFiles,
+  schemaOfDatabase,
+} from './site-schema.ts'
 import { siteSections } from './site-sections.ts'
 import { siteSigningKey } from './site-trust.ts'
 import { TarballWriter } from './tar.ts'
@@ -77,6 +83,8 @@ export interface SiteExportResult {
   package: { name: string; version: string }
   counts: Record<string, number>
   sections: Partial<Record<keyof typeof BUNDLE_SECTIONS, number>>
+  /** Where the site had no schema files: its database's, and whether the site was given them (story 427). */
+  schema?: { from: 'database'; given: boolean; why?: string }
   media: { carried: number; bytes: number; missing: string[]; omitted: boolean }
   people: { members: number; users: number }
   /** How many distinct email addresses `--anonymise` replaced. */
@@ -177,6 +185,18 @@ export async function exportSite(
     },
     'all',
   )
+  // Story 427: a site with no schema files carries its database's, and is given them.
+  let schema: SiteExportResult['schema']
+  if (!holdsDefinitions(sections)) {
+    const files = await schemaOfDatabase(db)
+    if (files) {
+      schema = { from: 'database', ...(await giveSchemaFiles(db, config, files)) }
+      sections = [
+        ...schemaBundleFiles(files),
+        ...sections.filter((file) => !file.path.startsWith(`${BUNDLE_SECTIONS.schema}/`)),
+      ]
+    }
+  }
 
   let set = exported.set
   let people =
@@ -227,7 +247,11 @@ export async function exportSite(
         return found ? { ...blob, size: found.size, etag: found.etag } : blob
       }),
       label: `${config.siteName} (whole site)`,
-      provenance: { ...set.manifest.provenance, cmsVersion: VERSION },
+      provenance: {
+        ...set.manifest.provenance,
+        cmsVersion: VERSION,
+        ...(schema ? { schemaFrom: 'database' as const } : {}),
+      },
       scope: 'site' as const,
       ...(withMedia
         ? {}
@@ -346,6 +370,7 @@ export async function exportSite(
     package: { name: info.name, version: info.version },
     counts: { ...site.manifest.counts },
     sections: counted,
+    ...(schema ? { schema } : {}),
     media: { carried: stored.size, bytes, missing, omitted: !withMedia },
     people: { members: people?.members.length ?? 0, users: people?.users.length ?? 0 },
     ...(anonymised !== undefined ? { anonymised } : {}),

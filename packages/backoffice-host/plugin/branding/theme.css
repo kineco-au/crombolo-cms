@@ -26,6 +26,7 @@
   --crombolo-terracotta-hover: #9b4526;
   /* A pale tint of it, behind the current tree item and the Overview's labels. */
   --crombolo-terracotta-tint: #fbeee7;
+  --uui-dialog-title-background: var(--crombolo-terracotta-tint);
   --crombolo-cocoa: #54321f;
   --crombolo-cream: #fff7ea;
 

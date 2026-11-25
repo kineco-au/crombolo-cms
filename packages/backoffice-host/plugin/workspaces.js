@@ -1,23 +1,14 @@
 /**
  * Workspaces in the back office (story 384). Where workspaces are on: every
- * Management API call goes in this tab's workspace; the trees mark what it changed; a
+ * Management API call goes in this tab's workspace; every tree marks what it holds
+ * (`item-marks.js`); a
  * page's Info shows how it differs from Shared, and that another workspace changed it;
- * an edit begun in Shared can be saved in a new workspace; and where a workspace is
+ * and where a workspace is
  * required, Shared is looked at only. The switch at the head of Content is
  * `workspace-switch.js`. With workspaces off, none of this shows.
  */
 import { umbHttpClient } from '@umbraco-cms/backoffice/http-client'
-import { onceKnown, workspacesApi } from './workspace-client.js'
-
-export const WORKSPACE_SIGN = {
-  type: 'entitySign',
-  kind: 'icon',
-  alias: 'Crombolo.EntitySign.WorkspaceChanged',
-  name: 'Crombolo Changed In This Workspace',
-  forEntityTypes: ['document'],
-  forEntityFlags: ['Crombolo.Workspace.Changed'],
-  meta: { iconName: 'icon-edit', label: 'Changed in this workspace' },
-}
+import { onceKnown, tellWorkspacesChanged, workspacesApi } from './workspace-client.js'
 
 export const WORKSPACE_INFO = {
   type: 'workspaceInfoApp',
@@ -25,17 +16,6 @@ export const WORKSPACE_INFO = {
   name: 'Crombolo Workspace Info',
   element: () => import('./workspace-info.js'),
   weight: 900,
-  conditions: [{ alias: 'Umb.Condition.WorkspaceAlias', match: 'Umb.Workspace.Document' }],
-}
-
-export const WORKSPACE_MOVE = {
-  type: 'workspaceAction',
-  kind: 'default',
-  alias: 'Crombolo.WorkspaceAction.Document.SaveInNewWorkspace',
-  name: 'Crombolo Save In A New Workspace',
-  api: () => import('./workspace-move-action.js'),
-  weight: 70,
-  meta: { label: 'Save in a new workspace', look: 'secondary' },
   conditions: [{ alias: 'Umb.Condition.WorkspaceAlias', match: 'Umb.Workspace.Document' }],
 }
 
@@ -57,8 +37,13 @@ export const onInit = async (_host, extensionRegistry) => {
   umbHttpClient.interceptors.request.use(onceKnown(asked))
   const mine = await asked
   if (!mine?.enabled) return
-  extensionRegistry.register(WORKSPACE_SIGN)
+  // Whatever was just saved may be a change in the workspace: its controls count again.
+  umbHttpClient.interceptors.response.use((response, request) => {
+    if (response?.ok && request?.method && request.method !== 'GET') tellWorkspacesChanged()
+    return response
+  })
+  // What the workspace holds is marked beside each item, in every tree, by one element.
+  await import('./item-marks.js')
   extensionRegistry.register(WORKSPACE_INFO)
-  extensionRegistry.register(WORKSPACE_MOVE)
   if (mine.required) extensionRegistry.register(SHARED_READ_ONLY)
 }

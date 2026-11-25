@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_WORKSPACE_PLACES,
+  STATE_USERS_IN_SETTINGS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -166,10 +166,12 @@ describe('upgrading from the previous release', () => {
       'AddWorkspaceErrors',
       'AddWorkspaceSchedules',
       'AddWorkspacePlaces',
+      'AddWorkspaceDescription',
+      'PutUsersInSettings',
     ])
-    expect(await readState(db)).toBe(STATE_WORKSPACE_PLACES)
+    expect(await readState(db)).toBe(STATE_USERS_IN_SETTINGS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.79.0', steps: 49 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.80.0', steps: 51 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

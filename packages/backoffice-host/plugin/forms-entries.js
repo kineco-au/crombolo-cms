@@ -9,8 +9,10 @@
  * than the UI hiding it — so this shows that it is withheld rather than
  * pretending the answer was blank.
  */
+
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { ask } from './ask.js'
 import { entriesLibraryOptions } from './form-picker-options.js'
 import {
   deleteEntry,
@@ -116,7 +118,12 @@ export default class CromboloFormsEntriesElement extends UmbLitElement {
   }
 
   async #remove(entry) {
-    if (!confirm('Delete this entry? It cannot be undone.')) return
+    const sure = await ask(this, {
+      headline: 'Delete this entry?',
+      content: 'It cannot be undone.',
+      confirmLabel: 'Delete',
+    })
+    if (!sure) return
     try {
       await deleteEntry(entry.id)
       await this.#load()

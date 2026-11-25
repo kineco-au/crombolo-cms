@@ -4,7 +4,7 @@ order = 3
 
 [values]
 category = "editing"
-image = "/letterpress-alphabet.jpg"
+image = "/block-editor.jpg"
 
 [values.en-US]
 title = "Blocks"

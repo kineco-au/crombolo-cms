@@ -200,7 +200,12 @@ test("a group's owners choose who is in it, and only an administrator changes it
       data: {
         name,
         alias: name.replace(/\W/g, ''),
-        sections: ['Umb.Section.Users', 'Umb.Section.Content', 'Crombolo.Section.Pages'],
+        sections: [
+          'Umb.Section.Users',
+          'Umb.Section.Settings',
+          'Umb.Section.Content',
+          'Crombolo.Section.Pages',
+        ],
         languages: [],
         hasAccessToAllLanguages: true,
         documentRootAccess: true,

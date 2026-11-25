@@ -21,6 +21,9 @@ import {
 import { WorkspaceFileRepository } from './workspace-files.ts'
 
 /** A change staged in a workspace (story 383), with the schedules its merge sets (story 395). */
+/** How lately a workspace changed a page for someone else opening it to be told. */
+export const TOUCHED_WITHIN_MS = 7 * 24 * 60 * 60 * 1000
+
 export interface StagedChange {
   key: string
   name: string | null
@@ -55,8 +58,10 @@ export interface Workspace {
   stagedReadOnly: boolean
   /** Who can see it (story 384): its members, or everyone who may edit, reading only. */
   visibility: 'members' | 'editors'
-  /** Whether someone opening an item it changed is told so, and by whose workspace. */
+  /** No longer chosen: anyone opening an item it changed lately is told so. Kept as stored. */
   tellOthers: boolean
+  /** What it is for, in its owner's words. */
+  description: string | null
 }
 
 /** A move, reorder or delete waiting for the merge, with where its page stood (story 380). */
@@ -109,6 +114,7 @@ export class WorkspaceRepository {
     personal?: boolean
     visibility?: 'members' | 'editors'
     tellOthers?: boolean
+    description?: string | null
     /** Opened only to see what something would do, then discarded: raises nothing. */
     quiet?: boolean
   }): Promise<Workspace> {
@@ -123,6 +129,7 @@ export class WorkspaceRepository {
         personal: this.#db.dialect.boolValue(input.personal === true) as boolean,
         visibility: input.visibility ?? 'members',
         tell_others: this.#db.dialect.boolValue(input.tellOthers !== false) as boolean,
+        description: input.description?.trim() || null,
         created_at: now,
         updated_at: now,
       })
@@ -327,17 +334,37 @@ export class WorkspaceRepository {
     await this.#db.q.updateTable('workspace').set(set).where('id', '=', id).execute()
   }
 
-  /** Open workspaces, other than `except`'s own, that changed a page and say so (story 384). */
-  async touching(nodeId: number, exceptUser: string): Promise<Workspace[]> {
+  /** What it is for, changed by its owner; empty clears it. */
+  async setDescription(id: number, description: string | null): Promise<void> {
+    await this.#db.q
+      .updateTable('workspace')
+      .set({ description: description?.trim() || null })
+      .where('id', '=', id)
+      .execute()
+  }
+
+  /**
+   * Open workspaces, other than `except`'s own, that changed a page lately (story 384):
+   * since `since`, seven days ago unless said. An older change is not worth a warning.
+   */
+  async touching(
+    nodeId: number,
+    exceptUser: string,
+    since = new Date(Date.now() - TOUCHED_WITHIN_MS),
+  ): Promise<Workspace[]> {
+    const from = DbDate.toDb(since)
     const documents = await this.#db.q
-      .selectFrom('workspace_document')
+      .selectFrom('content_version')
       .select('workspace_id')
       .where('node_id', '=', nodeId)
+      .where('workspace_id', 'is not', null)
+      .where('version_date', '>=', from)
       .execute()
     const pending = await this.#db.q
       .selectFrom('workspace_pending')
       .select('workspace_id')
       .where('node_id', '=', nodeId)
+      .where('recorded_at', '>=', from)
       .execute()
     const ids = [...new Set([...documents, ...pending].map((r) => Number(r.workspace_id)))]
     if (ids.length === 0) return []
@@ -349,7 +376,6 @@ export class WorkspaceRepository {
       .execute()
     return (await this.#withMembers(rows)).filter(
       (w) =>
-        w.tellOthers &&
         w.ownerKey !== normaliseUuid(exceptUser) &&
         !w.memberKeys.includes(normaliseUuid(exceptUser)),
     )
@@ -638,6 +664,7 @@ export class WorkspaceRepository {
       staged_changes?: string | null
       visibility?: string | null
       tell_others?: unknown
+      description?: string | null
     }>,
   ): Promise<Workspace[]> {
     if (rows.length === 0) return []
@@ -668,6 +695,7 @@ export class WorkspaceRepository {
       ...stagedOf(row.staged_changes),
       visibility: row.visibility === 'editors' ? 'editors' : 'members',
       tellOthers: row.tell_others === undefined ? true : fromDbBool(row.tell_others),
+      description: row.description ?? null,
     }))
   }
 }

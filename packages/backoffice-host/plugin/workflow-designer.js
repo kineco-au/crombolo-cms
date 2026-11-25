@@ -10,6 +10,7 @@
 // For its side effect: registers `umb-input-document`, which the shell loads lazily.
 import './alias-input.js'
 import { kebabAlias } from './alias-model.js'
+import { ask } from './ask.js'
 import '@umbraco-cms/backoffice/document'
 import { css, html, nothing, unsafeCSS } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
@@ -357,16 +358,18 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
   async #delete(name, alias) {
     const preview = await previewDelete(alias)
     const waiting = preview.ok ? preview.affected : []
-    const withdrawn =
-      waiting.length > 0
-        ? `\n\nThe requests for these pages, waiting for approval, are withdrawn:\n${waiting.map((a) => `- ${a.page}`).join('\n')}`
-        : ''
-    if (
-      !window.confirm(
-        `Delete the workflow "${name}"? Pages it covers will publish without approval.${withdrawn}`,
-      )
-    )
-      return
+    const sure = await ask(this, {
+      headline: `Delete the workflow "${name}"?`,
+      content: html`<p>Pages it covers will publish without approval.</p>
+        ${
+          waiting.length > 0
+            ? html`<p>The requests for these pages, waiting for approval, are withdrawn:</p>
+                <ul>${waiting.map((a) => html`<li>${a.page}</li>`)}</ul>`
+            : nothing
+        }`,
+      confirmLabel: 'Delete',
+    })
+    if (!sure) return
     const result = await deleteWorkflow(alias)
     if (!result.ok) {
       this._message = result.message

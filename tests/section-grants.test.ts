@@ -87,6 +87,9 @@ describe('the grants', () => {
     expect(placesRefusal(['Umb.Section.Translation'])).toBe(
       'Translation is a place under Content, so the group needs Content too.',
     )
+    expect(placesRefusal(['Umb.Section.Users'])).toBe(
+      'Users is in Settings, so the group needs Settings too.',
+    )
     expect(placesRefusal(['workflow'])).toBeUndefined()
     expect(placesRefusal(['content', 'library', 'translation'])).toBeUndefined()
   })

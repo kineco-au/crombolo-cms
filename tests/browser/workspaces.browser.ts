@@ -10,6 +10,8 @@ import { expect, goToSection, settle, signIn, test } from './fixtures.ts'
 const API = '/umbraco/management/api/v1'
 const switchButton = (page: Page) =>
   page.locator('crombolo-workspace-switch button[aria-haspopup="menu"]')
+const controlButton = (page: Page, name: string) =>
+  page.locator('crombolo-workspace-controls').getByRole('button', { name, exact: true })
 const menuItem = (page: Page, name: RegExp | string) =>
   page.locator('crombolo-workspace-switch').getByRole('menuitem', { name })
 
@@ -59,19 +61,91 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   // The switch says Shared, at the head of the strip, which is in no colour of its own.
   const stripNav = page.locator('crombolo-content-strip nav')
   await expect(switchButton(page)).toContainText('Shared')
-  await expect(stripNav).not.toHaveAttribute('style', /--crombolo-strip-edge/)
-  await expect(stripNav.locator(':scope > *').first()).toHaveJSProperty(
+  // The strip keeps the back office's own colour; the switch is its last item, after the buttons.
+  await expect(stripNav).not.toHaveAttribute('style', /.+/)
+  await expect(stripNav.locator(':scope > *').last()).toHaveJSProperty(
     'tagName',
     'CROMBOLO-WORKSPACE-SWITCH',
   )
   await switchButton(page).click()
-  await menuItem(page, 'New workspace').click()
+  // Seen, not only clickable: the strip scrolls, and a menu inside it was clipped off-screen.
+  const menu = await page.locator('crombolo-workspace-switch ul[role="menu"]').boundingBox()
+  const width = page.viewportSize()?.width ?? 0
+  expect(menu?.x ?? -1).toBeGreaterThanOrEqual(0)
+  expect((menu?.x ?? 0) + (menu?.width ?? 0)).toBeLessThanOrEqual(width)
+  // Story 428: a new workspace is not in the list; pressing outside it closes it.
+  await expect(menuItem(page, 'New workspace')).toHaveCount(0)
+  await page.locator('crombolo-content-strip nav').click({ position: { x: 400, y: 5 } })
+  await expect(page.locator('crombolo-workspace-switch ul[role="menu"]')).toHaveCount(0)
+  // In Shared there is nothing to merge, share or delete.
+  await expect(controlButton(page, 'Merge into Shared')).toBeDisabled()
+  await expect(controlButton(page, 'Share this workspace')).toBeDisabled()
+  await expect(controlButton(page, 'Delete this workspace')).toBeDisabled()
+  // Each button is an icon, its words shown beside it: a greyed one says why.
+  const tooltip = page.locator('crombolo-workspace-controls [role="tooltip"]')
+  await controlButton(page, 'New workspace').hover()
+  await expect(tooltip).toHaveText('New workspace')
+  await page.locator('crombolo-workspace-controls .control').nth(2).hover()
+  await expect(tooltip).toContainText('open a workspace first')
+  await controlButton(page, 'New workspace').click()
   const dialog = page.locator('dialog.crombolo-workspace-dialog')
   await dialog.locator('input[name="name"]').fill('Spring sale')
+  await dialog.locator('textarea[name="description"]').fill('The spring prices')
+  await dialog.getByRole('button', { name: 'Admins and Editors', exact: true }).click()
   await dialog.getByRole('button', { name: 'Open it' }).click()
   await expect(switchButton(page)).toContainText('Spring sale')
-  // Story 419: in it, the strip, what the workspace holds, is in its colour.
-  await expect(stripNav).toHaveAttribute('style', /--crombolo-strip-edge: #[0-9a-f]{6}/)
+  // In it, its colour is the dot beside its name, and the strip is as it was.
+  await expect(switchButton(page).locator('.dot')).toHaveAttribute(
+    'style',
+    /background: ?#[0-9a-f]{6}/,
+  )
+  await expect(stripNav).not.toHaveAttribute('style', /.+/)
+  // In a workspace of one's own, it is shared and deleted from the buttons.
+  await expect(controlButton(page, 'Share this workspace')).toBeEnabled()
+  await expect(controlButton(page, 'Delete this workspace')).toBeEnabled()
+
+  await controlButton(page, 'Delete this workspace').click()
+  const confirm = page.locator('umb-confirm-modal uui-dialog-layout')
+  await expect(confirm.locator('h3')).toHaveText('Delete Spring sale')
+  await expect(confirm.locator('h3')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('umb-confirm-modal')).toContainText(
+    "The workspace will be lost. This can't be undone",
+  )
+  await page.locator('umb-confirm-modal #cancel').click()
+  await expect(confirm).toHaveCount(0)
+
+  // Workspaces lists them, the one the tab is in marked, and says what the chosen one is.
+  await stripNav.getByRole('link', { name: 'Workspaces', exact: true }).click()
+  // The list takes the sidebar, where the tree of pages was; the one chosen is beside it.
+  const list = page.locator('umb-section-sidebar crombolo-workspaces-list')
+  const all = page.locator('crombolo-workspaces-page')
+  await expect(list.locator('.row[aria-current="true"]')).toContainText('Spring sale')
+  await expect(list.locator('.row[aria-current="true"]')).toContainText('You are here')
+  await expect(page.locator('umb-section-sidebar umb-document-tree-item')).toHaveCount(0)
+  // One place at a time: no tabs for Home and Workspaces above it.
+  await expect(page.locator('umb-section-main-views')).toHaveCount(0)
+  await expect(all.locator('input.title')).toHaveValue('Spring sale')
+  await expect(all.locator('textarea[name="description"]')).toHaveValue('The spring prices')
+  await expect(
+    all.getByRole('button', { name: 'Admins and Editors', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(all.locator('.facts')).toContainText('Created by')
+  // Its owner changes who sees it there.
+  await all.getByRole('button', { name: 'Admins', exact: true }).click()
+  await expect(all.locator('[slot="footer-info"]')).toHaveText('Saved.')
+  // Renamed there, it is called that at once in the switch too.
+  await all.locator('input.title').fill('Spring offers')
+  await all.locator('input.title').blur()
+  await expect(switchButton(page)).toContainText('Spring offers')
+  await expect(list.locator('.row[aria-current="true"]')).toContainText('Spring offers')
+  // Shared, chosen in the list, is shown and not entered.
+  await list.locator('.row', { hasText: 'Shared' }).first().click()
+  await expect(all.getByRole('button', { name: 'Switch to Shared' })).toBeVisible()
+  await expect(switchButton(page)).toContainText('Spring offers')
+  await expect(stripNav.getByRole('link', { name: 'Workspaces', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
 
   // The page changed in it is changed there only.
   await page.goto(`/crombolo/section/content/workspace/document/edit/${key}`)
@@ -79,16 +153,37 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.Save').click()
   await expect(page.locator('uui-toast-notification').filter({ hasText: /saved/i })).toBeVisible()
   expect(await sharedName(page, key)).toBe(NAME)
+  // In the tree, the page it changed is marked in its colour, after its name; the rest are not.
+  const marks = page.locator('umb-section-sidebar crombolo-item-marks:not([hidden])')
+  await expect(marks).toHaveCount(1)
+  await expect(marks.first()).toHaveAttribute('title', 'Changed in Spring offers')
 
-  // Merged from the switch, Shared has it; the tab is back in Shared.
+  // The merge is a view of its own, in the address, reached from the icon in the bar.
   await settle(page)
-  await switchButton(page).click()
-  await menuItem(page, /Merge into Shared/).click()
-  await page
-    .locator('dialog.crombolo-workspace-dialog')
-    .getByRole('button', { name: 'Merge into Shared' })
-    .click()
-  await expect(page.locator('dialog.crombolo-workspace-dialog')).toContainText('Merged')
+  await controlButton(page, 'Merge into Shared').click()
+  await expect(page).toHaveURL(/content\/workspaces\?workspace=[0-9a-f-]+&view=merge/)
+  const merging = page.locator('crombolo-workspaces-page .merge')
+  await expect(merging.locator('h2')).toHaveText('Merge Spring offers into Shared')
+  // What it changes is a box for each page, opened to see its fields before and after.
+  const item = merging.locator('details.item').first()
+  await expect(item.locator('summary')).toContainText(`${NAME} sale`)
+  const name = item.locator('tbody tr', { hasText: 'Name' }).first()
+  await expect(name.locator('td').first()).toHaveText(NAME)
+  await expect(name.locator('td').last()).toHaveText(`${NAME} sale`)
+  await expect(page.locator('dialog.crombolo-workspace-dialog')).toHaveCount(0)
+  // Back leaves it for the page it was opened from, and forward returns.
+  await page.goBack()
+  await expect(merging).toHaveCount(0)
+  await page.goForward()
+  await expect(merging.locator('h2')).toHaveText('Merge Spring offers into Shared')
+  // Cancel shows the workspace again; its Merge button comes back here.
+  const place = page.locator('crombolo-workspaces-page')
+  await place.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page).not.toHaveURL(/view=merge/)
+  await place.getByRole('button', { name: 'Merge into Shared' }).click()
+  await expect(merging.locator('h2')).toHaveText('Merge Spring offers into Shared')
+  await place.getByRole('button', { name: 'Merge into Shared' }).click()
+  await expect(place).toContainText('Merged into Shared')
   await expect.poll(() => sharedName(page, key), { timeout: 10_000 }).toBe(`${NAME} sale`)
   await expect(switchButton(page)).toContainText('Shared', { timeout: 15_000 })
 })
@@ -103,8 +198,7 @@ test('a fresh load straight into an editor reads and saves the page in the works
   const key = await sharedPage(page, NAME)
   await goToSection(page, 'Content')
   await settle(page)
-  await switchButton(page).click()
-  await menuItem(page, 'New workspace').click()
+  await controlButton(page, 'New workspace').click()
   const dialog = page.locator('dialog.crombolo-workspace-dialog')
   await dialog.locator('input[name="name"]').fill('Slow start')
   await dialog.getByRole('button', { name: 'Open it' }).click()

@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.79.1",
+  "version": "0.80.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -662,6 +662,24 @@
         "label": "Code",
         "pathname": "content/code"
       }
+    },
+    {
+      "type": "section",
+      "alias": "Crombolo.Section.Workspaces",
+      "name": "Crombolo Workspaces Section",
+      "weight": 43,
+      "meta": {
+        "label": "Workspaces",
+        "pathname": "content/workspaces",
+        "allowedWith": "Umb.Section.Content"
+      }
+    },
+    {
+      "type": "sectionLayout",
+      "alias": "Crombolo.SectionLayout.Workspaces",
+      "name": "Crombolo Workspaces Layout",
+      "forSection": "Crombolo.Section.Workspaces",
+      "element": "/crombolo-plugin/workspaces-section.js"
     },
     {
       "type": "sectionLayout",

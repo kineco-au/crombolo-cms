@@ -151,6 +151,16 @@ export async function goToSection(page: Page, name: string): Promise<void> {
     await settle(page)
     return
   }
+  // Users are in Settings (story 429), opened from their card there.
+  if (name === 'Users') {
+    await goToSection(page, 'Settings')
+    await page
+      .locator('crombolo-settings-landing')
+      .getByRole('link', { name: /^Users and groups/ })
+      .click()
+    await settle(page)
+    return
+  }
   // Media is a place under Content (story 385), reached from the row beneath the header.
   if (name === 'Media') {
     await goToSection(page, 'Content')

@@ -92,7 +92,18 @@ describe('in a site folder', () => {
     here = localSite('users-cli')
     // A group with the Users section that is no administrator's, made before the server
     // starts so a person can be put in it.
-    ok('users', 'groups', 'new', 'keepers', '--name', 'Keepers', '--section', 'users')
+    ok(
+      'users',
+      'groups',
+      'new',
+      'keepers',
+      '--name',
+      'Keepers',
+      '--section',
+      'users',
+      '--section',
+      'settings',
+    )
     await (await bootstrapDatabase(here.config)).db.close()
     const h = await serveSite(here)
     try {

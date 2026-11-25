@@ -98,10 +98,12 @@ import { twoFactorMigration } from './two-factor.ts'
 import { upgradeReportMigration } from './upgrade-report.ts'
 import { userGroupOwnersMigration } from './user-group-owners.ts'
 import { userStartNodesDroppedMigration } from './user-start-nodes-dropped.ts'
+import { usersInSettingsMigration } from './users-in-settings.ts'
 import { usersLocalisationMigration } from './users-localisation.ts'
 import { valuesMigration } from './values.ts'
 import { webhooksMigration } from './webhooks.ts'
 import { workspaceConflictsMigration } from './workspace-conflicts.ts'
+import { workspaceDescriptionMigration } from './workspace-description.ts'
 import { workspaceErrorsMigration } from './workspace-errors.ts'
 import { workspaceLinksMigration } from './workspace-links.ts'
 import { workspaceMergeMigration } from './workspace-merge.ts'
@@ -211,4 +213,6 @@ export const cromboloPlan = new MigrationPlan([
   workspaceErrorsMigration,
   workspaceSchedulesMigration,
   workspacePlacesMigration,
+  workspaceDescriptionMigration,
+  usersInSettingsMigration,
 ])

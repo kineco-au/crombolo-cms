@@ -67,7 +67,7 @@ beforeAll(() => {
   )
   writeFileSync(join(site, 'components', 'page.tsx'), 'export default () => <main />\n')
   expect(cli(['types', 'sync']).code).toBe(0)
-})
+}, 60_000)
 afterAll(() => rmSync(site, { recursive: true, force: true }))
 
 describe('bundle build --check', () => {

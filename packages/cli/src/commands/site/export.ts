@@ -161,6 +161,10 @@ export default class SiteExport extends BaseCommand {
     this.say(`  package  ${result.package.name}@${result.package.version} (private)`)
     this.say(`  content  ${counted(result.counts, 'none')}, unencrypted`)
     if (Object.keys(result.sections).length > 0) this.say(`  files    ${counted(result.sections)}`)
+    if (result.schema)
+      this.say(
+        `  schema   written from the database, the site having no schema files; ${result.schema.given ? 'the site has them now too' : `the site was not given them: ${result.schema.why}`}`,
+      )
     if (result.media.omitted)
       this.say(
         '  media    left out: importing it brings the media items without their files; pass --with-media to include them',

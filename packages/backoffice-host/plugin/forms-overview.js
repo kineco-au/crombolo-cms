@@ -13,6 +13,7 @@
 // For its side effect: registers `umb-input-document`, which the shell loads lazily.
 import './alias-input.js'
 import { camelAlias } from './alias-model.js'
+import { ask } from './ask.js'
 import '@umbraco-cms/backoffice/document'
 import './form-word-input.js'
 import './forms-entries.js'
@@ -467,8 +468,15 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
         <uui-button compact look="secondary" label="Move page down" ?disabled=${p === pages.length - 1}
           @click=${() => this.#apply(movePage, p, p + 1)}>↓</uui-button>
         <uui-button compact look="secondary" color="danger" label="Remove page" ?disabled=${pages.length === 1}
-          @click=${() => {
-            if (pageHasFields(page) && !confirm('Remove this page and the fields on it?')) return
+          @click=${async () => {
+            if (
+              pageHasFields(page) &&
+              !(await ask(this, {
+                headline: 'Remove this page and the fields on it?',
+                confirmLabel: 'Remove',
+              }))
+            )
+              return
             this.#apply(removePage, p)
           }}></uui-button>
       </div>
@@ -503,8 +511,15 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
         <uui-button compact look="secondary" label="Move group down" ?disabled=${g === count - 1}
           @click=${() => this.#apply(moveGroup, p, g, g + 1)}>↓</uui-button>
         <uui-button compact look="secondary" color="danger" label="Remove group" ?disabled=${count === 1}
-          @click=${() => {
-            if (groupHasFields(group) && !confirm('Remove this group and its fields?')) return
+          @click=${async () => {
+            if (
+              groupHasFields(group) &&
+              !(await ask(this, {
+                headline: 'Remove this group and its fields?',
+                confirmLabel: 'Remove',
+              }))
+            )
+              return
             this.#apply(removeGroup, p, g)
           }}></uui-button>
       </div>
@@ -712,8 +727,9 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
               <option value="approve" ?selected=${workflow.on === 'approve'}>When an entry is approved</option>
             </select>
             <uui-button compact look="secondary" color="danger" label="Remove workflow"
-              @click=${() => {
-                if (!confirm(`Remove the workflow "${workflow.name || 'untitled'}"?`)) return
+              @click=${async () => {
+                const headline = `Remove the workflow "${workflow.name || 'untitled'}"?`
+                if (!(await ask(this, { headline, confirmLabel: 'Remove' }))) return
                 this.#apply(removeWorkflow, index)
               }}></uui-button>
           </div>
@@ -894,7 +910,12 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
   }
 
   async #remove(form) {
-    if (!confirm(`Delete the form "${form.name}"? Its entries are kept.`)) return
+    const sure = await ask(this, {
+      headline: `Delete the form "${form.name}"?`,
+      content: 'Its entries are kept.',
+      confirmLabel: 'Delete',
+    })
+    if (!sure) return
     try {
       const result = await deleteForm(form.key)
       if (!result.ok) this._notice = 'That form could not be deleted.'

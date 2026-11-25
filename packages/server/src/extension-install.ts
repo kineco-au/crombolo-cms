@@ -12,6 +12,7 @@ import {
   askedPermissions,
   type BundlePackage,
   type DeclaredPermission,
+  extensionDialogProblems,
   forgetExtension,
   isSchema3Field,
   type PackageJson,
@@ -471,6 +472,9 @@ function landedProblem(
     return `${name}@${read.bundle.version} landed where ${expected} was checked, so it was removed again. Try the install again.`
   if (isSchema3Field(read.bundle.field))
     return `${name}@${read.bundle.version} was removed again: ${SCHEMA_3_NOT_INSTALLED}.`
+  const dialogs = extensionDialogProblems(dir)
+  if (dialogs.length > 0)
+    return `${name}@${read.bundle.version} was removed again: ${dialogs.join('; ')}.`
   return undefined
 }
 

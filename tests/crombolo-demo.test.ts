@@ -78,20 +78,38 @@ describe('the Crombolo demo, in English', () => {
     expect(status).toBe(200)
     expect(html).toContain('<html lang="en-US"')
     for (const part of [
-      'class="hero"',
+      'class="hero',
       'class="feature-row',
       'class="quote',
       'class="call-to-action',
     ])
       expect(html).toContain(part)
-    expect(html).toContain('Work on the next version of your site while this one stays live')
-    expect(html).toContain('href="/features/workspaces"')
+    expect(html).toContain('Crombolo: the open source CMS for the agentic era')
+    expect(html).toContain('href="/for-editors"')
     expect(html).toContain('href="/for-developers"')
+  })
+
+  test('its page for editors is blocks too, about the back office, with no dialog in its pictures', async () => {
+    const { status, html } = await page('/for-editors')
+    expect(status).toBe(200)
+    expect(html).toContain('A back office that feels familiar')
+    expect(html).toContain('Edit content and preview your changes')
+    expect(html).toContain('Make changes safely in your own personal workspace')
+    for (const dialog of [
+      'workspace-share',
+      'workspace-merge',
+      'workspace-changes',
+      'block-editor',
+    ])
+      expect(html).not.toContain(`/${dialog}.jpg`)
   })
 
   test('its page for developers is blocks too, about the command line', async () => {
     const { status, html } = await page('/for-developers')
     expect(status).toBe(200)
+    expect(html).toContain('Crombolo: a CMS for agent-assisted development')
+    // The logo is artwork, shown as it is, beside or below the text rather than behind it.
+    expect(html).toContain('class="hero hero--artwork"')
     expect(html).toContain('Everything the back office does, from the command line')
     expect(html).toContain('class="feature-row')
     expect(html).toContain('<code>crombolo site deploy --profile production</code>')
@@ -104,8 +122,8 @@ describe('the Crombolo demo, in English', () => {
       .where('text_value', 'like', '%call-to-action%')
       .where('is_current', '=', h.server.db.dialect.boolValue(true))
       .execute()
-    // The home page and the page for developers, each in two languages.
-    expect(rows.length).toBe(4)
+    // The home page and the pages for editors and developers, each in two languages.
+    expect(rows.length).toBe(6)
     for (const row of rows)
       for (const alias of ['hero', 'quote', 'call-to-action'])
         expect(row.text_value).toContain(`"alias":"${alias}"`)
@@ -115,9 +133,10 @@ describe('the Crombolo demo, in English', () => {
 
   test('its header comes from the menu, and leaves out what the menu does', async () => {
     const { html } = await page('/')
-    for (const link of ['Features', 'For developers', 'People', 'Blog', 'About', 'Contact'])
+    for (const link of ['Features', 'For editors', 'For developers', 'Blog', 'About', 'Contact'])
       expect(html).toContain(`>${link}</a>`)
     expect(html).not.toContain('>Site Settings<')
+    expect(html).not.toContain('>People</a>')
   })
 
   test('its footer comes from the site settings', async () => {
@@ -138,14 +157,6 @@ describe('the Crombolo demo, in English', () => {
     const one = await page('/features/search')
     expect(one.status).toBe(200)
     expect(one.html).toContain('Site search works over published pages')
-  })
-
-  test('its people are Library elements, shown by initials without a photo', async () => {
-    const { html } = await page('/people')
-    expect(html).toContain('Inès Marchetti')
-    expect(html).toContain('class="person__monogram"')
-    expect(html).toContain('>IM</span>')
-    expect(html).toContain('invented')
   })
 
   test('its blog pages four at a time, newest first', async () => {
@@ -190,11 +201,9 @@ describe('the Crombolo demo, in Spanish at /es', () => {
     const { status, html } = await page('/es')
     expect(status).toBe(200)
     expect(html).toContain('<html lang="es-ES"')
-    expect(html).toContain(
-      'Trabaja en la próxima versión de tu sitio mientras esta sigue publicada',
-    )
-    expect(html).not.toContain('Work on the next version')
-    expect(html).toContain('href="/es/funciones/')
+    expect(html).toContain('Crombolo: el CMS de código abierto para la era de los agentes')
+    expect(html).not.toContain('the open source CMS for the agentic era')
+    expect(html).toContain('href="/es/para-editores"')
   })
 
   test('its menu, dictionary and site settings are translated', async () => {
@@ -211,8 +220,6 @@ describe('the Crombolo demo, in Spanish at /es', () => {
     expect(features.html).toContain('>Entrega</a>')
     expect(features.html).toContain('Búsqueda')
     expect(features.html).not.toContain('Bloques')
-    const people = await page('/es/equipo')
-    expect(people.html).toContain('Directora de producto')
     const post = await page('/es/blog/ensaya-tus-actualizaciones')
     expect(post.status).toBe(200)
     expect(post.html).toContain('5 de agosto de 2026')

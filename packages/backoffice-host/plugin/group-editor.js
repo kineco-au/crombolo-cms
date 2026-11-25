@@ -293,7 +293,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
                   <uui-button
                     look="secondary"
                     compact
-                    label="Turn on Content"
+                    label=${`Turn on ${AREAS.find((a) => a.section === area.under)?.label}`}
                     ?disabled=${this.#permissionsLocked}
                     @click=${() => this.#toggleArea(area.under, true)}></uui-button>
                 </p>`

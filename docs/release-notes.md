@@ -6,6 +6,104 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.80.0 — 2026-11-25
+
+### Features
+
+- **Workspaces has a place of its own, and its controls are at the end of the Content
+  menu (428).** New workspace, Merge, Share and Delete are icons at the right of the strip
+  under Content, their words shown as tooltips; Merge, Share and Delete are off in Shared,
+  and say why. The workspace switch follows them, the workspace's colour a dot beside its
+  name, and the strip is no longer tinted in that colour. Deleting a workspace, which the
+  back office could not do before, asks first and says how many changes are lost with it.
+- **Workspaces, the last item of that menu,** lists Shared and every workspace in the
+  sidebar, the one the tab is in marked, and shows the one chosen beside it: what it is for,
+  who can see it, who made it and when, who it is shared with, and its changes and
+  conflicts. Its owner renames it, describes it and chooses who sees it there, and it is
+  entered, merged, shared and deleted from there.
+- **The switch's list is shorter:** Shared in a section of its own, then the workspaces,
+  then the changes, the merge and the address of the one the tab is in. "New workspace",
+  "Share" and "All workspaces" are gone from it, and a press outside it, or Escape, closes it.
+- **Merging a workspace is a view of its own,** in place of the dialog: what it changes,
+  a box for each page, move, delete and file, opened to see each field before and after; each
+  conflict with both versions side by side; each thing to accept; and Merge into Shared in a
+  bar at the foot, as a page's Save is. Its address holds it, so Back, a reload and a
+  link return to it.
+- **Every tree shows what the workspace holds.** While a tab is in a workspace, each item
+  the workspace changed carries a dot in its colour after its name, with a word where more
+  is to be said (New, Moved, Deleted), in Pages, Media, Library, Translation, Structure and
+  Code alike; an item that only holds a change below it carries a fainter dot. Everything
+  unmarked is as Shared has it. The edit icon the Pages tree showed on a changed page is gone.
+- **A new workspace is given a name and a description.**
+- **"Save in a new workspace" is gone** from a page's bar: a workspace is opened from the
+  strip under Content.
+- **Who can see a workspace is a choice of two,** "Admins" or "Admins and Editors", in place
+  of the tick box "Everyone who may edit can see it". Its owner and the people it is shared
+  with always see it.
+- **Someone opening an item another workspace changed is always told,** where that change
+  was made in the last seven days. The option "Tell others when they open something it
+  changed" is gone.
+- **A site file carries the schema the site has (427).** A whole-site export of a site whose
+  types are only in its database carried no schema. It carries them now, written from the
+  database with its data types, languages and approval workflows, and the site is given the
+  files too, in its schema folder and store. The export says so, and why where it could not.
+- **Users are in Settings (429).** The top menu has no Users tab: Settings has a card, "Users
+  and groups", for whoever holds Users, and their screens are at `section/settings/users`. Old
+  addresses forward. A group holding Users needs Settings too.
+- **Every dialog has a title bar.** Confirmations and the back office's other dialogs, its own
+  and Crombolo's, show their title in a bar of its own colour above what they say.
+- **The back office asks in its own dialogs.** Deleting a form or an entry, removing a
+  form's page, group or workflow, deleting a workflow and revoking a command-line token
+  ask in the back office's confirmation dialog, no longer the browser's. The workspace
+  dialogs (new, changes, merge, share, every workspace) and values per environment look
+  like the rest of the back office.
+- **The demo, rethought.** The home page says what Crombolo is, "the open source CMS for the
+  agentic era", for anyone deciding; a page for editors shows the back office (editing and
+  preview, a personal workspace, sharing, publishing), and the page for developers opens on
+  "a CMS for agent-assisted development" with the command line below. Every image is a
+  screenshot of Crombolo itself, and the People page is gone: the people stay in the Library,
+  naming the blog's authors. The demo's hero block gains "Show the image as it is", for
+  artwork shown beside the text, or below it on a narrow screen, rather than dimmed behind it.
+- **An extension that uses the browser's `confirm`, `alert` or `prompt` is refused**, or
+  one that makes a dialog on the page: `crombolo extension check` names each file, and an
+  install that lands one is removed again (`docs/bundles.md`).
+
+### Fixes
+
+- **A save that fails always says so.** Saving a page with no name did nothing anyone could
+  see; nor did one refused for a permission, for a page no longer there, or by its fields
+  where that stops it. Each now shows a notification saying why, for pages, media, Library
+  items and blueprints, and for publishing, scheduling and previewing. A name of spaces
+  alone counts as none. Publishing with descendants no longer says an unnamed page was saved.
+- **The workspace switch keeps up with the workspace.** Its count of changes, and whether
+  Merge is offered, were read once as the back office loaded, so a page saved since was not
+  counted until a reload; and a workspace renamed kept its old name in the switch. Both are
+  read again whenever something is saved or a workspace is renamed.
+- **The workspace switch's menu is seen again.** Since the switch moved to the start of the
+  strip under Content (419), its menu opened off the left of the screen, clipped by the strip,
+  so nobody could see where to open, merge or share a workspace. It opens below the switch.
+- **A refusal's reason reaches the person.** The back office replaced what the server said of a
+  403 or a 404 with the status's own name; it keeps the server's reason now.
+
+### Migrations
+
+- **099 `AddWorkspaceDescription`** (expand): a description on a workspace.
+- **100 `PutUsersInSettings`** (expand): Settings, to each user group holding Users without it.
+
+### Upgrade notes
+
+- **An export can write a site's schema files (427),** once, where it has none and its schema
+  is writable: they are in its schema store, or its folder, from then on.
+- **A group that held Users without Settings now holds Settings too (429),** so its people can
+  open redirects, logs, webhooks and the other tools there. Look at such groups after
+  upgrading. A group file or an API call giving Users without Settings is refused.
+- **`section/user-management` is `section/settings/users` (429).** Old addresses forward.
+- **The workspace routes no longer take or answer `tellOthers`.** A client that sent it is
+  not refused; one that read it finds it gone.
+- **An extension whose back-office code calls `confirm`, `alert` or `prompt`** can no
+  longer be installed or updated. One already installed keeps loading; run
+  `crombolo extension check` on its package to find what to change.
+
 ## v0.79.1 — 2026-11-25
 
 ### Features

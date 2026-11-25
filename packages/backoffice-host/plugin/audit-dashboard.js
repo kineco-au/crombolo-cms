@@ -103,7 +103,7 @@ const WORKSPACE = {
   Document: (key) => `section/content/workspace/document/edit/${key}`,
   Media: (key) => `section/content/media/workspace/media/edit/${key}`,
   Member: (key) => `section/member-management/workspace/member/edit/${key}`,
-  User: (key) => `section/user-management/workspace/user/edit/${key}`,
+  User: (key) => `section/settings/users/workspace/user/edit/${key}`,
 }
 
 const words = (name) =>

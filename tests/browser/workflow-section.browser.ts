@@ -68,8 +68,8 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   await page.goto('/crombolo/section/content/structure/workflows')
   const designer = page.locator('crombolo-workflow-designer')
   await expect(designer.getByText('Browser check')).toBeVisible({ timeout: 30_000 })
-  page.once('dialog', (dialog) => dialog.accept())
   await designer.getByRole('button', { name: 'Delete' }).click()
+  await page.locator('umb-confirm-modal').getByRole('button', { name: 'Delete' }).click()
   await expect(designer.getByText('Browser check')).toHaveCount(0)
   await page.goto('/crombolo/section/approvals')
   await expect(waiting).toContainText('You have no changes waiting for approval', {

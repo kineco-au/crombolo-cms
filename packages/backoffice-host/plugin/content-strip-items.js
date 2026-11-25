@@ -29,6 +29,9 @@ const ITEMS = [
   { label: 'Code', path: 'section/content/code', section: CODE },
 ]
 
+/** Every workspace, and what each is, at the end of the strip where workspaces are on. */
+export const WORKSPACES = { label: 'Workspaces', path: 'section/content/workspaces' }
+
 /** Each place's address under Content, by the item it is. */
 const PLACES = {
   media: 'Media',
@@ -37,24 +40,36 @@ const PLACES = {
   structure: 'Structure',
   forms: 'Structure',
   code: 'Code',
+  workspaces: 'Workspaces',
 }
 
 /**
- * The items this user may open. One alone is no menu, so it offers none.
+ * Every place under Content this user may open, however few.
  *
  * @param {{ allowedSections?: string[], fallbackPermissions?: string[], isAdmin?: boolean } | undefined} user
  */
-export function stripItems(user) {
+export function placesFor(user) {
   const allowed = user?.allowedSections ?? []
   const may = (verb) => user?.isAdmin === true || (user?.fallbackPermissions ?? []).includes(verb)
-  const items = ITEMS.flatMap((item) => {
+  return ITEMS.flatMap((item) => {
     if (allowed.includes(item.section)) return [item]
     const other = (item.or ?? []).find(
       (or) => allowed.includes(or.section) && (!or.verb || may(or.verb)),
     )
     return other ? [{ ...item, ...other }] : []
   })
-  return items.length > 1 ? items : []
+}
+
+/**
+ * The items this user may open. One alone is no menu, so it offers none: unless
+ * `withWorkspaces`, where Workspaces is an item beside it and the one place is the way back.
+ *
+ * @param {Parameters<typeof placesFor>[0]} user
+ * @param {boolean} [withWorkspaces]
+ */
+export function stripItems(user, withWorkspaces = false) {
+  const items = placesFor(user)
+  return items.length > 1 || withWorkspaces ? items : []
 }
 
 /**
@@ -66,16 +81,4 @@ export function activeItem(path) {
   const section = /^section\/content(?:\/([^/]+))?/.exec(path)
   if (!section) return undefined
   return PLACES[section[1] ?? ''] ?? 'Pages'
-}
-
-/**
- * Story 419: the strip in a workspace's colour, so it shows what the workspace holds;
- * none for Shared. Pure.
- *
- * @param {string | null | undefined} colour
- */
-export function stripTint(colour) {
-  return colour
-    ? `--crombolo-strip-tint: color-mix(in srgb, ${colour} 12%, var(--uui-color-surface)); --crombolo-strip-edge: ${colour};`
-    : ''
 }

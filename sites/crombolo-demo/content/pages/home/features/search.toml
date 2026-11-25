@@ -4,7 +4,7 @@ order = 8
 
 [values]
 category = "delivery"
-image = "/typewriter.jpg"
+image = "/site-search.jpg"
 
 [values.en-US]
 title = "Search"

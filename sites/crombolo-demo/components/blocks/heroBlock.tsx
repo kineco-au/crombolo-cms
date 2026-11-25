@@ -4,8 +4,9 @@ export default async function HeroBlock({ content }: BlockProps) {
   const image = (await content.media('image'))[0]
   const primary = ((await content.value('primaryLink')) as Link[] | undefined)?.[0]
   const secondary = ((await content.value('secondaryLink')) as Link[] | undefined)?.[0]
+  const asItIs = Boolean(await content.value('imageAsItIs'))
   return (
-    <section class="hero">
+    <section class={asItIs ? 'hero hero--artwork' : 'hero'}>
       {image ? <img src={image.cropUrl({ width: 1600, height: 800 })} alt="" /> : null}
       <div class="hero__text wrap">
         <p class="eyebrow">{content.text('eyebrow')}</p>

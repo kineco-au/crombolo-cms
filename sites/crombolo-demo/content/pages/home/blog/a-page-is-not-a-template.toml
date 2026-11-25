@@ -5,7 +5,7 @@ order = 1
 [values]
 publishDate = "2026-04-02"
 author = ["jonas-lind"]
-image = "/letterpress-alphabet.jpg"
+image = "/block-editor.jpg"
 
 [values.en-US]
 title = "A page is not a template"

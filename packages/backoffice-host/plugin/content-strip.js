@@ -7,8 +7,8 @@
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { activeItem, stripItems, stripTint } from './content-strip-items.js'
-import { colourOf, currentWorkspace, workspacesApi } from './workspace-client.js'
+import { activeItem, stripItems, WORKSPACES } from './content-strip-items.js'
+import { workspacesApi } from './workspace-client.js'
 import './workspace-switch.js'
 
 const CONTENT = 'Umb.Section.Content'
@@ -31,8 +31,6 @@ export default class CromboloContentStripElement extends UmbLitElement {
   #user
   /** Story 384: with workspaces on, the row shows for the switch whatever else it holds. */
   #workspaces = false
-  /** Story 419: the colour of the workspace this tab is in; none for Shared. */
-  #colour = null
 
   #follow = () => {
     this._active = activeItem(pathHere())
@@ -48,7 +46,7 @@ export default class CromboloContentStripElement extends UmbLitElement {
   }
 
   #offer() {
-    this._items = stripItems(this.#user)
+    this._items = stripItems(this.#user, this.#workspaces)
     this.#sync()
   }
 
@@ -73,13 +71,6 @@ export default class CromboloContentStripElement extends UmbLitElement {
     workspacesApi.mine().then(
       (mine) => {
         this.#workspaces = mine.enabled === true
-        // Switching reloads the screen, so the workspace is read once.
-        const chosen = currentWorkspace()
-        const here =
-          chosen?.key === 'shared'
-            ? null
-            : (chosen ?? (mine.required && mine.workspace ? mine.workspace : null))
-        this.#colour = this.#workspaces && here ? colourOf(here.key) : null
         this.#offer()
       },
       () => {},
@@ -101,8 +92,7 @@ export default class CromboloContentStripElement extends UmbLitElement {
 
   render() {
     if (!this.#shown()) return nothing
-    return html`<nav aria-label="Content" style=${stripTint(this.#colour)}>
-      ${this.#workspaces ? html`<crombolo-workspace-switch></crombolo-workspace-switch>` : nothing}
+    return html`<nav aria-label="Content">
       ${this._items.map(
         (item) =>
           html`<a
@@ -111,6 +101,16 @@ export default class CromboloContentStripElement extends UmbLitElement {
             >${item.label}</a
           >`,
       )}
+      ${
+        this.#workspaces
+          ? html`<a
+                href=${new URL(WORKSPACES.path, document.baseURI).pathname}
+                aria-current=${this._active === WORKSPACES.label ? 'page' : 'false'}
+                >${WORKSPACES.label}</a
+              ><crombolo-workspace-controls></crombolo-workspace-controls
+              ><crombolo-workspace-switch></crombolo-workspace-switch>`
+          : nothing
+      }
     </nav>`
   }
 
@@ -123,8 +123,11 @@ export default class CromboloContentStripElement extends UmbLitElement {
       height: 41px;
       padding: 0 var(--uui-size-space-5);
       overflow-x: auto;
-      background: var(--crombolo-strip-tint, var(--uui-color-surface));
-      border-bottom: 1px solid var(--crombolo-strip-edge, var(--uui-color-border));
+      background: var(--uui-color-surface);
+      border-bottom: 1px solid var(--uui-color-border);
+    }
+    crombolo-workspace-controls {
+      margin-left: auto;
     }
     a {
       padding: var(--uui-size-space-1) var(--uui-size-space-3);

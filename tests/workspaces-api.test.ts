@@ -134,7 +134,26 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     const listed = await h.json<{ items: Array<{ key: string; mine: boolean }> }>(WORKSPACES)
     expect(listed.items).toEqual([expect.objectContaining({ key: sale.key, mine: true })])
     const renamed = await send(h, 'PATCH', `${WORKSPACES}/${sale.key}`, { name: 'Summer sale' })
-    expect(await renamed.json()).toMatchObject({ name: 'Summer sale' })
+    expect(await renamed.json()).toMatchObject({ name: 'Summer sale', description: null })
+    // What it is for: said by its owner, changed and cleared, and said when one is opened.
+    const described = await send(h, 'PATCH', `${WORKSPACES}/${sale.key}`, {
+      description: '  The summer prices  ',
+    })
+    expect(await described.json()).toMatchObject({
+      name: 'Summer sale',
+      description: 'The summer prices',
+    })
+    const cleared = await send(h, 'PATCH', `${WORKSPACES}/${sale.key}`, { description: '' })
+    expect(await cleared.json()).toMatchObject({ description: null })
+    const made = await send(h, 'POST', WORKSPACES, {
+      name: 'Footer',
+      description: 'New links',
+      visibility: 'editors',
+    })
+    expect(made.status).toBe(201)
+    const footer = (await made.json()) as { key: string; description: string; visibility: string }
+    expect(footer).toMatchObject({ description: 'New links', visibility: 'editors' })
+    expect((await send(h, 'DELETE', `${WORKSPACES}/${footer.key}`)).status).toBe(204)
 
     const writer = await signInAsGroup(h, 'writer')
     const writerKey = (await writer.json<{ id: string }>(`${V1}/user/current`)).id
@@ -149,6 +168,9 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     expect((await send(writer, 'PATCH', `${WORKSPACES}/${sale.key}`, { name: 'x' })).status).toBe(
       403,
     )
+    expect(
+      (await send(writer, 'PATCH', `${WORKSPACES}/${sale.key}`, { description: 'x' })).status,
+    ).toBe(403)
     expect((await send(writer, 'DELETE', `${WORKSPACES}/${sale.key}`)).status).toBe(403)
     expect((await send(h, 'DELETE', `${WORKSPACES}/${sale.key}/members/${writerKey}`)).status).toBe(
       204,

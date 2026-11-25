@@ -7,6 +7,7 @@
  * sharing and discarding are crombolo's own routes, at `<plugin>/api/workspaces`,
  * as is merging one into Shared (story 380).
  */
+
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
   hasCultureAccess,
@@ -41,6 +42,7 @@ import { recordAudit } from './adapters/audit.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
 import { originOf } from './seo.ts'
 import { pageVerdict, type WorkspaceChecks, type WorkspaceRendered } from './workspace-checks.ts'
+import { workspaceMarks } from './workspace-marks.ts'
 import type { WorkspaceSchema } from './workspace-schema.ts'
 
 export const WORKSPACE_HEADER = 'crombolo-workspace'
@@ -306,7 +308,8 @@ export interface WorkspaceView {
   key: string
   name: string
   visibility: 'members' | 'editors'
-  tellOthers: boolean
+  /** What it is for, in its owner's words. */
+  description: string | null
   /** Whether the person asking is in it, and may change it. */
   member: boolean
   ownerKey: string
@@ -325,23 +328,24 @@ export interface WorkspaceView {
   updatedAt: string
 }
 
-/** What a request asks of a workspace's privacy (story 384). */
-function privacyOf(asked: Record<string, unknown>): {
-  visibility?: 'members' | 'editors'
-  tellOthers?: boolean
-} {
-  return {
-    ...(asked.visibility === 'members' || asked.visibility === 'editors'
-      ? { visibility: asked.visibility }
-      : {}),
-    ...(typeof asked.tellOthers === 'boolean' ? { tellOthers: asked.tellOthers } : {}),
-  }
+/** What a request asks of who sees a workspace (story 384). */
+function privacyOf(asked: Record<string, unknown>): { visibility?: 'members' | 'editors' } {
+  return asked.visibility === 'members' || asked.visibility === 'editors'
+    ? { visibility: asked.visibility }
+    : {}
+}
+
+/** What a request says a workspace is for: undefined when it says nothing, null to clear it. */
+function descriptionOf(asked: Record<string, unknown>): string | null | undefined {
+  if (asked.description === null) return null
+  if (typeof asked.description !== 'string') return undefined
+  return asked.description.trim().slice(0, 1000) || null
 }
 
 const viewOf = (workspace: Workspace, principal: Principal, conflicts = 0): WorkspaceView => ({
   key: workspace.key,
   visibility: workspace.visibility,
-  tellOthers: workspace.tellOthers,
+  description: workspace.description,
   member: mayUse(workspace, principal),
   name: workspace.name,
   ownerKey: workspace.ownerKey,
@@ -892,6 +896,7 @@ export function createWorkspacesApi(
             name,
             ownerKey: principal.id,
             ...privacyOf(asked),
+            description: descriptionOf(asked) ?? null,
           })
           // Its copy of the schema files, the base its changes to them merge from (story 376).
           await options.schema?.()?.snapshot(opened.id)
@@ -1010,13 +1015,27 @@ export function createWorkspacesApi(
         if (request.method === 'PATCH') {
           if (!owner) return refused('Only its owner changes a workspace.', 403)
           const asked = await body()
-          // Story 384: who sees it, and whether others are told, changed by its owner.
+          // Story 384: who sees it, changed by its owner.
           const privacy = privacyOf(asked)
           await workspaces.setPrivacy(found.id, privacy)
-          if (asked.name === undefined && Object.keys(privacy).length > 0) {
-            await audit(principal, 'Privacy', found, `Privacy of "${found.name}" changed`, client)
-            return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
+          const description = descriptionOf(asked)
+          if (description !== undefined) {
+            await workspaces.setDescription(found.id, description)
+            await audit(
+              principal,
+              'Describe',
+              found,
+              `Description of "${found.name}" changed`,
+              client,
+            )
           }
+          if (Object.keys(privacy).length > 0)
+            await audit(principal, 'Privacy', found, `Privacy of "${found.name}" changed`, client)
+          if (
+            asked.name === undefined &&
+            (Object.keys(privacy).length > 0 || description !== undefined)
+          )
+            return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
           const name = nameOf(asked)
           if (!name) return refused('A workspace needs a name of up to 255 characters.', 400)
           await workspaces.rename(found.id, name)
@@ -1038,6 +1057,9 @@ export function createWorkspacesApi(
 
       if (sub === 'changes' && !member && request.method === 'GET')
         return answer({ items: await workspaces.changes(found.id) })
+      // What it holds, by the name each tree knows an item by, for the trees to mark.
+      if (sub === 'marks' && !member && request.method === 'GET')
+        return answer(await workspaceMarks(db, found.id))
       // Story 384: "Drop this change": the page goes back to Shared's, here.
       if (sub === 'changes' && member && UUID.test(member) && request.method === 'DELETE') {
         if (!usable) return refused('Only its members change a workspace.', 403)

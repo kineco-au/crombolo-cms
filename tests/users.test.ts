@@ -863,7 +863,12 @@ describe('group owners (story 302)', () => {
 
   test('an owner chooses who is in the group; a member who is not an owner cannot', async () => {
     const { h, user, group } = await site()
-    const users = ['Umb.Section.Users', 'Umb.Section.Content', 'Crombolo.Section.Pages']
+    const users = [
+      'Umb.Section.Users',
+      'Umb.Section.Settings',
+      'Umb.Section.Content',
+      'Crombolo.Section.Pages',
+    ]
     const leads = keyOf(await group({ name: 'Leads', alias: 'leads', sections: users }))
     const team = keyOf(
       await group({ name: 'Team', alias: 'team', sections: users, owners: [{ id: leads }] }),
@@ -985,7 +990,12 @@ describe('who may do what', () => {
     const managers = await group({
       name: 'Managers',
       alias: 'managers',
-      sections: ['Umb.Section.Users', 'Umb.Section.Content', 'Crombolo.Section.Pages'],
+      sections: [
+        'Umb.Section.Users',
+        'Umb.Section.Settings',
+        'Umb.Section.Content',
+        'Crombolo.Section.Pages',
+      ],
       documentRootAccess: true,
     })
     const managersKey = managers.headers.get('umb-generated-resource') as string

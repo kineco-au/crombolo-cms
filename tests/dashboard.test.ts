@@ -139,6 +139,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       // Structure and Code, places under Content drawn by the same layout (story 385).
       'section:Crombolo.Section.Structure',
       'section:Crombolo.Section.Components',
+      // Workspaces, a place under Content with a layout of its own.
+      'section:Crombolo.Section.Workspaces',
+      'sectionLayout:Crombolo.SectionLayout.Workspaces',
       'sectionLayout:Crombolo.SectionLayout.Structure',
       'sectionLayout:Crombolo.SectionLayout.Components',
       'sectionSidebarApp:Crombolo.SectionSidebarMenu.Structure',
@@ -228,6 +231,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.UserPermission.Media.Update',
       'Crombolo.Section.Structure',
       'Crombolo.Section.Components',
+      'Crombolo.Section.Workspaces',
       'Crombolo.SectionSidebarMenu.Structure',
       'Crombolo.SectionSidebarMenu.Code',
       'Crombolo.HeaderApp.Settings',
@@ -247,6 +251,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'entityUserPermission',
       'entityUserPermission',
       'entityUserPermission',
+      'section',
       'section',
       'section',
       'sectionSidebarApp',

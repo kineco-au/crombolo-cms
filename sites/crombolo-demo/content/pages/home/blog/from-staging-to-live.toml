@@ -5,7 +5,7 @@ order = 6
 [values]
 publishDate = "2026-10-20"
 author = ["jonas-lind"]
-image = "/workbench.jpg"
+image = "/cli-changes.jpg"
 
 [values.en-US]
 title = "From staging to live, one change at a time"

@@ -67,9 +67,17 @@ export type ContentPlace = (typeof CONTENT_PLACES)[number]
 /** Why a group's places are refused, in an administrator's words; undefined when they are not. */
 export function placesRefusal(sections: readonly string[]): string | undefined {
   const without = placesWithoutContent(sections)
-  if (without.length === 0) return undefined
+  if (without.length === 0) return usersWithoutSettings(sections)
   const named = without.map((place) => PLACE_NAMES[place]).join(', ')
   return `${named} ${without.length === 1 ? 'is a place' : 'are places'} under Content, so the group needs Content too.`
+}
+
+/** Users are in Settings (story 429), so no group holds them without it. */
+function usersWithoutSettings(sections: readonly string[]): string | undefined {
+  const held = new Set(sections.map((section) => sectionAppAlias(section)))
+  return held.has('users') && !held.has('settings')
+    ? 'Users is in Settings, so the group needs Settings too.'
+    : undefined
 }
 
 /** Each place as an administrator knows it. */

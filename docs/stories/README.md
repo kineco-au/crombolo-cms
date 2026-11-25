@@ -121,6 +121,7 @@ not cover.
 | `276` | The pages list view sorts by its property columns | could | M | done | 269 |
 | `277` | The back office on Umbraco 19 | should | L | ready | 235 |
 | `345` | The Single Block | should | L | done | — |
+| `429` | Users are in Settings | should | M | done | 234, 385 |
 | `288` | The overview is the home of the back office | should | M | done | — |
 | `289` | A second-level menu under Content | should | L | done | 288 |
 | `291` | A session ending asks you to sign in, on every screen | should | S | done | — |
@@ -319,7 +320,7 @@ requests, only server-side and build-time front ends can call it.
 | `233` | A Bundle Editor of Crombolo's own | should | L | done | — |
 | `283` | Library folders travel with their elements | should | M | done | — |
 | `424` | A replace takes the file's schema whatever its version | should | M | done | 105 |
-| `427` | A site file carries the schema the site has | should | M | ready | 104, 424 |
+| `427` | A site file carries the schema the site has | should | M | done | 104, 424 |
 
 ### Epic L — Routing
 
@@ -578,4 +579,5 @@ it.
 | `422` | A large change is taken wherever workspaces are on | should | S | done | 383, 399, 420 |
 | `423` | A staged change's schedule is set however it is merged | must | S | done | 395, 414 |
 | `425` | A page that arrives by a change takes its place in the order | must | M | done | 411 |
+| `428` | Workspace controls beside the Content menu | should | S | done | 384, 419 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

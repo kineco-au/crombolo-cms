@@ -89,7 +89,7 @@ export const readUsedFolders = async () => {
  * Asks before a rename, move or delete of a folder a site feature uses. A
  * request the user cancels is aborted, as a closed dialog is.
  */
-export async function confirmFolderChange(host, request, confirm) {
+export async function confirmFolderChange(host, request, askFirst) {
   if (request.method === 'GET') return request
   if (!MEDIA_WRITE.test(new URL(request.url, 'http://local').pathname)) return request
   const body =
@@ -102,7 +102,7 @@ export async function confirmFolderChange(host, request, confirm) {
   const warning = bundleWarningFor(request.method, request.url, body, await readUsedFolders())
   if (!warning) return request
   try {
-    await confirm(host, { color: 'danger', ...warning })
+    await askFirst(host, { color: 'danger', ...warning })
     return request
   } catch {
     return new Request(request, { signal: AbortSignal.abort() })

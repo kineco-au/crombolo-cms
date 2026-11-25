@@ -1032,6 +1032,7 @@ export interface CoreTables {
   }
   workspace: {
     created_at: Timestamp
+    description: string | null
     id: Generated<number>
     key: string
     merged_at: Timestamp | null

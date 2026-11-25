@@ -28,7 +28,6 @@ import { ObjectTypes } from '@crombolo/core'
 import {
   answersByNode,
   ChangeRepository,
-  currentSchemaState,
   type Db,
   DictionaryRepository,
   describeRefFailure,

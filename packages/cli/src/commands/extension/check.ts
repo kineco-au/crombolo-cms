@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  extensionDialogProblems,
   isDirectory,
   readPackageJson,
   SITE_PACKAGE_NOT_INSTALLED,
@@ -56,6 +57,7 @@ export default class ExtensionCheck extends BaseCommand {
     const field = json.crombolo as { bundleType?: unknown; content?: unknown } | undefined
     const problems =
       field?.bundleType === 'site' ? [SITE_PACKAGE_NOT_INSTALLED] : validateBundlePackage(json, dir)
+    if (field?.bundleType !== 'site') problems.push(...extensionDialogProblems(dir))
     if (problems.length === 0 && field?.content === true)
       problems.push(
         ...loadBundle(dir).problems.map((problem) => `${problem.file}: ${problem.message}`),

@@ -230,6 +230,8 @@ export interface BundleProvenance {
   siteName: string
   /** The CMS version that wrote the bundle (story 104). Absent on bundles written before it. */
   cmsVersion?: string
+  /** Its schema was written out of the database, the site having no schema files (story 427). */
+  schemaFrom?: 'database'
 }
 
 export interface BundleSelector {

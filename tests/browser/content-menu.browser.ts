@@ -163,7 +163,9 @@ test('Forms has no tab of its own in the header, Approvals has one, and Settings
     await expect(landing.getByRole('link', { name: card })).toHaveCount(0)
 })
 
-test('someone with Pages alone sees no menu', async ({ page }) => {
+test('someone with no place of their own under Content is offered Workspaces alone', async ({
+  page,
+}) => {
   await page.route('**/management/api/v1/user/current', async (route) => {
     const response = await route.fetch()
     const user = await response.json()
@@ -174,7 +176,7 @@ test('someone with Pages alone sees no menu', async ({ page }) => {
   await signIn(page)
   await goToSection(page, 'Content')
   await settle(page)
-  await expect(strip(page).getByRole('link')).toHaveCount(0)
+  await expect(strip(page).getByRole('link')).toHaveText(['Workspaces'])
 })
 
 test('forms sit in folders in the tree, and the root lists every entry', async ({ page }) => {

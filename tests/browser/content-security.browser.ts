@@ -24,7 +24,7 @@ test('the back office runs under its policy with nothing blocked', async ({ page
   await signIn(page)
   // Each section opened by its address: two section changes in a row trip the
   // client's own race (fixtures.ts, `settle`).
-  for (const section of ['content', 'media', 'settings', 'member-management', 'user-management']) {
+  for (const section of ['content', 'media', 'settings', 'member-management', 'settings/users']) {
     await page.goto(`/crombolo/section/${section}`)
     await settle(page)
     const violations = await watchViolations(page)

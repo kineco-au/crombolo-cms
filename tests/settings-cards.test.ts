@@ -18,6 +18,7 @@ const dashboard = (alias: string, path: string) => ({
 })
 
 const EVERYTHING = {
+  users: true,
   structure: true,
   code: true,
   dashboards: [
@@ -49,6 +50,7 @@ describe('the Settings landing page', () => {
     expect(titles(settingsCards(EVERYTHING))).toEqual({
       // URLs, redirects and relations are tabs of Content settings, first in Site.
       Site: ['Content settings', 'Search', 'Webhooks', 'Logs', 'Background jobs'],
+      People: ['Users and groups'],
       Health: ['Service status', 'Caching'],
       History: ['Changes', 'Audit log'],
       // Story 238: after History, a developer's tool, then installing extensions.
@@ -58,6 +60,15 @@ describe('the Settings landing page', () => {
   })
 
   test('each card goes to the address the tool already has', () => {
+    // Story 429: Users has a card for whoever holds it.
+    expect(settingsCards({ users: true })).toEqual([
+      {
+        group: 'People',
+        cards: [
+          expect.objectContaining({ title: 'Users and groups', path: 'users/workspace/user-root' }),
+        ],
+      },
+    ])
     const cards = settingsCards(EVERYTHING).flatMap((g) => g.cards)
     const path = (title: string) => cards.find((c) => c.title === title)?.path
     expect(path('Service status')).toBe('dashboard/health-check')
@@ -162,7 +173,9 @@ describe('the Settings landing page', () => {
 
   test('every card we have words for names a group that is shown', () => {
     for (const words of Object.values(CARDS))
-      expect(['Site', 'Health', 'History', 'Developers', 'Extensions']).toContain(words.group)
+      expect(['Site', 'People', 'Health', 'History', 'Developers', 'Extensions']).toContain(
+        words.group,
+      )
   })
 })
 

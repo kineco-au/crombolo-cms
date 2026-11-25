@@ -13,7 +13,7 @@ export const SIDEBAR_APPS = {
   code: 'Crombolo.SectionSidebarMenu.Code',
 }
 
-export const GROUPS = ['Site', 'Health', 'History', 'Developers', 'Extensions', 'Other']
+export const GROUPS = ['Site', 'People', 'Health', 'History', 'Developers', 'Extensions', 'Other']
 
 /** Our words for each tool, by the alias of its dashboard or menu item. */
 export const CARDS = {
@@ -46,6 +46,12 @@ export const CARDS = {
     group: 'Site',
     title: 'Background jobs',
     description: 'View scheduled and queued tasks',
+  },
+  // Story 429: a section of its own, opened from here.
+  'Umb.Section.Users': {
+    group: 'People',
+    title: 'Users and groups',
+    description: 'The people who use the back office, and what each group may do',
   },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
@@ -113,12 +119,13 @@ export const IN_CONTENT_SETTINGS = new Set([
  *
  * @param {{
  *   dashboards?: { alias: string, label?: string, description?: string, bundle?: { name: string, packageName: string }, path: string }[],
+ *   users?: boolean,
  *   advanced?: { alias: string, label?: string, description?: string, bundle?: { name: string, packageName: string }, entityType: string }[],
  * }} from
  * @returns {{ group: string, bundle?: { name: string, packageName: string, path: string }, cards: any[] }[]}
  */
-export function settingsCards({ dashboards = [], advanced = [] }) {
-  const found = []
+export function settingsCards({ dashboards = [], advanced = [], users = false }) {
+  const found = users ? [{ alias: 'Umb.Section.Users', path: 'users/workspace/user-root' }] : []
   for (const d of dashboards.filter((d) => !IN_CONTENT_SETTINGS.has(d.alias)))
     found.push({
       alias: d.alias,

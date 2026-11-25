@@ -821,6 +821,15 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
   An extension's `bundle.json` may not list `components/`, `code/` or value
   migrations (`schema/migrations/*.ts`): each is refused, and nothing is written.
   A site package carries all of them, as the site's own code.
+
+  **Its back-office code asks in the back office's own dialogs.** A file under
+  `src/backoffice/` that calls the browser's `confirm`, `alert` or `prompt`, or makes
+  a dialog on the page with `document.createElement('dialog')`, is refused by
+  `crombolo extension check`, and an install that lands one is removed again, from
+  the command line and the Marketplace alike. Ask with Umbraco's `umbConfirmModal` or
+  its modal manager, and keep a `<dialog>` inside the extension's own element, styled
+  there. An extension installed before this rule keeps loading; `extension check` finds one
+  to fix.
 - **Content applied at runtime is this node's too.** It writes `schema/` and the
   component directories on the node that served the request. On a
   load-balanced site, turn `applyBundleContentOnInstall` off and let the content

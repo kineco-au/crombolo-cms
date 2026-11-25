@@ -7,7 +7,15 @@
  * next harness resets the database, so the file is the only thing that crosses.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { contentImport, revertSections, siteReplaceCheck } from '@crombolo/cli'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
@@ -20,13 +28,18 @@ import {
   MemberRepository,
   NodeRepository,
   ObjectTypes,
+  updateSchemaStateHash,
 } from '@crombolo/data'
 import {
   type CromboloConfig,
   exportSite,
   extractTarball,
+  fileSystemMediaStore,
   installBundleContent,
   mediaStoreFor,
+  schemaStoreOver,
+  syncSchemaDirectory,
+  useSchemaStore,
 } from '@crombolo/server'
 import { loadBundle, revertRun } from '@crombolo/transfer'
 import { dialectUnderTest } from './support/db.ts'
@@ -480,7 +493,7 @@ describe(`a replace and the schema's version (${dialectUnderTest}, story 424)`, 
   }, 30_000)
 
   test('a file with no schema is refused, saying so', async () => {
-    const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
+    const a = await site({ types: [], css: 'site.css', pages: [] })
     a.h.server.config.schemaDir = temp('no-schema')
     const file = await exportAndClose(a.h)
     const b = await site({ types: ['page'], css: 'site.css', pages: ['Old news'] })
@@ -495,6 +508,109 @@ describe(`a replace and the schema's version (${dialectUnderTest}, story 424)`, 
     expect(refused.problems.join(' ')).toContain('carries no schema')
     expect(await live(b.config, b.h.server.db)).toEqual(['Old news'])
     expect(await new ContentTypeRepository(b.h.server.db).byAlias('page')).toBeDefined()
+  }, 30_000)
+
+  test('a site whose types are only in its database carries them, and is given its files (story 427)', async () => {
+    const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
+    const folder = join(a.root, 'schema')
+    rmSync(folder, { recursive: true })
+    mkdirSync(folder)
+    const db = a.h.server.db
+    const before = await currentSchemaState(db)
+    // Never synced from files: its types were only ever in the database.
+    await db.q.updateTable('schema_state').set({ hash: null }).execute()
+
+    const out = join(temp('file'), 'site.tgz')
+    const first = await exportSite(db, a.config, { out })
+    expect(first.schema).toEqual({ from: 'database', given: true })
+    expect(existsSync(join(folder, 'content-types', 'page.toml'))).toBe(true)
+    expect(readFileSync(join(folder, 'schema.toml'), 'utf8')).toContain(before.version)
+    // A node that starts from them, in production, applies nothing and starts.
+    const started = await syncSchemaDirectory(
+      db,
+      a.config,
+      { nodeId: 'another', revision: a.config.schemaRevision },
+      { mode: 'production' },
+    )
+    expect(started.action).toBe('skipped-same')
+    // The next export carries the files as they stand, and writes nothing.
+    const again = await exportSite(db, a.config, { out: join(temp('file'), 'again.tgz') })
+    expect(again.schema).toBeUndefined()
+    const file = await exportAndClose(a.h)
+
+    const b = await site({ types: ['article'], css: 'site.css', pages: ['Old news'] })
+    const replaced = await contentImport(b.config, {
+      bundle: out,
+      replace: 'replace',
+      backupTaken: true,
+    })
+    expect(replaced.problems).toEqual([])
+    expect(await new ContentTypeRepository(b.h.server.db).byAlias('page')).toBeDefined()
+    expect(existsSync(file)).toBe(true)
+  }, 60_000)
+
+  test('a site with a schema store is given them there, unless the store holds files (427)', async () => {
+    const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
+    const db = a.h.server.db
+    const remote = temp('store')
+    const schemaStore = schemaStoreOver(fileSystemMediaStore(remote))
+    const config = () => {
+      const cache = temp('cache')
+      return {
+        ...a.config,
+        schemaStore,
+        schemaWritable: true,
+        schemaDir: cache,
+        schemaCacheDir: cache,
+      }
+    }
+    const given = await exportSite(db, config(), { out: join(temp('file'), 'one.tgz') })
+    expect(given.schema).toEqual({ from: 'database', given: true })
+    expect(await schemaStore.list()).toContain('content-types/page.toml')
+    // A node that starts from the store applies nothing.
+    const node = config()
+    await useSchemaStore(node)
+    const started = await syncSchemaDirectory(
+      db,
+      node,
+      { nodeId: 'another', revision: node.schemaRevision },
+      { mode: 'production' },
+    )
+    expect(started.action).toBe('skipped-same')
+    // A node that did not read the store leaves it alone.
+    const unread = await exportSite(db, config(), { out: join(temp('file'), 'two.tgz') })
+    expect(unread.schema).toMatchObject({ given: false, why: expect.stringContaining('store') })
+  }, 30_000)
+
+  test('where its files cannot be written, or look to be elsewhere, the site is left as it is and says why (427)', async () => {
+    const a = await site({ types: ['page'], css: 'site.css', pages: ['Home'] })
+    const db = a.h.server.db
+    const before = (await currentSchemaState(db)).hash
+    const elsewhere = temp('empty')
+    const out = () => join(temp('file'), 'site.tgz')
+    const readOnly = await exportSite(
+      db,
+      { ...a.config, schemaDir: elsewhere, schemaWritable: false },
+      { out: out() },
+    )
+    expect(readOnly.schema).toMatchObject({ given: false, why: expect.stringContaining('written') })
+    // The site's types changed in its database since the files this node lacks.
+    await updateSchemaStateHash(db, (await currentSchemaState(db)).id, 'synced-from-other-files')
+    const lacking = await exportSite(
+      db,
+      { ...a.config, schemaDir: elsewhere, schemaWritable: true },
+      { out: out() },
+    )
+    expect(lacking.schema).toMatchObject({
+      given: false,
+      why: expect.stringContaining('does not have'),
+    })
+    expect(lacking.sections.schema).toBeGreaterThan(0)
+    expect(
+      readdirSync(elsewhere, { recursive: true }).filter((f) => String(f).endsWith('.toml')),
+    ).toEqual([])
+    expect((await currentSchemaState(db)).hash).toBe('synced-from-other-files')
+    expect(before).not.toBeNull()
   }, 30_000)
 })
 

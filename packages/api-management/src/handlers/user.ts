@@ -616,10 +616,16 @@ function registerGroups(router: ManagementApiRouter, groups: UserGroupPort): voi
     if (found === 'Forbidden') return status('Forbidden')
     return Response.json(found)
   })
-  /** A place under Content without Content (story 385): refused, saying why. */
+  /** A place without what it is under, Content or Settings (stories 385, 429): refused, saying why. */
   const withoutContent = (group: UserGroupInput) => {
     const reason = placesRefusal(group.sections)
-    return reason ? bad('The group needs Content', reason, 'PlacesNeedContent') : undefined
+    return reason
+      ? bad(
+          reason.includes('Settings') ? 'The group needs Settings' : 'The group needs Content',
+          reason,
+          'PlacesNeedContent',
+        )
+      : undefined
   }
   router.handle('PostUserGroup', async (ctx) => {
     const group = readGroup(await body(ctx))

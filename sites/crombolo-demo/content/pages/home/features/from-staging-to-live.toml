@@ -4,7 +4,7 @@ order = 9
 
 [values]
 category = "delivery"
-image = "/workbench.jpg"
+image = "/cli-changes.jpg"
 
 [values.en-US]
 title = "From staging to live"

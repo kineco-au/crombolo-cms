@@ -3,9 +3,11 @@
  * screen: an administrator sees them and revokes any. Shown only while the
  * site takes tokens; the endpoint refuses anyone but an administrator.
  */
+
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_USER_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/user'
+import { ask } from './ask.js'
 import { TOKENS_API } from './cli-tokens.js'
 import { HEADLINE, NONE, OTHERS_INTRO, revokeQuestion, tokenLine } from './cli-tokens-words.js'
 
@@ -41,7 +43,7 @@ export default class CromboloCliTokensUserElement extends UmbLitElement {
   }
 
   async #revoke(token) {
-    if (!confirm(revokeQuestion(token.name))) return
+    if (!(await ask(this, { headline: revokeQuestion(token.name), confirmLabel: 'Revoke' }))) return
     const response = await fetch(`${TOKENS_API}/${token.key}`, {
       method: 'DELETE',
       credentials: 'include',

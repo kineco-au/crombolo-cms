@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { ComponentRepository, ContentTypeRepository, DbDate } from '@crombolo/data'
 import { dialectUnderTest } from './support/db.ts'
 import { BACKOFFICE, type Harness, signedInServer, signInAsGroup, V1 } from './support/harness.ts'
 
@@ -129,13 +129,17 @@ async function site(workspaces = true) {
 import {
   chooseWorkspace,
   colourOf,
+  controlsFor,
   currentWorkspace,
   headerFor,
   inWorkspace,
+  markOf,
   menuFor,
   onceKnown,
   PALETTE,
   WORKSPACE_HEADER,
+  workspaceFacts,
+  workspaceRows,
 } from '../packages/backoffice-host/plugin/workspace-client.js'
 
 const memory = () => {
@@ -198,7 +202,7 @@ describe('the switch, in the browser', () => {
     expect(off.headers.has(WORKSPACE_HEADER)).toBe(false)
   })
 
-  test('the menu offers Merge only to who may merge, and Share only to the owner', () => {
+  test('the menu offers Merge only to who may merge; a new workspace, sharing and every workspace are not in it', () => {
     const workspaces = [
       { key: 'a', name: 'Sale', state: 'open', member: true, mine: true },
       { key: 'b', name: 'Footer', state: 'open', member: true, mine: false },
@@ -215,21 +219,147 @@ describe('the switch, in the browser', () => {
           ...o,
         } as never) as Array<{ action: string }>
       ).map((i) => i.action)
-    expect(actions({})).toEqual(['shared', 'enter', 'enter', 'new', 'all'])
+    expect(actions({})).toEqual(['shared', 'enter', 'enter'])
     expect(actions({ current: { key: 'a', name: 'Sale' }, changes: 2 })).toEqual([
       'shared',
       'enter',
       'enter',
-      'new',
       'changes',
       'merge',
       'address',
-      'share',
-      'all',
     ])
     expect(actions({ current: { key: 'b', name: 'Footer' }, changes: 2, mayMerge: false })).toEqual(
-      ['shared', 'enter', 'enter', 'new', 'changes', 'address', 'all'],
+      ['shared', 'enter', 'enter', 'changes', 'address'],
     )
+    // Shared is a section of its own, apart from the workspaces and from what to do.
+    const sections = (
+      menuFor({
+        current: { key: 'a', name: 'Sale' },
+        workspaces,
+        mayMerge: true,
+        changes: 1,
+        required: false,
+      } as never) as Array<{ section: string }>
+    ).map((i) => i.section)
+    expect(sections).toEqual([
+      'shared',
+      'workspaces',
+      'workspaces',
+      'actions',
+      'actions',
+      'actions',
+    ])
+  })
+
+  test('the buttons beside the menu: merging, sharing and deleting need a workspace, and say why not (story 428)', () => {
+    const workspaces = [
+      { key: 'a', name: 'Sale', mine: true, personal: false },
+      { key: 'b', name: 'Footer', mine: false, personal: false },
+      { key: 'c', name: 'Mine', mine: true, personal: true },
+    ]
+    type Control = { enabled: boolean; why?: string }
+    const at = (key?: string, more: Record<string, unknown> = { mayMerge: true, changes: 2 }) =>
+      controlsFor({
+        current: key ? { key, name: key } : null,
+        workspaces,
+        ...more,
+      } as never) as Record<'merge' | 'share' | 'remove', Control>
+    // In Shared, none.
+    for (const control of Object.values(at()))
+      expect(control).toEqual({ enabled: false, why: expect.stringContaining('Shared') })
+    // One's own, with changes, for someone who may merge: all three.
+    expect(at('a')).toEqual({
+      merge: { enabled: true },
+      share: { enabled: true },
+      remove: { enabled: true },
+    })
+    // Nothing to merge, or not theirs to merge.
+    expect(at('a', { mayMerge: true, changes: 0 }).merge.why).toContain('no changes')
+    expect(at('a', { mayMerge: false, changes: 2 }).merge.why).toContain('may not merge')
+    // Someone else's: only its owner shares it; the site says who may delete it.
+    expect(at('b').share).toEqual({ enabled: false, why: expect.stringContaining('owner') })
+    expect(at('b').remove).toEqual({ enabled: true })
+    // The workspace every edit of theirs goes in stays.
+    expect(at('c').remove.enabled).toBe(false)
+  })
+})
+
+describe('the marks beside a tree’s items', () => {
+  const marks = {
+    items: {
+      'aaaaaaaa-0000-4000-8000-000000000001': 'changed',
+      'aaaaaaaa-0000-4000-8000-000000000002': 'new',
+      '/site.css': 'changed',
+      '/parts/heading.tsx': 'deleted',
+    },
+    below: ['aaaaaaaa-0000-4000-8000-000000000009'],
+  }
+
+  test('an item is found by its key, a file by its path as a tree names it, and one above a change is below', () => {
+    expect(markOf(marks, 'AAAAAAAA-0000-4000-8000-000000000001')).toBe('changed')
+    expect(markOf(marks, 'aaaaaaaa-0000-4000-8000-000000000002')).toBe('new')
+    expect(markOf(marks, '%2Fsite%dot%css')).toBe('changed')
+    expect(markOf(marks, '%2Fparts%2Fheading%dot%tsx')).toBe('deleted')
+    expect(markOf(marks, 'aaaaaaaa-0000-4000-8000-000000000009')).toBe('below')
+  })
+
+  test('one that is as Shared has it carries none, and nothing does with no marks', () => {
+    expect(markOf(marks, 'aaaaaaaa-0000-4000-8000-000000000003')).toBeUndefined()
+    expect(markOf(marks, undefined)).toBeUndefined()
+    expect(markOf(undefined, '/site.css')).toBeUndefined()
+    expect(markOf({ items: {}, below: [] }, '%E0%A4%A')).toBeUndefined()
+  })
+})
+
+describe('the Workspaces page', () => {
+  const view = {
+    createdAt: '2026-11-25T03:00:00.000Z',
+    updatedAt: '2026-11-25T04:00:00.000Z',
+    conflicts: 0,
+    staged: false,
+    personal: false,
+  }
+  type Fact = { label: string; value: string; note: string }
+  const facts = (...args: unknown[]) =>
+    (workspaceFacts as (...a: unknown[]) => Fact[])(...args).map((f) => [f.label, f.value, f.note])
+
+  test('lists Shared, then each open workspace, marking where the tab is and what stands out', () => {
+    const workspaces = [
+      { key: 'a', name: 'Sale', state: 'open', member: true, conflicts: 2 },
+      { key: 'b', name: 'Footer', state: 'open', member: true, conflicts: 0 },
+      { key: 'c', name: 'Theirs', state: 'open', member: false, conflicts: 0 },
+      { key: 'd', name: 'Autumn', state: 'merged', member: true, conflicts: 0 },
+    ]
+    expect(workspaceRows({ current: { key: 'b' }, workspaces } as never)).toEqual([
+      { key: 'shared', name: 'Shared', here: false, note: '' },
+      { key: 'a', name: 'Sale', here: false, note: '2 conflicts' },
+      { key: 'b', name: 'Footer', here: true, note: '' },
+      { key: 'c', name: 'Theirs', here: false, note: 'to look at' },
+    ])
+    const inShared = workspaceRows({ current: null, workspaces } as never) as Array<{
+      here: boolean
+    }>
+    expect(inShared.map((r) => r.here)).toEqual([true, false, false, false])
+  })
+
+  test('says who made a workspace and when, when it last changed, and who it is shared with', () => {
+    const members = [
+      { name: 'Ada', owner: true },
+      { name: 'Grace', owner: false },
+      { name: 'Linus', owner: false },
+    ]
+    expect(facts({ ...view, conflicts: 2 }, members, 3)).toEqual([
+      ['Created by', 'Ada', '2026-11-25T03:00:00.000Z'],
+      ['Last changed', '2026-11-25T04:00:00.000Z', '3 changes, 2 conflicts with Shared'],
+      ['Shared with', 'Grace, Linus', ''],
+    ])
+    expect(facts(view, [{ name: 'Ada', owner: true }], 0)).toEqual([
+      ['Created by', 'Ada', '2026-11-25T03:00:00.000Z'],
+      ['Last changed', '2026-11-25T04:00:00.000Z', 'No changes yet'],
+      ['Shared with', 'Nobody else', ''],
+    ])
+    expect(facts({ ...view, staged: true })[2]?.[2]).toContain('another site')
+    expect(facts({ ...view, personal: true })[2]?.[2]).toContain('Your own')
   })
 })
 
@@ -262,8 +392,8 @@ describe(`workspaces in the back office, on the server (${dialectUnderTest})`, (
     ).toBe(404)
   })
 
-  test('opening a page another workspace changed says whose, never what, unless its owner keeps quiet', async () => {
-    const { h, send, opened, page, save } = await site()
+  test('opening a page another workspace changed in the last week says whose, never what', async () => {
+    const { h, opened, page, save } = await site()
     const home = await page('Home', 'Welcome')
     const writer = await signInAsGroup(h, 'writer')
     const theirs = await opened(writer, 'Their sale')
@@ -274,12 +404,18 @@ describe(`workspaces in the back office, on the server (${dialectUnderTest})`, (
     expect(told.items).toHaveLength(1)
     expect(told.items[0]?.workspace).toBeUndefined()
     expect(JSON.stringify(told)).not.toContain('Theirs')
-    await send(writer, 'PATCH', `${WORKSPACES}/${theirs.key}`, { tellOthers: false })
-    expect((await h.json<{ items: unknown[] }>(`${WORKSPACES}/touched/${home}`)).items).toEqual([])
     // Not of one's own.
     expect(
       (await writer.json<{ items: unknown[] }>(`${WORKSPACES}/touched/${home}`)).items,
     ).toEqual([])
+    // A change older than a week is not worth a warning.
+    const db = h.server.db
+    await db.q
+      .updateTable('content_version')
+      .set({ version_date: DbDate.toDb(new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)) })
+      .where('workspace_id', 'is not', null)
+      .execute()
+    expect((await h.json<{ items: unknown[] }>(`${WORKSPACES}/touched/${home}`)).items).toEqual([])
   })
 
   test('a change is dropped, and the page reads as Shared’s there again', async () => {
@@ -290,6 +426,46 @@ describe(`workspaces in the back office, on the server (${dialectUnderTest})`, (
     expect(await titleOf(h, home, sale.key)).toBe('Sale on')
     expect((await send(h, 'DELETE', `${WORKSPACES}/${sale.key}/changes/${home}`)).status).toBe(204)
     expect(await titleOf(h, home, sale.key)).toBe('Welcome')
+  })
+
+  test('what a workspace holds is answered item by item: changed, new, deleted, and what is above them', async () => {
+    const { h, send, opened, page, save, inside, typeKey } = await site()
+    const home = await page('Home', 'Welcome')
+    const about = await page('About', 'About us')
+    const sale = await opened(h, 'Spring sale')
+    const marks = async () =>
+      (await (await send(h, 'GET', `${WORKSPACES}/${sale.key}/marks`)).json()) as {
+        items: Record<string, string>
+        below: string[]
+      }
+    expect(await marks()).toEqual({ items: {}, below: [] })
+
+    await save(h, home, 'Sale on', sale.key)
+    const made = await h.call(`${V1}/document`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...inside(sale.key) },
+      body: JSON.stringify({
+        documentType: { id: typeKey },
+        parent: { id: about },
+        values: [],
+        variants: [{ culture: null, segment: null, name: 'Offers' }],
+      }),
+    })
+    expect(made.status, await made.clone().text()).toBe(201)
+    const offers = made.headers.get('umb-generated-resource') as string
+    const held = await marks()
+    expect(held.items[home]).toBe('changed')
+    expect(held.items[offers]).toBe('new')
+    // About holds a new page below it, and is not changed itself.
+    expect(held.below).toEqual([about])
+
+    // Moved to the recycle bin there, it is to be deleted; Shared still has it.
+    const binned = await h.call(`${V1}/document/${home}/move-to-recycle-bin`, {
+      method: 'PUT',
+      headers: inside(sale.key),
+    })
+    expect(binned.status, await binned.clone().text()).toBe(200)
+    expect((await marks()).items[home]).toBe('deleted')
   })
 
   test('the tree marks what the workspace changed, read in it', async () => {

@@ -3,8 +3,10 @@
  * from a name and how long it lasts and shown once with a copy button, and
  * revoked. Making one is offered only to someone whose groups give it.
  */
+
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { ask } from './ask.js'
 import {
   createButton,
   expiryChoices,
@@ -70,7 +72,7 @@ export default class CromboloCliTokensElement extends UmbLitElement {
   }
 
   async #revoke(token) {
-    if (!confirm(revokeQuestion(token.name))) return
+    if (!(await ask(this, { headline: revokeQuestion(token.name), confirmLabel: 'Revoke' }))) return
     const response = await fetch(`${TOKENS_API}/${token.key}`, {
       method: 'DELETE',
       credentials: 'include',

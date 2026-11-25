@@ -30,6 +30,12 @@ name = "Image"
 type = "imageMediaPicker"
 
 [[tab.property]]
+alias = "imageAsItIs"
+name = "Show the image as it is"
+description = "For artwork that leaves the left side clear for the text. Left off, a photo is dimmed so the text reads over it"
+type = "trueFalse"
+
+[[tab.property]]
 alias = "primaryLink"
 name = "Main button"
 type = "linkPicker"

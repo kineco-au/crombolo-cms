@@ -925,6 +925,15 @@ are untouched, the check reports what was left out (`peopleExcluded`, by count),
 and a file whose content is open needs no passphrase for the people it leaves.
 `--replace-all` refuses it, since it would delete everyone the file lacks.
 
+A file's schema is the site's schema files as they stand. Where the site has none, an export
+writes them from its database (story `427`): content, media and member types, data types,
+languages and approval workflows, at the database's version, the manifest saying so
+(`provenance.schemaFrom`). The site is given the same files, in its schema folder and store,
+and its schema state is marked with their hash, so a node starting from them applies
+nothing. It is not where its schema is not writable, where its store holds files, or where
+its database was last synced from files this node lacks (`site-schema.ts`); the export then
+carries the schema and says why.
+
 Both take the file's schema whatever its version (story `424`): older than the site's, or
 the same version with other definitions, as well as newer. The types the file lacks are
 retired and the site's schema version becomes the file's, lower though it may be. An

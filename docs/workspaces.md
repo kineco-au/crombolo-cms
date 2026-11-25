@@ -519,11 +519,52 @@ merged is checked together by `changes check --since <change>` (story `406`,
   `sessionStorage` and sent as `Crombolo-Workspace` with every Management API call
   (`workspaces.js`, which takes over `own-workspace.js`'s header). Outside Content nothing
   is in a workspace; with workspaces off, none of this shows.
-- **A workspace's privacy, its owner's** (migration 090): who can see it, its members or
-  everyone who may edit (listed, read, checked and opened, changed only by its members), and
-  whether someone opening an item it changed is told "Also changed in a workspace by …",
-  never what changed (`GET /touched/{page}`). Both are chosen as it opens and later, by
-  `POST /` and `PATCH /{key}` `{ visibility, tellOthers }`.
+- **Who sees a workspace, its owner's choice** (migration 090): its members and
+  administrators, or everyone who may edit as well (listed, read, checked and opened, changed
+  only by its members). The back office words the two "Admins" and "Admins and Editors". It
+  is chosen as the workspace opens and later, by `POST /` and `PATCH /{key}`
+  `{ visibility }`.
+- **Someone opening an item another workspace changed is told** "Also changed in a
+  workspace by …", never what changed (`GET /touched/{page}`), where that change was made
+  in the last seven days (`TOUCHED_WITHIN_MS`). Nobody chooses it: `tellOthers` is no longer
+  taken or answered, and the column that held it is kept, unused.
+- **What a workspace is for** (migration 099): a description beside its name, said as it
+  opens (`POST /` `{ name, description }`) and changed by its owner (`PATCH /{key}`
+  `{ description }`, empty to clear it), answered with it.
+- **At the end of the Content menu** (story 428): four icons, their words as tooltips, New
+  workspace, Merge into Shared, Share and Delete, the last three off in Shared and saying
+  why; then the switch, with the workspace's colour as a dot beside its name. The strip
+  itself keeps the back office's own colour. The switch's list holds Shared in a section
+  of its own, then the workspaces, then what to do with the one the tab is in; a press
+  outside it closes it.
+- **Workspaces, the last place in the menu** (`section/content/workspaces`): the
+  sidebar lists Shared and every workspace the person can see, the one the tab is in marked
+  (`workspaces-list.js`), and beside it the one chosen (`workspaces-page.js`): its name,
+  what it is for, who sees it, all three changed there by its owner, who made it and when,
+  who it is shared with, and its changes and conflicts; and it is entered, merged, shared
+  and deleted from there. Choosing a row only shows it. It is a
+  section with a layout of its own (`workspaces-section.js`), open to whoever holds Content.
+- **Merging is a view there, not a dialog** (`?workspace=<key>&view=merge`): what the merge
+  changes, a box for each page, move, delete and file, opened to see each field before, in
+  Shared, and after, from the workspace, or said in words where a value is more than a
+  line can show; each conflict with the workspace's value and Shared's side by side and one kept,
+  each thing to accept ticked, then Merge into Shared in the bar at the foot, as a page's
+  Save is. The address holds the view, so Back, a reload and a link return to it. The
+  workspace's Merge button, the merge icon in the strip and the switch's "Merge into
+  Shared" all go there.
+- **Every tree marks what the workspace holds** (`item-marks.js`, one element in all of
+  them): after an item's name, a dot in the workspace's colour where the workspace
+  changed it, with a word where more is to be said (New, Moved, Deleted), and a fainter dot
+  on an item that only holds a changed one below it. Everything unmarked is as Shared has
+  it; in Shared nothing is marked. The site answers what a
+  workspace holds, by the name each tree knows an item by, at `GET /{key}/marks`
+  (`workspace-marks.ts`): pages, media and Library items by key, types, forms, workflows
+  and dictionary items by key, templates by key and files by their path. The trees get
+  the element from the fork's tree row (`docs/backoffice-hosting.md`), which gives it each
+  item's `unique`; the tree of forms and workflows, which the plugin draws, uses the same.
+- **The strip and the switch keep up:** a save through the Management API, or a workspace
+  opened, renamed or deleted, is told on `window` (`crombolo:workspaces-changed`), and the
+  switch's name and count and the icons' state are read again.
 - **What an editor reads of one shown to editors** (story 416): everyone with the Content
   section reads it, its `changes`, `diff`, `merge` preview, `conflicts`, `members`,
   `pages`, `errors` and `files`, runs its `check`, `render`s a page and `open`s its site:
@@ -542,7 +583,5 @@ merged is checked together by `changes check --since <change>` (story `406`,
   (`DELETE /{key}/changes/{page}`); a page's Info sets its fields against Shared's.
 - **The merge screen:** what it brings, each conflict with Keep mine and Keep theirs, the
   lossy changes to accept, and the pages sent for approval where a workflow applies.
-- **Save in a new workspace,** on a page's actions, saves an edit begun in Shared in a new
-  workspace the tab then works in. Where a workspace is required, Shared opened from the
-  switch is read only.
+- **Where a workspace is required,** Shared opened from the switch is read only.
 

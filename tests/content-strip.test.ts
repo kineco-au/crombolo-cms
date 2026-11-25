@@ -4,11 +4,7 @@
  * knows which place a page belongs to. In a workspace it takes the workspace's colour.
  */
 import { describe, expect, test } from 'bun:test'
-import {
-  activeItem,
-  stripItems,
-  stripTint,
-} from '../packages/backoffice-host/plugin/content-strip-items.js'
+import { activeItem, stripItems } from '../packages/backoffice-host/plugin/content-strip-items.js'
 
 const CONTENT = 'Umb.Section.Content'
 const PAGES = 'Crombolo.Section.Pages'
@@ -60,15 +56,16 @@ describe('what the menu offers', () => {
     )
   })
 
-  test('in a workspace, the strip takes its colour; in Shared, none', () => {
-    expect(stripTint('#1f6f8b')).toContain('#1f6f8b')
-    expect(stripTint(null)).toBe('')
-  })
-
   test('nothing, to someone with one place to open', () => {
     expect(labels({ allowedSections: [CONTENT, PAGES], isAdmin: false })).toEqual([])
     expect(labels({ allowedSections: [], isAdmin: false })).toEqual([])
     expect(labels(undefined)).toEqual([])
+  })
+
+  test('with workspaces on, that one place is offered, as the way back from Workspaces', () => {
+    const one = { allowedSections: [CONTENT, PAGES], isAdmin: false }
+    expect(stripItems(one, true).map((item) => item.label)).toEqual(['Pages'])
+    expect(stripItems({ allowedSections: [], isAdmin: false }, true)).toEqual([])
   })
 })
 
@@ -89,6 +86,8 @@ describe('where a page belongs', () => {
     ['section/content/forms/view/forms', 'Structure'],
     ['section/content/code', 'Code'],
     ['section/content/code/workspace/stylesheet/edit/1', 'Code'],
+    ['section/content/workspaces', 'Workspaces'],
+    ['section/content/dashboard/home', 'Pages'],
   ])('%s is %s', (path, item) => {
     expect(activeItem(path)).toBe(item)
   })

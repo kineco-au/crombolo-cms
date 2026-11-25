@@ -5,6 +5,7 @@
  * Forms' root opens every submission; a folder is a real folder of files.
  */
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
+import './item-marks.js'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { definitionTree, readOnlyWords } from './definition-tree-model.js'
 import { formsTree, moveForm, sendFormFolder } from './forms-client.js'
@@ -302,6 +303,11 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
             ?active=${`${location.pathname}${location.search}` === href}
           >
             <umb-icon slot="icon" name=${this.#config.icon}></umb-icon>
+            <span slot="label">${item.name}</span>
+            <crombolo-item-marks
+              slot="label"
+              .unique=${item.key ?? `${this.#config.itemNoun}:${item.alias}`}
+            ></crombolo-item-marks>
             ${this.#menu(this.#idFor('item', item.alias), item.name, this.#itemChoices(item))}
           </uui-menu-item>`
         },

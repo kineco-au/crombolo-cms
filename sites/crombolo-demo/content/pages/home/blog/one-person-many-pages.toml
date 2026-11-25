@@ -5,7 +5,7 @@ order = 2
 [values]
 publishDate = "2026-05-14"
 author = ["asha-rao"]
-image = "/type-case.jpg"
+image = "/library-person.jpg"
 
 [values.en-US]
 title = "One person, many pages"

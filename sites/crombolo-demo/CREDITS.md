@@ -7,18 +7,39 @@ image in it is **redistributed** to anyone who runs
 source and licence, and `tests/packaging.test.ts` asserts that none is missing
 from this file.
 
-Every image was found through Openverse on 7 November 2026 and is CC0 1.0, so
-no attribution is required; the creator is given where the source names one.
-Each was saved as JPEG at 1,600 pixels wide; nothing else was changed.
+Every image but the logo is a screenshot of Crombolo itself, taken from this demo on
+25 November 2026: the back office, the site, or the `crombolo` command line run
+against it, each framed at 1,600 by 1,000 pixels. The names, answers and
+workspace in them are invented for the demo, and the paths in the terminals are
+shortened to `~/sites/`.
 
-| File | Source | Licence | Creator |
+| File | What it shows | Licence | Made by |
 | --- | --- | --- | --- |
-| `content/media/blueprint-plan.jpg` | [stocksnap](https://stocksnap.io/photo/blueprint-plan-M7MP0ATTWL) | CC0 1.0 | MichaelGaida |
-| `content/media/drafting-compass.jpg` | [stocksnap](https://stocksnap.io/photo/compass-drafting-5304C4F098) | CC0 1.0 | Jeff Sheldon |
-| `content/media/letterpress-alphabet.jpg` | [rawpixel](https://www.rawpixel.com/image/6029759/photo-image-public-domain-wood-letter) | CC0 1.0 | — |
-| `content/media/type-case.jpg` | [rawpixel](https://www.rawpixel.com/image/6030434/photo-image-public-domain-hand-wood) | CC0 1.0 | — |
-| `content/media/library-shelves.jpg` | [rawpixel](https://www.rawpixel.com/image/5924829/photo-image-book-public-domain-room) | CC0 1.0 | — |
-| `content/media/compass-map.jpg` | [stocksnap](https://stocksnap.io/photo/compass-map-UGFCFONZQA) | CC0 1.0 | Vintage RS |
-| `content/media/archive-binders.jpg` | [rawpixel](https://www.rawpixel.com/image/3298148/free-photo-image-warehouse-aisle-book) | CC0 1.0 | — |
-| `content/media/typewriter.jpg` | [stocksnap](https://stocksnap.io/photo/wood-typewriter-VV0697QWMS) | CC0 1.0 | Dustin Lee |
-| `content/media/workbench.jpg` | [stocksnap](https://stocksnap.io/photo/workbench-machinery-RKR8CFTODQ) | CC0 1.0 | Lisa Fotios |
+| `content/media/workspace-editor.jpg` | A page open in the Spring launch workspace, the menu in its colour | MIT, as the rest of this repository | Kineco |
+| `content/media/page-editor.jpg` | The page tree and a page open in the back office | MIT, as the rest of this repository | Kineco |
+| `content/media/workspace-changes.jpg` | What the Spring launch workspace changed, page by page | MIT, as the rest of this repository | Kineco |
+| `content/media/workspace-share.jpg` | Sharing the Spring launch workspace with a colleague | MIT, as the rest of this repository | Kineco |
+| `content/media/workspace-merge.jpg` | Merging a workspace, keeping mine or theirs where a page changed on both sides | MIT, as the rest of this repository | Kineco |
+| `content/media/workspace-menu.jpg` | The workspace switch at the top of Content, open | MIT, as the rest of this repository | Kineco |
+| `content/media/block-editor.jpg` | A block of the home page open for editing | MIT, as the rest of this repository | Kineco |
+| `content/media/page-history.jpg` | A page's history: each version, who saved it and when | MIT, as the rest of this repository | Kineco |
+| `content/media/library-person.jpg` | A person kept in the Library | MIT, as the rest of this repository | Kineco |
+| `content/media/translation-dictionary.jpg` | The dictionary under Translation, in English and Spanish | MIT, as the rest of this repository | Kineco |
+| `content/media/form-entries.jpg` | Answers to the contact form, under Forms | MIT, as the rest of this repository | Kineco |
+| `content/media/media-library.jpg` | The media library | MIT, as the rest of this repository | Kineco |
+| `content/media/site-search.jpg` | The site's search results for workspace | MIT, as the rest of this repository | Kineco |
+| `content/media/site-home.jpg` | This site's home page | MIT, as the rest of this repository | Kineco |
+| `content/media/site-editors.jpg` | This site's page for editors, built from blocks | MIT, as the rest of this repository | Kineco |
+| `content/media/preview-mode.jpg` | A page in preview mode, as visitors will see it before it is published | MIT, as the rest of this repository | Kineco |
+| `content/media/publish-options.jpg` | The publish options beside Save and publish: schedule, publish with what is below, unpublish | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-status.jpg` | crombolo status in a terminal | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-profiles.jpg` | crombolo profile list, then a command on one site by its profile | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-help.jpg` | The topics crombolo --help lists | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-agents.jpg` | The AGENTS.md a new site comes with | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-workspaces.jpg` | crombolo workspaces and workspace diff in a terminal | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-events.jpg` | crombolo events status in a terminal | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-check.jpg` | crombolo workspace check rendering each changed page | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-deploy.jpg` | crombolo site deploy --help in a terminal | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-upgrade.jpg` | crombolo upgrade check in a terminal | MIT, as the rest of this repository | Kineco |
+| `content/media/cli-changes.jpg` | crombolo changes and workspaces in a terminal | MIT, as the rest of this repository | Kineco |
+| `content/media/crombolo-logo.png` | The Crombolo logo (`packages/backoffice-host/plugin/branding/logo-surface-dark.svg`) on the hero's green | MIT, as the rest of this repository | Kineco |

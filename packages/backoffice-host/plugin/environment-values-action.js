@@ -4,10 +4,12 @@
  * or clear, the current one marked. Saved as an edit of the page; it is published with
  * the page. Registered by `environment-values.js`.
  */
+
 import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/document'
 import { UMB_PROPERTY_CONTEXT } from '@umbraco-cms/backoffice/property'
 import { UmbPropertyActionBase } from '@umbraco-cms/backoffice/property-action'
 import { editedAtLine, editedHref } from './content-locked.js'
+import { pageDialog } from './dialog-styles.js'
 import {
   asText,
   NOT_SECRET,
@@ -34,11 +36,8 @@ export class CromboloEnvironmentValuesAction extends UmbPropertyActionBase {
     const [environments, items] = await Promise.all([readEnvironments(), readPageValues(key, true)])
     const item = items.find((i) => i.alias === alias)
     if (!item) return
-    const dialog = document.createElement('dialog')
-    dialog.className = 'crombolo-environment-values'
-    dialog.append(text('h3', `${item.name}: values per environment`))
-    dialog.append(text('p', NOT_SECRET))
-    dialog.append(text('p', `Shared: ${asText(item.shared) || '(empty)'}`))
+    const parts = [text('p', NOT_SECRET)]
+    parts.push(text('p', `Shared: ${asText(item.shared) || '(empty)'}`))
     const status = text('p', '')
     for (const row of rowsFor(item, environments)) {
       const label = row.unused
@@ -63,7 +62,7 @@ export class CromboloEnvironmentValuesAction extends UmbPropertyActionBase {
         }
       })
       line.append(input, save)
-      dialog.append(line)
+      parts.push(line)
     }
     if (environments.readOnly && environments.editedAt) {
       // Story 412: where they are edited, and a link there when it is a web address.
@@ -71,16 +70,11 @@ export class CromboloEnvironmentValuesAction extends UmbPropertyActionBase {
       const href = editedHref(environments.editedAt, globalThis.location?.pathname ?? '')
       if (href)
         line.append(' ', text('a', 'Edit it there', { href, target: '_blank', rel: 'noopener' }))
-      dialog.append(line)
+      parts.push(line)
     } else if (environments.readOnly)
-      dialog.append(text('p', 'These values arrive here by a change from where they are made.'))
-    dialog.append(status)
-    const close = text('button', 'Close', { type: 'button' })
-    close.addEventListener('click', () => dialog.close())
-    dialog.addEventListener('close', () => dialog.remove())
-    dialog.append(close)
-    document.body.append(dialog)
-    dialog.showModal()
+      parts.push(text('p', 'These values arrive here by a change from where they are made.'))
+    parts.push(status)
+    pageDialog(`${item.name}: values per environment`, parts, 'crombolo-environment-values')
   }
 }
 
