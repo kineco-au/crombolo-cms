@@ -580,4 +580,5 @@ it.
 | `423` | A staged change's schedule is set however it is merged | must | S | done | 395, 414 |
 | `425` | A page that arrives by a change takes its place in the order | must | M | done | 411 |
 | `428` | Workspace controls beside the Content menu | should | S | done | 384, 419 |
+| `430` | A promoted delete goes to the recycle bin | must | M | ready | 383, 411 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |
