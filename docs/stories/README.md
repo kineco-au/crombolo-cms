@@ -319,6 +319,7 @@ requests, only server-side and build-time front ends can call it.
 | `233` | A Bundle Editor of Crombolo's own | should | L | done | — |
 | `283` | Library folders travel with their elements | should | M | done | — |
 | `424` | A replace takes the file's schema whatever its version | should | M | done | 105 |
+| `427` | A site file carries the schema the site has | should | M | ready | 104, 424 |
 
 ### Epic L — Routing
 
