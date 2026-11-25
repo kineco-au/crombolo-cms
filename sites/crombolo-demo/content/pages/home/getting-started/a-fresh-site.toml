@@ -1,0 +1,13 @@
+type = "contentPage"
+name = { "en-US" = "A Fresh Site", "es-ES" = "Un sitio nuevo" }
+order = 0
+
+[values.en-US]
+title = "A Fresh Site"
+intro = "From an empty folder to a running site with a home page."
+body = { html = "<h2>Make the site</h2><pre><code>mkdir my-site &amp;&amp; cd my-site\nbunx @crombolo/cli@latest init --name \"My site\" --empty\nbun install</code></pre><p>Use <code>--postgres</code> as well to keep its content in Postgres.</p><h2>Add a type of page</h2><pre><code>bunx crombolo types new content-type page --name Page --at-root</code></pre><p>This one gets a title, and a view that shows it.</p><h2>Write the home page</h2><pre><code>bunx crombolo content new /Home --type page --set title=Home --publish</code></pre><h2>Start it</h2><pre><code>bun start</code></pre><h2>Sign in</h2><p>The site is at <a href=\"http://localhost:8080/\">http://localhost:8080/</a> and the back office at <a href=\"http://localhost:8080/crombolo\">http://localhost:8080/crombolo</a>. The start prints a username and password. The password is new on every start; set <code>CROMBOLO_ADMIN_PASSWORD</code> to keep one. If port 8080 is taken, run <code>PORT=3000 bun start</code>.</p>" }
+
+[values.es-ES]
+title = "Un sitio nuevo"
+intro = "De una carpeta vacía a un sitio en marcha con página de inicio."
+body = { html = "<h2>Crea el sitio</h2><pre><code>mkdir my-site &amp;&amp; cd my-site\nbunx @crombolo/cli@latest init --name \"My site\" --empty\nbun install</code></pre><p>Añade también <code>--postgres</code> para guardar su contenido en Postgres.</p><h2>Añade un tipo de página</h2><pre><code>bunx crombolo types new content-type page --name Page --at-root</code></pre><p>Este tiene un título y una vista que lo muestra.</p><h2>Escribe la página de inicio</h2><pre><code>bunx crombolo content new /Home --type page --set title=Home --publish</code></pre><h2>Arráncalo</h2><pre><code>bun start</code></pre><h2>Entra</h2><p>El sitio está en <a href=\"http://localhost:8080/\">http://localhost:8080/</a> y el panel en <a href=\"http://localhost:8080/crombolo\">http://localhost:8080/crombolo</a>. Al arrancar se muestran un usuario y una contraseña. La contraseña es nueva en cada arranque; define <code>CROMBOLO_ADMIN_PASSWORD</code> para conservar una. Si el puerto 8080 está ocupado, ejecuta <code>PORT=3000 bun start</code>.</p>" }

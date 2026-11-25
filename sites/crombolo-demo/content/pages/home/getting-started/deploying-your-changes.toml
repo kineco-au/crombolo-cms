@@ -1,0 +1,13 @@
+type = "contentPage"
+name = { "en-US" = "Deploying Your Changes", "es-ES" = "Desplegar tus cambios" }
+order = 4
+
+[values.en-US]
+title = "Deploying Your Changes"
+intro = "Send a whole site, or one workspace, to another site."
+body = { html = "<h2>Name the site you deploy to</h2><pre><code>bunx crombolo profile add riverside https://www.example.com\nbunx crombolo login --profile riverside</code></pre><h2>Deploy a whole site</h2><p>For a new site, or changes to files in the site's folder. Commit them first:</p><pre><code>bunx crombolo site deploy --profile riverside --env production --publish</code></pre><h2>Deploy a workspace</h2><p>Do this instead of merging it here first. It waits there, unmerged, where it can be looked at:</p><pre><code>bunx crombolo workspace push \"Spring sale\" --to riverside --to-env production --yes</code></pre><p>Then merge it there, to make it live:</p><pre><code>bunx crombolo workspace merge \"Spring sale\" --profile riverside --env production --yes</code></pre>" }
+
+[values.es-ES]
+title = "Desplegar tus cambios"
+intro = "Envía un sitio completo, o un espacio de trabajo, a otro sitio."
+body = { html = "<h2>Da nombre al sitio en el que despliegas</h2><pre><code>bunx crombolo profile add riverside https://www.example.com\nbunx crombolo login --profile riverside</code></pre><h2>Desplegar un sitio completo</h2><p>Para un sitio nuevo, o cambios en los archivos de la carpeta del sitio. Confírmalos antes:</p><pre><code>bunx crombolo site deploy --profile riverside --env production --publish</code></pre><h2>Desplegar un espacio de trabajo</h2><p>Haz esto en lugar de fusionarlo antes aquí. Espera allí, sin fusionar, donde se puede mirar:</p><pre><code>bunx crombolo workspace push \"Spring sale\" --to riverside --to-env production --yes</code></pre><p>Después fusiónalo allí, para publicarlo:</p><pre><code>bunx crombolo workspace merge \"Spring sale\" --profile riverside --env production --yes</code></pre>" }

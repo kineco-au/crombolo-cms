@@ -1,0 +1,13 @@
+[data-type]
+alias = "pageSections"
+name = "Page Sections"
+editor = "Umbraco.BlockList"
+editor-ui = "Umb.PropertyEditorUi.BlockList"
+
+[[data-type.block]]
+element = "expandableBlock"
+label = "Expandable: {=title}"
+
+[[data-type.block]]
+element = "textBlock"
+label = "Text"

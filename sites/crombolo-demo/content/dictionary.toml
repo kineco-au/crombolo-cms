@@ -22,9 +22,17 @@ es-ES = "Nada coincide con"
 en-US = "results for"
 es-ES = "resultados para"
 
-["footer.source"]
-en-US = "Source code"
-es-ES = "Código fuente"
+["steps.label"]
+en-US = "Steps"
+es-ES = "Pasos"
+
+["steps.previous"]
+en-US = "Previous step"
+es-ES = "Paso anterior"
+
+["steps.next"]
+en-US = "Next step"
+es-ES = "Paso siguiente"
 
 ["features.all"]
 en-US = "All"

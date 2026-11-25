@@ -11,6 +11,13 @@ varies-by-culture = true
 name = "Settings"
 
 [[tab.property]]
+alias = "banner"
+name = "Banner"
+description = "Above the header on every page; leave it empty to show none"
+type = "textstring"
+varies-by-culture = true
+
+[[tab.property]]
 alias = "tagline"
 name = "Tagline"
 description = "Under the name in the footer"
@@ -25,5 +32,17 @@ varies-by-culture = true
 
 [[tab.property]]
 alias = "repositoryUrl"
-name = "Source code address"
+name = "GitHub address"
+type = "textstring"
+
+[[tab.property]]
+alias = "instagramUrl"
+name = "Instagram address"
+description = "Its icon is faded until it has one"
+type = "textstring"
+
+[[tab.property]]
+alias = "xUrl"
+name = "X address"
+description = "Its icon is faded until it has one"
 type = "textstring"

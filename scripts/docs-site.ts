@@ -533,3 +533,211 @@ export function writeDocsSeed(manifest: Manifest, dir = DOCS_SEED_DIR): string[]
   for (const [index, item] of docsTree(manifest).entries()) write(item, index)
   return written
 }
+
+/** Where the Crombolo demo's Documentation page and the pages below it live. */
+export const DEMO_PAGES_DIR = join(ROOT, 'sites/crombolo-demo/content/pages/home')
+
+/** The settings most sites set first, in the groups the demo's Configuration page opens with. */
+export const COMMON_SETTINGS: ReadonlyArray<{ heading: string; settings: readonly string[] }> = [
+  {
+    heading: 'Site',
+    settings: ['NODE_ENV', 'PORT', 'CROMBOLO_SITE_NAME', 'CROMBOLO_APPLICATION_URL'],
+  },
+  {
+    heading: 'Database',
+    settings: ['CROMBOLO_DB', 'CROMBOLO_SQLITE_FILE', 'CROMBOLO_POSTGRES_URL'],
+  },
+  {
+    heading: 'Sign-in and secrets',
+    settings: ['CROMBOLO_ADMIN_LOGIN', 'CROMBOLO_ADMIN_PASSWORD', 'CROMBOLO_SECRET_KEY'],
+  },
+  { heading: 'Media', settings: ['CROMBOLO_MEDIA_STORE', 'CROMBOLO_MEDIA_DIR'] },
+  {
+    heading: 'E-mail',
+    settings: ['CROMBOLO_EMAIL_PROVIDER', 'CROMBOLO_EMAIL_FROM', 'CROMBOLO_EMAIL_API_KEY'],
+  },
+  { heading: 'Content', settings: ['CROMBOLO_ENVIRONMENT', 'CROMBOLO_CONTENT'] },
+  { heading: 'Public site', settings: ['CROMBOLO_INDEXABLE', 'CROMBOLO_LOG_LEVEL'] },
+]
+
+/** Every setting, the common ones first, each listed once. */
+export function demoConfigurationHtml(
+  words: { intro: string; common: string; others: string },
+  settings: readonly Setting[] = SETTINGS,
+): string {
+  const table = (id: string, heading: string, rows: readonly Setting[]) =>
+    `<h3 id="${id}">${escapeHtml(heading)}</h3>\n<table><thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead><tbody>${rows
+      .map(settingRow)
+      .join('')}</tbody></table>`
+  const common = new Set(COMMON_SETTINGS.flatMap((group) => group.settings))
+  const parts = [words.intro, `<h2 id="common">${words.common}</h2>`]
+  for (const group of COMMON_SETTINGS) {
+    const rows = group.settings.map((env) => {
+      const setting = settings.find((s) => s.env === env)
+      if (!setting) throw new Error(`There is no setting ${env} to list as common.`)
+      return setting
+    })
+    parts.push(table(`common-${slugify(group.heading)}`, group.heading, rows))
+  }
+  parts.push(`<h2 id="others">${words.others}</h2>`)
+  for (const section of SETTING_SECTIONS) {
+    const rows = settings.filter((s) => s.section === section && !common.has(s.env))
+    if (rows.length > 0) parts.push(table(slugify(section), section, rows))
+  }
+  return parts.join('\n')
+}
+
+/** The demo's Documentation page, and the command line and configuration pages below it, as content files. */
+export function writeDemoDocs(manifest: Manifest, dir = DEMO_PAGES_DIR): string[] {
+  const below = join(dir, 'documentation')
+  rmSync(below, { recursive: true, force: true })
+  mkdirSync(join(below, 'command-line'), { recursive: true })
+  const pages = cliReferencePages(manifest)
+  const index = (base: string) =>
+    [
+      cliIndexHtml(pages, base, { exitCodes: '#codes', counts: true, trailingSlash: false }),
+      '<h2 id="exit-codes">Exit codes</h2>',
+      exitCodesHtml(manifest).replaceAll('<h2 ', '<h3 ').replaceAll('</h2>', '</h3>'),
+    ].join('\n')
+  const written: string[] = []
+  const cli = "the command line's own description of its commands"
+  const config = "the server's settings list"
+  const write = (
+    path: string,
+    source: string,
+    order: number,
+    slug: string | undefined,
+    en: Record<string, unknown>,
+    es: Record<string, unknown>,
+  ) => {
+    const section = (values: Record<string, unknown>) =>
+      Object.entries(values).map(([alias, value]) => `${alias} = ${tomlValue(value)}`)
+    const lines = [
+      `${GENERATED_HEADER} from ${source}: edit that, not this file.`,
+      'type = "contentPage"',
+      `name = { "en-US" = ${JSON.stringify(en.title)}, "es-ES" = ${JSON.stringify(es.title)} }`,
+      `order = ${order}`,
+      ...(slug ? ['', '[values]', `umbracoUrlName = ${JSON.stringify(slug)}`] : []),
+      '',
+      '[values.en-US]',
+      ...section(en),
+      '',
+      '[values.es-ES]',
+      ...section(es),
+    ]
+    const file = join(dir, path)
+    writeFileSync(file, `${lines.join('\n')}\n`)
+    written.push(file)
+  }
+  const list = (base: string, items: ReadonlyArray<[string, string, string]>) =>
+    `<ul>${items
+      .map(
+        ([slug, title, text]) =>
+          `<li><strong><a href="${base}${slug}">${title}</a>:</strong> ${text}</li>`,
+      )
+      .join('')}</ul>`
+  const code = (text: string) => `<code>${text}</code>`
+  write(
+    'documentation.toml',
+    'scripts/docs-site.ts',
+    6,
+    undefined,
+    {
+      title: 'Documentation',
+      intro: 'Crombolo technical documentation',
+      body: {
+        html: list('/documentation/', [
+          ['command-line', 'Command line', 'every command, by area, and the exit codes.'],
+          ['configuration', 'Configuration', 'every setting, the common ones first.'],
+        ]),
+      },
+    },
+    {
+      title: 'Documentación',
+      intro: 'Documentación técnica de Crombolo',
+      body: {
+        html: list('/es/documentacion/', [
+          [
+            'linea-de-comandos',
+            'Línea de comandos',
+            'todos los comandos, por área, y los códigos de salida.',
+          ],
+          ['configuracion', 'Configuración', 'todos los ajustes, los más comunes primero.'],
+        ]),
+      },
+    },
+  )
+  write(
+    'documentation/command-line.toml',
+    cli,
+    0,
+    undefined,
+    {
+      title: 'Command line',
+      intro: 'Every Crombolo command, generated from the command line itself.',
+      body: { html: index('/documentation/command-line/') },
+    },
+    {
+      title: 'Línea de comandos',
+      intro: 'Todos los comandos de Crombolo, generados a partir de la propia línea de comandos.',
+      body: { html: index('/es/documentacion/linea-de-comandos/') },
+    },
+  )
+  for (const [order, page] of pages.entries()) {
+    const values = { title: page.title, intro: page.summary, body: { html: page.html } }
+    write(`documentation/command-line/${page.slug}.toml`, cli, order, page.slug, values, values)
+  }
+  write(
+    'documentation/configuration.toml',
+    config,
+    1,
+    undefined,
+    {
+      title: 'Configuration',
+      intro: 'Every setting Crombolo reads, with its default and what it does.',
+      body: {
+        html: demoConfigurationHtml({
+          intro: `<p>A new site runs with nothing set. A value in ${code('crombolo.config.ts')} wins over the environment, and the environment over the default. Locally, settings can live in a ${code('.env')} file in the site's folder.</p>`,
+          common: 'Common settings',
+          others: 'All other settings',
+        }),
+      },
+    },
+    {
+      title: 'Configuración',
+      intro: 'Todos los ajustes que lee Crombolo, con su valor por defecto y lo que hacen.',
+      body: {
+        html: demoConfigurationHtml({
+          intro: `<p>Un sitio nuevo funciona sin definir nada. Un valor en ${code('crombolo.config.ts')} prevalece sobre el entorno, y el entorno sobre el valor por defecto. En local, los ajustes pueden estar en un archivo ${code('.env')} en la carpeta del sitio.</p>`,
+          common: 'Ajustes comunes',
+          others: 'Todos los demás ajustes',
+        }),
+      },
+    },
+  )
+  return written
+}
+
+/** The demo's page about templates: written by hand, but for the list of them. */
+export const DEMO_TEMPLATES_PAGE = 'getting-started/use-a-template.toml'
+
+/** The page's text with its list of templates as `init --template list` has them. */
+export function withDemoTemplates(text: string): string {
+  const items = templateInfos()
+    .map(
+      (t) =>
+        `<li><strong>${escapeHtml(t.name)}</strong> (<code>${escapeHtml(t.id)}</code>): ${escapeHtml(t.description)}.</li>`,
+    )
+    .join('')
+  const body = tomlValue({ html: `<ul>${items}</ul>` })
+  return text.replaceAll(
+    /^(.*alias = "templates", values = \{ title = "[^"]*", body = ).*( \} \},)$/gm,
+    (_, start, end) => `${start}${body}${end}`,
+  )
+}
+
+/** Writes the list of templates into the demo's page about them. */
+export function writeDemoTemplates(dir = DEMO_PAGES_DIR): void {
+  const file = join(dir, DEMO_TEMPLATES_PAGE)
+  writeFileSync(file, withDemoTemplates(readFileSync(file, 'utf8')))
+}

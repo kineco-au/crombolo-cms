@@ -6,7 +6,15 @@
  * site: a hand edit applied and changed by command, `site show`, `init`.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import {
   loadSchemaDirectory,
@@ -309,7 +317,8 @@ describe('crombolo init', () => {
 
   test('--empty says what it set up and leads with commands, naming schema/ once', () => {
     const out = init('empty', '--name', 'Riverside Bakery', '--empty')
-    expect(existsSync(join(root, 'empty', 'content'))).toBe(false)
+    const content = readdirSync(join(root, 'empty', 'content'), { recursive: true }) as string[]
+    expect(content.filter((path) => path.includes('.') && !path.endsWith('.gitkeep'))).toEqual([])
     expect(out).toContain('A site called "Riverside Bakery", on SQLite.')
     expect(out).toContain('crombolo types new content-type page')
     expect(out).toContain('crombolo content new /Home --type page')

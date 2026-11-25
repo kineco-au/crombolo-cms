@@ -7,8 +7,8 @@ postsPerPage = 4
 
 [values.en-US]
 title = "Blog"
-intro = "Notes from the people building Crombolo."
+intro = "Crombolo articles and notes from the team"
 
 [values.es-ES]
 title = "Blog"
-intro = "Notas de quienes construyen Crombolo."
+intro = "Artículos de Crombolo y notas del equipo"

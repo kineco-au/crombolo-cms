@@ -28,9 +28,11 @@ import {
   buildBundleFromDirectory,
   listComponents,
   parseWebhookFile,
+  readSeed,
   VERSION,
 } from '@crombolo/server'
 import type { BundleNode } from '@crombolo/transfer'
+import { SITE_FOLDERS } from '../packages/cli/src/templates.ts'
 import { ROOT } from '../scripts/packages.ts'
 import { listSites, stageTemplates } from '../scripts/sites.ts'
 
@@ -41,7 +43,7 @@ afterAll(() => rmSync(STAGED, { recursive: true, force: true }))
 
 const templates = [...listTemplates(), ...listTemplates(STAGED)]
 /** Those that ship files; `next` is the empty site with a front end. */
-const withFiles = templates.filter((t) => existsSync(join(t.dir, 'files')))
+const withFiles = templates.filter((t) => existsSync(join(t.dir, 'files', 'schema')))
 const byId = (id: string): SiteTemplate => {
   const found = findTemplate(id) ?? findTemplate(id, STAGED)
   if (!found) throw new Error(`no template "${id}"`)
@@ -227,7 +229,7 @@ describe('a Next.js front end (story 208)', () => {
       'schema/webhooks/next-revalidate.toml',
     ])
       expect(paths).toContain(path)
-    expect(paths.filter((p) => p.startsWith('content/'))).toEqual([])
+    expect(paths.filter((p) => p.startsWith('content/') && !p.endsWith('/.gitkeep'))).toEqual([])
 
     const web = JSON.parse(at(files, 'web/package.json')?.text ?? '{}')
     expect(web.name).toBe('acme-web')
@@ -711,5 +713,68 @@ describe('the starter', () => {
     )
     expect(withSidebar.length).toBeGreaterThan(0)
     expect(withSidebar.length).toBeLessThan(pages.length)
+  })
+})
+
+describe('a template’s README', () => {
+  // The product site is not offered by `init`.
+  const offered = templates.filter((t) => t.id !== 'product/crombolo')
+
+  test.each(offered.map((t) => [t.id] as const))(
+    '%s says what it is for, and its folders as made',
+    (id) => {
+      const files = scaffoldFiles({ template: byId(id) })
+      const readme = files.find((file) => file.path === 'README.md')
+      const text = readFileSync(readme?.copyFrom as string, 'utf8')
+      expect(text).toContain('## What it is for')
+      // Each line of the tree as a path: the folder it is under, then its name.
+      const listed: string[] = []
+      let under = ''
+      for (const [, indent, name] of text.matchAll(/^((?:│| ) {3})?[├└]── (\S+)/gm)) {
+        if (!indent) under = name as string
+        listed.push(indent ? `${under}${name}` : (name as string))
+      }
+      const paths = [...files.map((file) => file.path), 'AGENTS.md']
+      for (const path of listed)
+        expect(
+          paths.some((p) => (path.endsWith('/') ? p.startsWith(path) : p === path)),
+          path,
+        ).toBe(true)
+      for (const path of paths) {
+        const [first, second, third] = path.split('/')
+        expect(listed, path).toContain(second ? `${first}/` : path)
+        if (third && ['components', 'content', 'schema', 'web'].includes(first as string))
+          expect(listed, path).toContain(`${first}/${second}/`)
+      }
+    },
+  )
+})
+
+describe('a new site’s folders', () => {
+  const folders = (template?: SiteTemplate) => {
+    const paths = scaffoldFiles({ template }).map((file) => file.path)
+    return SITE_FOLDERS.filter((folder) => !paths.some((path) => path.startsWith(`${folder}/`)))
+  }
+
+  test('are all made, empty or from any template', () => {
+    expect(folders()).toEqual([])
+    for (const { id } of listTemplates()) expect(folders(findTemplate(id)), id).toEqual([])
+  })
+
+  test('hold nothing that is read as content, a type or a view, and still build', async () => {
+    const dir = mkdtempSync(join(ROOT, 'output', 'new-site-'))
+    try {
+      for (const file of scaffoldFiles({ siteName: 'New' })) {
+        mkdirSync(join(dir, file.path, '..'), { recursive: true })
+        await Bun.write(join(dir, file.path), file.text ?? Bun.file(file.copyFrom as string))
+      }
+      const { items, findings } = readSeed(dir)
+      expect(items).toEqual([])
+      expect(findings).toEqual([])
+      expect(listComponents(join(dir, 'components'))).toEqual([])
+      expect((await buildBundleFromDirectory(dir, { name: 'new-site' })).problems).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

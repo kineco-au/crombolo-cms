@@ -1,4 +1,5 @@
 import type { PageProps } from '@crombolo/crombolo'
+import { Flag } from './flag.tsx'
 
 const LABELS: Record<string, string> = { 'en-US': 'English', 'es-ES': 'Español' }
 
@@ -6,21 +7,28 @@ const LABELS: Record<string, string> = { 'en-US': 'English', 'es-ES': 'Español'
 export function LanguageSwitch({ model, urls, culture, dictionary }: PageProps) {
   const versions = urls.alternates(model).filter((version) => version.culture)
   if (versions.length < 2) return null
+  const current = culture ?? (versions[0]?.culture as string)
   return (
-    <nav class="language-switch" aria-label={dictionary('nav.language')}>
-      {versions.map((version) => {
-        const iso = version.culture as string
-        return (
-          <a
-            href={version.url}
-            lang={iso}
-            hreflang={iso}
-            aria-current={iso === culture ? 'true' : undefined}
-          >
-            {LABELS[iso] ?? iso}
-          </a>
-        )
-      })}
-    </nav>
+    <details class="language-switch">
+      <summary aria-label={`${dictionary('nav.language')}: ${LABELS[current] ?? current}`}>
+        <Flag culture={current} />
+      </summary>
+      <nav aria-label={dictionary('nav.language')}>
+        {versions.map((version) => {
+          const iso = version.culture as string
+          return (
+            <a
+              href={version.url}
+              lang={iso}
+              hreflang={iso}
+              aria-current={iso === culture ? 'true' : undefined}
+            >
+              <Flag culture={iso} />
+              {LABELS[iso] ?? iso}
+            </a>
+          )
+        })}
+      </nav>
+    </details>
   )
 }

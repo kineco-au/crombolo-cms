@@ -11,21 +11,27 @@
  *    own code: its schema, components, styles and content. The platform installs
  *    the product site from this bundle.
  *
+ * 3. The Crombolo demo's Documentation pages, as content files, from the CLI manifest
+ *    (`writeDemoDocs`), and its list of templates, from the templates (`writeDemoTemplates`).
+ *
  * Every other site and template is its files: `crombolo init --template` copies
  * them, and `crombolo start --bundle .` applies their content. tests/docs-site.test.ts fails
- * when either output is out of date.
+ * when an output is out of date.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { buildBundleFromDirectory } from '@crombolo/server'
 import { buildManifest } from '../packages/cli/src/manifest.ts'
-import { writeDocsSeed } from './docs-site.ts'
+import { writeDemoDocs, writeDemoTemplates, writeDocsSeed } from './docs-site.ts'
 import { findSite } from './sites.ts'
 
 const site = findSite('product/crombolo')
 if (!site) throw new Error('no product/crombolo in sites/')
 
-const docs = writeDocsSeed(await buildManifest())
+const manifest = await buildManifest()
+const docs = writeDocsSeed(manifest)
+const demoDocs = writeDemoDocs(manifest)
+writeDemoTemplates()
 
 const built = await buildBundleFromDirectory(site.dir, { name: basename(site.bundle) })
 if (built.problems.length > 0 || !built.files)
@@ -39,5 +45,5 @@ for (const file of built.files) {
   writeFileSync(target, file.bytes ?? (file.text as string))
 }
 console.log(
-  `  docs pages           ${docs.length} page(s)\n  product/crombolo     ${built.seed?.set?.nodes.length ?? 0} node(s)`,
+  `  docs pages           ${docs.length} page(s)\n  demo/crombolo docs   ${demoDocs.length} page(s)\n  product/crombolo     ${built.seed?.set?.nodes.length ?? 0} node(s)`,
 )

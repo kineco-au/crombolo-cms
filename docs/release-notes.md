@@ -6,11 +6,28 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.80.1 — 2026-11-25
+
 ### Changes
 
+- The Crombolo demo is reworked: Documentation in place of About, with every command and
+  every setting generated from the code; Getting started, with pages for a fresh site, a
+  template, the source code, and building and deploying changes, with a left menu and step
+  buttons; a banner; a new header with a logo and a language dropdown; and a new footer.
+- `crombolo init` makes every folder a site is read from, empty or from a template: `content/`,
+  `css/`, `scripts/`, `components/blocks/` and the folders in `schema/`.
+- Every template has a README, saying what the site is for and what its folders hold, which
+  `crombolo init` puts in the new site.
 - A page, media item or Library item deleted where it is made goes to the recycle bin of
   the site its change is applied to, with its history, instead of being deleted there for
   good; a restore or a revert passed on takes it out again (430).
+
+### Fixes
+
+- A page restored from the recycle bin, its change passed on, is taken out of the other
+  site's bin: the merge had refused it as no longer in Shared (430).
+
+No migrations.
 
 ### Upgrade notes
 

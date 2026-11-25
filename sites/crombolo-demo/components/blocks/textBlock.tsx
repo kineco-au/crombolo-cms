@@ -1,0 +1,5 @@
+import type { BlockProps } from '@crombolo/crombolo'
+
+export default function TextBlock({ content }: BlockProps) {
+  return <div class="prose">{content.html('body')}</div>
+}

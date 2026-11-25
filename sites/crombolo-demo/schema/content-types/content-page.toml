@@ -3,6 +3,7 @@ alias = "contentPage"
 name = "Content Page"
 description = "A page of text with an image"
 icon = "icon-document"
+allow-children = ["contentPage"]
 varies-by-culture = true
 compositions = ["seoFields"]
 components = ["pages/contentPage"]
@@ -37,3 +38,22 @@ alias = "body"
 name = "Body"
 type = "richtext"
 varies-by-culture = true
+
+[[tab.property]]
+alias = "umbracoUrlName"
+name = "Address"
+description = "The last part of the page's address; taken from its name when empty"
+type = "textstring"
+
+[[tab.property]]
+alias = "sections"
+name = "Sections"
+description = "Text and expandable sections above the body, in the order they should appear"
+type = "pageSections"
+varies-by-culture = true
+
+[[tab.property]]
+alias = "steps"
+name = "Steps"
+description = "Take readers through the pages below this one with previous and next buttons"
+type = "trueFalse"

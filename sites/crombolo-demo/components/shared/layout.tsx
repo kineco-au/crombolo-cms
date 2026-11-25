@@ -1,5 +1,7 @@
 import { asset, type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
 import { LanguageSwitch } from './language-switch.tsx'
+import { Logo } from './logo.tsx'
+import { SiteBanner } from './site-banner.tsx'
 import { SiteFooter } from './site-footer.tsx'
 
 /** The shell every page shares: head tags, the header, the page, the footer. */
@@ -22,9 +24,11 @@ export function Layout(props: PageProps & { children?: Child }) {
         <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
       <body>
+        <SiteBanner />
         <header class="site-header">
-          <div class="wrap site-header__inner">
+          <div class="site-header__inner">
             <a class="wordmark" href={home?.url}>
+              <Logo />
               {siteName}
             </a>
             <nav aria-label={dictionary('nav.primary')}>

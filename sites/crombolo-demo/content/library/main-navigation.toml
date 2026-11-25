@@ -9,6 +9,7 @@ items = [
   { type = "menuItem", values = { link = ["/home/editors"], label = "", children = [] } },
   { type = "menuItem", values = { link = ["/home/developers"], label = "", children = [] } },
   { type = "menuItem", values = { link = ["/home/blog"], label = "", children = [] } },
-  { type = "menuItem", values = { link = ["/home/about"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/getting-started"], label = "", children = [] } },
+  { type = "menuItem", values = { link = ["/home/documentation"], label = "", children = [] } },
   { type = "menuItem", values = { link = ["/home/contact"], label = "", children = [] } },
 ]

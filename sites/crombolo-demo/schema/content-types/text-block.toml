@@ -1,0 +1,14 @@
+[content-type]
+alias = "textBlock"
+name = "Text"
+description = "Text between other sections"
+icon = "icon-article"
+is-element = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "body"
+name = "Text"
+type = "richtext"

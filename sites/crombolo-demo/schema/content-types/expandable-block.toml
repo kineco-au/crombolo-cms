@@ -1,0 +1,20 @@
+[content-type]
+alias = "expandableBlock"
+name = "Expandable section"
+description = "A title that opens the text below it"
+icon = "icon-navigation-down"
+is-element = true
+
+[[tab]]
+name = "Content"
+
+[[tab.property]]
+alias = "title"
+name = "Title"
+type = "textstring"
+mandatory = true
+
+[[tab.property]]
+alias = "body"
+name = "Text"
+type = "richtext"

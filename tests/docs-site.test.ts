@@ -21,6 +21,8 @@ import { installBundleContent, SETTINGS } from '@crombolo/server'
 import { buildManifest } from '../packages/cli/src/manifest.ts'
 import {
   configurationHtml,
+  DEMO_PAGES_DIR,
+  DEMO_TEMPLATES_PAGE,
   DOCS_DIR,
   DOCS_SEED_DIR,
   type DocsPage,
@@ -30,6 +32,8 @@ import {
   parseGuide,
   renderMarkdown,
   walkthroughOf,
+  withDemoTemplates,
+  writeDemoDocs,
   writeDocsSeed,
 } from '../scripts/docs-site.ts'
 import { ROOT } from '../scripts/packages.ts'
@@ -138,6 +142,37 @@ describe('the committed bundle', () => {
 })
 
 describe('the docs seed', () => {
+  test('the demo lists the templates there are today, in both languages', () => {
+    const text = readFileSync(join(DEMO_PAGES_DIR, DEMO_TEMPLATES_PAGE), 'utf8')
+    expect(
+      withDemoTemplates(text) === text,
+      'the templates changed: run `bun run build:template`',
+    ).toBe(true)
+    expect(text.match(/alias = "templates".*demo\/crombolo/g)).toHaveLength(2)
+  })
+
+  test('the demo’s documentation is what the build writes today, file for file', async () => {
+    const fresh = mkdtempSync(join(ROOT, 'output', 'demo-docs-'))
+    try {
+      const written = writeDemoDocs(await buildManifest(), fresh)
+      const names = written.map((file) => file.slice(fresh.length + 1))
+      expect(
+        (readdirSync(join(DEMO_PAGES_DIR, 'documentation'), { recursive: true }) as string[])
+          .filter((file) => file.endsWith('.toml'))
+          .map((file) => `documentation/${file}`)
+          .sort(),
+      ).toEqual(names.filter((name) => name.includes('/')).sort())
+      for (const name of names)
+        expect(
+          readFileSync(join(DEMO_PAGES_DIR, name), 'utf8') ===
+            readFileSync(join(fresh, name), 'utf8'),
+          `${name} changed: run \`bun run build:template\``,
+        ).toBe(true)
+    } finally {
+      rmSync(fresh, { recursive: true, force: true })
+    }
+  })
+
   test('is the seed the build writes today, file for file', async () => {
     // The generated pages are committed seed files (story 164): a guide, a
     // command or a setting changed without a rebuild shows here.

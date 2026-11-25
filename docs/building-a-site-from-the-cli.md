@@ -21,8 +21,9 @@ bunx crombolo init --name "Riverside Bakery" --empty
 bun install
 ```
 
-`init --empty` writes the site's config, `server.ts`, an empty `components/` and
-`actions/`, and the definitions every site starts with. Without `--empty`, a
+`init --empty` writes the site's config, `server.ts`, the folders a site
+is read from (`components/`, `content/`, `css/`, `scripts/`, `public/`, `actions/`, and
+those in `schema/`), empty, and the definitions every site starts with. Without `--empty`, a
 new site also gets a Content Page type, its template and a welcome page
 (story 341); this walk builds its own. It names `schema/`
 once, as what to commit, and lists the commands to run next (story 252). A

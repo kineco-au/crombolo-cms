@@ -210,17 +210,24 @@ export function cliReferencePages(manifest: Interfaces.Manifest): CliReferencePa
 }
 
 /** The front page of the reference: what every command shares, then each page and its commands. */
-export function cliIndexHtml(pages: readonly CliReferencePage[], base: string): string {
+export function cliIndexHtml(
+  pages: readonly CliReferencePage[],
+  base: string,
+  options: { exitCodes?: string; counts?: boolean; trailingSlash?: boolean } = {},
+): string {
+  const exitCodes = options.exitCodes ?? '/docs/reference/exit-codes/'
   const parts = [
     `<p>Every command, generated from the CLI itself. Each takes ${code('--help')} for its entry ` +
       `here, and ${code('-o json')} for a result a script can read. ${code('crombolo schema')} prints ` +
       'the same description for a machine, as a <a href="https://clispec.dev">clispec</a> document. ' +
-      'A command that fails exits with a code saying why: see the <a href="/docs/reference/exit-codes/">exit codes</a>.</p>',
+      'A command that fails exits with a code saying why: see the ' +
+      `<a href="${exitCodes}">exit codes</a>.</p>`,
   ]
   for (const page of pages) {
-    const url = `${base}${page.slug}/`
+    const url = `${base}${page.slug}${options.trailingSlash === false ? '' : '/'}`
+    const count = options.counts ? ` (${page.commands.length})` : ''
     parts.push(
-      `<h2 id="${escapeHtml(page.slug)}"><a href="${url}">${escapeHtml(page.title)}</a></h2>`,
+      `<h2 id="${escapeHtml(page.slug)}"><a href="${url}">${escapeHtml(page.title)}</a>${count}</h2>`,
     )
     parts.push(`<p>${escapeHtml(page.summary)}</p>`)
     parts.push(

@@ -20,9 +20,14 @@ import {
   buildBundleFromDirectory,
   compileSeed,
   installBundleContent,
+  SETTINGS,
   syncDomainsFile,
 } from '@crombolo/server'
+import { buildManifest } from '../packages/cli/src/manifest.ts'
+import { cliReferencePages, commandAnchor } from '../packages/cli/src/reference.ts'
 import { writeSeedPackage } from '../packages/cli/src/support/seed.ts'
+import { SITE_FOLDERS, scaffoldFiles } from '../packages/cli/src/templates.ts'
+import { COMMON_SETTINGS } from '../scripts/docs-site.ts'
 import { type Harness, ORIGIN, signedInServer } from './support/harness.ts'
 
 const SITE = join(import.meta.dir, '..', 'sites', 'crombolo-demo')
@@ -133,16 +138,217 @@ describe('the Crombolo demo, in English', () => {
 
   test('its header comes from the menu, and leaves out what the menu does', async () => {
     const { html } = await page('/')
-    for (const link of ['Features', 'For editors', 'For developers', 'Blog', 'About', 'Contact'])
+    for (const link of [
+      'Features',
+      'For editors',
+      'For developers',
+      'Blog',
+      'Getting started',
+      'Documentation',
+      'Contact',
+    ])
       expect(html).toContain(`>${link}</a>`)
     expect(html).not.toContain('>Site Settings<')
     expect(html).not.toContain('>People</a>')
   })
 
   test('its footer comes from the site settings', async () => {
-    const { html } = await page('/about')
-    expect(html).toContain('A demonstration site. The people on it are invented.')
-    expect(html).toContain('https://github.com/kineco-au/crombolo-cms')
+    const { html } = await page('/documentation')
+    expect(html).toContain('Come say Hi')
+    expect(html).toContain(
+      '<a class="social" href="https://github.com/kineco-au/crombolo-cms" aria-label="GitHub"',
+    )
+    // No address yet, so no link.
+    for (const label of ['Instagram', 'X'])
+      expect(html).toContain(`<span class="social social--none" role="img" aria-label="${label}"`)
+  })
+
+  test('it has a page for each way to get started, linked from Getting Started', async () => {
+    for (const [from, links] of [
+      ['/getting-started', ['/getting-started/a-fresh-site', '/getting-started/use-a-template']],
+      [
+        '/es/primeros-pasos',
+        ['/es/primeros-pasos/un-sitio-nuevo', '/es/primeros-pasos/usar-una-plantilla'],
+      ],
+    ] as const) {
+      const { status, html } = await page(from)
+      expect(status).toBe(200)
+      for (const link of links) {
+        expect(html).toContain(`href="${link}"`)
+        const below = await page(link)
+        expect(below.status, link).toBe(200)
+        expect(below.html).toContain('bun install')
+      }
+    }
+  })
+
+  test('its pages about building and deploying go from a new site or workspace to another site', async () => {
+    for (const [from, building, deploying] of [
+      [
+        '/getting-started/use-a-template',
+        '/getting-started/building-your-changes',
+        '/getting-started/deploying-your-changes',
+      ],
+      [
+        '/es/primeros-pasos/usar-una-plantilla',
+        '/es/primeros-pasos/crear-tus-cambios',
+        '/es/primeros-pasos/desplegar-tus-cambios',
+      ],
+    ] as const) {
+      const before = await page(from)
+      expect(before.html).toContain(`href="${building}"`)
+      expect(before.html).not.toContain('components check')
+      const build = await page(building)
+      expect(build.status).toBe(200)
+      for (const step of ['components check', 'workspace open', 'workspace merge', 'conflicts'])
+        expect(build.html).toContain(step)
+      for (const step of ['site deploy', 'workspace push']) {
+        expect(build.html).not.toContain(step)
+        expect((await page(deploying)).html).toContain(step)
+      }
+    }
+  })
+
+  test('its getting started pages lead from each to the next and back, and no other page does', async () => {
+    const guide = [
+      '/getting-started',
+      '/getting-started/a-fresh-site',
+      '/getting-started/use-a-template',
+      '/getting-started/start-from-source',
+      '/getting-started/building-your-changes',
+      '/getting-started/deploying-your-changes',
+    ]
+    const link = (html: string, rel: string) =>
+      html.match(new RegExp(`rel="${rel}" href="([^"]*)"`))?.[1]
+    for (const [n, path] of guide.entries()) {
+      const { html } = await page(path)
+      expect(link(html, 'prev'), path).toBe(guide[n - 1])
+      expect(link(html, 'next'), path).toBe(guide[n + 1])
+      const menu = html.match(/<nav class="step-menu".*?<\/nav>/s)?.[0] ?? ''
+      expect([...menu.matchAll(/href="([^"]*)"/g)].map((m) => m[1])).toEqual(guide)
+      expect(menu.match(/href="([^"]*)" aria-current="page"/)?.[1]).toBe(path)
+      expect(menu.match(/aria-current/g)).toHaveLength(1)
+      expect(html).not.toContain('Where next')
+    }
+    expect((await page('/documentation/configuration')).html).not.toMatch(/class="step/)
+    expect((await page('/es/primeros-pasos')).html).toContain('Paso siguiente')
+  })
+
+  test('its page about the source links to it, and to every command the repository has', async () => {
+    const scripts = JSON.parse(readFileSync(join(SITE, '..', '..', 'package.json'), 'utf8'))
+      .scripts as Record<string, string>
+    for (const [from, path] of [
+      ['/getting-started', '/getting-started/start-from-source'],
+      ['/es/primeros-pasos', '/es/primeros-pasos/empezar-desde-el-codigo-fuente'],
+    ] as const) {
+      expect((await page(from)).html).toContain(`href="${path}"`)
+      const { status, html } = await page(path)
+      expect(status).toBe(200)
+      expect(html).toContain('href="https://github.com/kineco-au/crombolo-cms"')
+      expect(html).not.toContain('git clone')
+      const named = [...html.matchAll(/bun run ([a-z:]+)/g)].map((m) => m[1] as string)
+      expect(named.length).toBeGreaterThan(4)
+      for (const name of named) expect(scripts[name], name).toBeDefined()
+      // Each in Docker, by a service the repository has.
+      const compose = readFileSync(join(SITE, '..', '..', 'compose.yaml'), 'utf8')
+      for (const [, service] of html.matchAll(/(?<=docker compose [^<]*)\b(cms[a-z-]*)/g))
+        expect(compose).toContain(`\n  ${service}:`)
+      for (const [command] of html.matchAll(/<code>[^<]*bun run [^<]*/g))
+        for (const line of command.replace('<code>', '').split('\n'))
+          expect(line).toStartWith('docker compose run')
+    }
+  })
+
+  test('it hides how to connect to Postgres in a section after the Bun command', async () => {
+    for (const [path, title] of [
+      ['/getting-started', 'Optional: configure Postgres connection'],
+      ['/es/primeros-pasos', 'Opcional: configura la conexión con Postgres'],
+    ] as const) {
+      const { html } = await page(path)
+      const at = html.indexOf(`<summary>${title}</summary>`)
+      expect(at).toBeGreaterThan(html.indexOf('https://bun.sh/install'))
+      expect(at).toBeLessThan(html.indexOf('WSL'))
+      expect(html.indexOf('CROMBOLO_POSTGRES_URL')).toBeGreaterThan(at)
+    }
+  })
+
+  test('its getting started page lists the folders every new site has', async () => {
+    for (const path of ['/getting-started', '/es/primeros-pasos']) {
+      const { html } = await page(path)
+      const listed: string[] = []
+      let under = ''
+      for (const [, indent, name] of html.matchAll(/^(│ {3})?[├└]── (\S+)/gm)) {
+        if (!indent) under = name as string
+        listed.push(indent ? `${under}${name}` : (name as string))
+      }
+      // What is in its sections is not in its body too.
+      expect(html.split('Windows')).toHaveLength(2)
+      expect(listed).toEqual(expect.arrayContaining(SITE_FOLDERS.map((folder) => `${folder}/`)))
+      const made = [...scaffoldFiles().map((file) => file.path), 'AGENTS.md']
+      for (const entry of listed)
+        expect(
+          made.some((m) => (entry.endsWith('/') ? m.startsWith(entry) : m === entry)),
+          entry,
+        ).toBe(true)
+    }
+  })
+
+  test('its page about templates lists them in an expandable section', async () => {
+    const { html } = await page('/getting-started/use-a-template')
+    expect(html).toContain('<summary>Available templates</summary>')
+    expect(html).toContain('<code>demo/harbourstone</code>')
+    const spanish = await page('/es/primeros-pasos/usar-una-plantilla')
+    expect(spanish.html).toContain('<summary>Plantillas disponibles</summary>')
+    expect((await page('/getting-started/a-fresh-site')).html).not.toContain('class="expandable')
+  })
+
+  test('its banner, from the site settings, is on every page in its language', async () => {
+    for (const path of ['/', '/documentation', '/contact'])
+      expect((await page(path)).html).toContain('This is a demonstration site built with Crombolo')
+    expect((await page('/es')).html).toContain('Este es un sitio de demostración creado')
+  })
+
+  test('its documentation lists every command, each linked to its entry', async () => {
+    const pages = cliReferencePages(await buildManifest())
+    const root = await page('/documentation')
+    expect(root.html).toContain('href="/documentation/command-line"')
+    expect(root.html).toContain('href="/documentation/configuration"')
+    const { status, html } = await page('/documentation/command-line')
+    expect(status).toBe(200)
+    for (const { slug, commands } of pages) {
+      const area = await page(`/documentation/command-line/${slug}`)
+      expect(area.status, slug).toBe(200)
+      for (const name of commands) {
+        const anchor = commandAnchor(name)
+        expect(html).toContain(`href="/documentation/command-line/${slug}#${anchor}"`)
+        expect(area.html).toContain(`id="${anchor}"`)
+      }
+    }
+    expect(html).toContain('id="codes"')
+    expect((await page('/about')).status).toBe(404)
+    const spanish = await page('/es/documentacion')
+    expect(spanish.html).toContain('href="/es/documentacion/linea-de-comandos"')
+    expect(spanish.html).toContain('href="/es/documentacion/configuracion"')
+    const line = await page('/es/documentacion/linea-de-comandos')
+    expect(line.html).toContain('Todos los comandos de Crombolo')
+    expect(line.html).toContain(
+      'href="/es/documentacion/linea-de-comandos/content#content-publish"',
+    )
+    expect((await page('/es/documentacion/linea-de-comandos/content')).status).toBe(200)
+  })
+
+  test('its configuration page lists every setting once, the common ones first', async () => {
+    for (const path of ['/documentation/configuration', '/es/documentacion/configuracion']) {
+      const { status, html } = await page(path)
+      expect(status).toBe(200)
+      const others = html.indexOf('id="others"')
+      const common = new Set(COMMON_SETTINGS.flatMap((group) => group.settings))
+      for (const { env } of SETTINGS) {
+        const at = html.split(`<tr><td><code>${env}</code>`)
+        expect(at.length, env).toBe(2)
+        expect((at[0] as string).length < others, env).toBe(common.has(env))
+      }
+    }
   })
 
   test('its features filter by category, with a page for each', async () => {
@@ -207,12 +413,12 @@ describe('the Crombolo demo, in Spanish at /es', () => {
   })
 
   test('its menu, dictionary and site settings are translated', async () => {
-    const { html } = await page('/es/acerca-de')
+    const { html } = await page('/es/documentacion')
     expect(html).toContain('>Funciones</a>')
     expect(html).toContain('>Contacto</a>')
     expect(html).toContain('placeholder="Buscar"')
-    expect(html).toContain('>Código fuente</a>')
-    expect(html).toContain('Un sitio de demostración.')
+    expect(html).toContain('aria-label="GitHub"')
+    expect(html).toContain('Ven a saludarnos')
   })
 
   test('its categories, people and dates are translated', async () => {
@@ -372,10 +578,12 @@ describe('the Crombolo demo, as a template', () => {
 
   test('names nothing of Umbraco’s events or community', () => {
     // Saying where Crombolo comes from is the one mention the home page makes.
-    const banned = /codegarden|(?<!inspirado en )umbraco(?!-inspired)|our\.umbraco|hq\b/i
-    // Media types are generated, and their aliases are the CMS's own.
+    const banned = /codegarden|(?<!inspirado en )umbraco(?!-inspired|UrlName\b)|our\.umbraco|hq\b/i
+    // Media types are generated, and their aliases, as umbracoUrlName, are the CMS's own.
     const found = textFiles(SITE)
       .filter((file) => !file.includes('media-types'))
+      // Generated: the command line's words, which name the file formats it reads.
+      .filter((file) => !file.includes(join('home', 'documentation')))
       .filter((file) => banned.test(readFileSync(file, 'utf8')))
       .filter((file) => !file.includes(join('schema', 'data-types')))
     expect(found).toEqual([])

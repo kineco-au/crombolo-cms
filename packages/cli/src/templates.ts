@@ -390,6 +390,24 @@ function packageJson(options: {
   )}\n`
 }
 
+/** The folders a site is read from by name, made in every new site whatever it starts with. */
+export const SITE_FOLDERS: readonly string[] = [
+  'components',
+  'components/blocks',
+  'content/pages',
+  'content/library',
+  'content/media',
+  'css',
+  'public',
+  'schema/content-types',
+  'schema/data-types',
+  'schema/forms',
+  'schema/media-types',
+  'schema/member-types',
+  'schema/workflows',
+  'scripts',
+]
+
 /** Every file in a scaffolded site, template files last so they win on a clash. */
 export function scaffoldFiles(options: ScaffoldOptions = {}): ScaffoldFile[] {
   const siteName = options.siteName?.trim() || DEFAULT_SITE_NAME
@@ -436,9 +454,6 @@ export default await crombolo(config)
     { path: 'schema/schema.toml', text: '[schema]\nversion = "1.0.0"\n' },
     // The media types a site owns as files rather than inheriting silently.
     ...Object.entries(siteMediaTypeFiles()).map(([path, text]) => ({ path, text })),
-    { path: 'components/.gitkeep', text: '' },
-    // Files served at the root of the site at their own paths (story 284).
-    { path: 'public/.gitkeep', text: '' },
     // Server actions (story 219), imported by views as `#actions/<file>.ts`.
     ...(next || spa ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
     {
@@ -478,6 +493,10 @@ CROMBOLO_POSTGRES_URL=postgres://crombolo:crombolo@localhost:5432/${packageNameF
     })
 
   for (const file of componentFiles(options.template)) files.push(file)
+  // Git keeps no empty folder, so each with nothing in it holds a file nothing reads.
+  for (const folder of SITE_FOLDERS)
+    if (!files.some((file) => file.path.startsWith(`${folder}/`)))
+      files.push({ path: `${folder}/.gitkeep`, text: '' })
   // One entry per path, the last winning, so a template's own `schema.toml` is
   // the one written rather than being skipped as a file that already exists.
   return [...new Map(files.map((file) => [file.path, file])).values()]

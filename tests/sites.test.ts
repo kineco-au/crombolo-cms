@@ -133,6 +133,7 @@ describe('staging a site as a template', () => {
     // The content is its files, content/ among them; there is no bundle (stories 164, 167).
     expect(readdirSync(dir).sort()).toEqual(['CREDITS.md', 'files', 'template.json'])
     expect(readdirSync(join(dir, 'files')).sort()).toEqual([
+      'README.md',
       'actions',
       'components',
       'content',
