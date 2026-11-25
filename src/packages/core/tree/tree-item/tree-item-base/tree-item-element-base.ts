@@ -240,7 +240,8 @@ export abstract class UmbTreeItemElementBase<
 				label=${ifDefined(this._label)}
 				href=${ifDefined(this._isSelectableContext || this._noAccess ? undefined : this._href)}
 				.renderExpandSymbol=${this._renderExpandSymbol}>
-				${this.#renderLoadPrevButton()} ${this.renderIconContainer()} ${this.renderLabel()} ${this.#renderActions()}
+				${this.#renderLoadPrevButton()} ${this.renderIconContainer()} ${this.renderLabel()} ${this.#renderMarks()}
+				${this.#renderActions()}
 				${this.#renderChildItems()}
 				<slot></slot>
 				${this.#renderLoadNextButton()}
@@ -302,6 +303,18 @@ export abstract class UmbTreeItemElementBase<
 
 	renderLabel() {
 		return html`<span slot="label" @dblclick=${this._handleDblClick}>${this._label}<slot name="label"></slot></span>`;
+	}
+
+	// Crombolo: what a workspace holds of the item, drawn after its name in every tree by
+	// the element the back office's plugin defines; where it defines none, nothing shows.
+	#marks?: HTMLElement;
+
+	#renderMarks() {
+		const unique = this._item?.unique;
+		if (!unique) return nothing;
+		this.#marks ??= Object.assign(document.createElement('crombolo-item-marks'), { slot: 'label' });
+		Object.assign(this.#marks, { entityType: this._item?.entityType, unique });
+		return this.#marks;
 	}
 
 	#renderActions() {
