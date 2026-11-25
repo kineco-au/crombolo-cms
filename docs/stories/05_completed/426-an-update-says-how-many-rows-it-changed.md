@@ -36,25 +36,36 @@ Who asks today:
 
 ## The design
 
-- **`Db` says how many rows a statement changed:** a `run(sql, params)` beside `exec`,
+- **`Db` says how many rows a statement changed:** `run(sql, params)` beside `exec`,
   answering the number, on SQLite (`changes`) and Postgres (the command's count), inside
   a transaction and out, and on a confined handle.
 - **The query builder passes it on** as `numAffectedRows`, so `numUpdatedRows` and the
   others are true.
-- **A handle that cannot say** (a wrapper in a test, a recording handle) fails the
-  statement that asks, not answers nothing: decide while building whether `run` is
-  required of every `Db` or the builder throws where it is absent and a count is read.
+- **`run` is required of every `Db`,** so a wrapper that lacks it does not compile.
 - **The three repositories' answers become true,** and a test holds each.
-- **A rule for the code:** a count read from the builder is covered by a test on both
-  dialects.
 
 ## Acceptance criteria
 
-- An update, a delete and an insert through `db.q` report the rows they changed, on
-  both dialects, inside a transaction and out.
-- `TrustedSignerRepository.rename` and `.remove` and `RemoteTrustRepository.remove`
-  answer true for a row that was there and false for one that was not.
-- An extension's statement reports its own count, not 1.
-- No statement that changes rows reports nothing silently.
-- Tests on both dialects; `docs/` says where the builder's counts come from, where the
-  data layer is described.
+- [x] An update, a delete and an insert through `db.q` report the rows they changed, on
+      both dialects, inside a transaction and out.
+- [x] `TrustedSignerRepository.rename` and `.remove` and `RemoteTrustRepository.remove`
+      answer true for a row that was there and false for one that was not.
+- [x] An extension's statement reports its own count, through the same connection.
+- [x] No statement that changes rows reports nothing silently.
+- [x] Tests on both dialects; `docs/data-model.md` says where the counts come from.
+
+## Implementation
+
+- `Db.run` (`packages/data/src/database.ts`): `SqliteDb` answers the statement's
+  `changes`, `PostgresDb` its `count`; the recording handle (`migrations.ts`) records and
+  answers 0; the telemetry wrapper (`packages/server/src/telemetry.ts`) and the tests'
+  wrappers pass it through.
+- `DbConnection.executeQuery` (`query.ts`) runs a write with no `RETURNING` through `run`
+  and answers `numAffectedRows`.
+- **The save that showed it:** `#writeWorkspaceCultures` (`repositories/documents.ts`)
+  looks for the workspace's row for the language, then updates or inserts.
+- **The tests' harness** reads a page's revision in the workspace it saves in, as the back
+  office does, so a second save there is not stale.
+- Tests: `tests/query-layer.test.ts` (the counts, the signers, the trust rule),
+  `tests/workspace-designers.test.ts` (a page that varies by language saved twice in a
+  workspace, one Shared has and one made there).

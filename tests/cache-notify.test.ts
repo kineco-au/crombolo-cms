@@ -52,6 +52,10 @@ function observed(db: Db) {
       statements.push(sql)
       return db.exec(sql, params)
     },
+    run: (sql, params) => {
+      statements.push(sql)
+      return db.run(sql, params)
+    },
     transaction: (fn) => db.transaction(fn),
     readSnapshot: (fn) => db.readSnapshot(fn),
     close: () => db.close(),

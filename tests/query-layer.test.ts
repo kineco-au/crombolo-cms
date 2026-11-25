@@ -4,14 +4,17 @@
  * other statement does.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { RemotePermissions } from '@crombolo/core'
 import {
   type Db,
   INITIAL_STATE,
   MigrationPlan,
   planUpgrade,
   queryFor,
+  RemoteTrustRepository,
   sql,
   TransactionRefused,
+  TrustedSignerRepository,
 } from '@crombolo/data'
 import { migratedDb } from './support/db.ts'
 
@@ -35,6 +38,78 @@ async function storedValue(handle: Db): Promise<string | undefined> {
     .executeTakeFirst()
   return row?.value ?? undefined
 }
+
+// Story 426: a statement that changes rows says how many.
+describe('how many rows a statement changed', () => {
+  const row = (n: number) => ({
+    key: `${KEY}:${n}`,
+    value: 'one',
+    update_date: new Date().toISOString(),
+  })
+  const counts = async (handle: Db) => {
+    const inserted = await handle.q
+      .insertInto('key_value')
+      .values([row(1), row(2), row(3)])
+      .executeTakeFirst()
+    const updated = await handle.q
+      .updateTable('key_value')
+      .set({ value: 'two' })
+      .where('key', 'in', [row(1).key, row(2).key])
+      .executeTakeFirst()
+    const none = await handle.q
+      .updateTable('key_value')
+      .set({ value: 'three' })
+      .where('key', '=', `${KEY}:absent`)
+      .executeTakeFirst()
+    const deleted = await handle.q
+      .deleteFrom('key_value')
+      .where('key', 'like', `${KEY}:%`)
+      .executeTakeFirst()
+    return [
+      Number(inserted.numInsertedOrUpdatedRows),
+      Number(updated.numUpdatedRows),
+      Number(none.numUpdatedRows),
+      Number(deleted.numDeletedRows),
+    ]
+  }
+
+  test('an insert, an update and a delete report theirs, inside a transaction and out', async () => {
+    expect(await counts(db)).toEqual([3, 2, 0, 3])
+    expect(await db.transaction((tx) => counts(tx))).toEqual([3, 2, 0, 3])
+    expect(await db.run('DELETE FROM key_value WHERE key = ?', [`${KEY}:absent`])).toBe(0)
+  })
+
+  test('a trusted signer and a trust rule say whether one was there to change', async () => {
+    const signers = new TrustedSignerRepository(db)
+    const signer = await signers.add({
+      kind: 'user',
+      name: 'Ours',
+      publicKey: 'key',
+      fingerprint: 'print',
+      source: null,
+      addedBy: 'test',
+    })
+    expect(await signers.rename(signer.id, 'Theirs')).toBe(true)
+    expect(await signers.rename(crypto.randomUUID(), 'Nobody')).toBe(false)
+    expect(await signers.remove(signer.id)).toBe(true)
+    expect(await signers.remove(signer.id)).toBe(false)
+
+    const rules = new RemoteTrustRepository(db)
+    const rule = await rules.create(
+      {
+        name: 'Deploys',
+        issuer: 'https://token.actions.githubusercontent.com',
+        repository: 'acme/site',
+        refKind: 'branch',
+        refValue: 'main',
+        permissions: [RemotePermissions.Pull],
+      },
+      'test',
+    )
+    expect(await rules.remove(rule.key)).toBe(true)
+    expect(await rules.remove(rule.key)).toBe(false)
+  })
+})
 
 describe('db.q', () => {
   test('inserts, updates with RETURNING and reads back on the dialect under test', async () => {

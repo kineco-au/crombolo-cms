@@ -44,6 +44,10 @@ function counted(db: Db, seen: string[]): Db {
       seen.push(sql)
       return db.exec(sql, params)
     },
+    run: (sql, params) => {
+      seen.push(sql)
+      return db.run(sql, params)
+    },
     transaction: (fn) => db.transaction((tx) => fn(counted(tx, seen))),
     readSnapshot: (fn) => db.readSnapshot(fn),
   }

@@ -412,6 +412,66 @@ describe(`removing what the site's data holds (${dialectUnderTest})`, () => {
   }, 30_000)
 })
 
+describe(`a page that varies by language, saved in a workspace (${dialectUnderTest})`, () => {
+  test('is saved there again and again, one Shared has and one made there', async () => {
+    const { h, send, opened } = await site()
+    expect(
+      (
+        await send('POST', `${V1}/language`, {
+          isoCode: 'da-DK',
+          name: 'Danish',
+          isDefault: false,
+          isMandatory: false,
+          fallbackIsoCode: null,
+        })
+      ).status,
+    ).toBe(201)
+    const news = (await new ContentTypeRepository(h.server.db).byAlias('news'))?.key as string
+    const make = (name: string, workspace?: string) =>
+      send(
+        'POST',
+        `${V1}/document`,
+        {
+          documentType: { id: news },
+          template: null,
+          parent: null,
+          values: [{ alias: 'title', culture: 'da-DK', segment: null, value: name }],
+          variants: [{ culture: 'da-DK', segment: null, name }],
+        },
+        workspace,
+      )
+    const shared = await make('Nyheder')
+    expect(shared.status, await shared.clone().text()).toBe(201)
+    const workspace = await opened('Spring launch')
+    const there = await make('Forår', workspace.key)
+    expect(there.status, await there.clone().text()).toBe(201)
+
+    for (const made of [shared, there]) {
+      const key = made.headers.get('umb-generated-resource') as string
+      for (const name of ['Første', 'Anden']) {
+        const document = (await (
+          await send('GET', `${V1}/document/${key}`, undefined, workspace.key)
+        ).json()) as { values: unknown[]; variants: Array<{ culture: string | null }> }
+        const saved = await send(
+          'PUT',
+          `${V1}/document/${key}`,
+          {
+            ...document,
+            values: [{ alias: 'title', culture: 'da-DK', segment: null, value: name }],
+            variants: [{ culture: 'da-DK', segment: null, name }],
+          },
+          workspace.key,
+        )
+        expect(saved.status, await saved.clone().text()).toBe(200)
+      }
+      const now = (await (
+        await send('GET', `${V1}/document/${key}`, undefined, workspace.key)
+      ).json()) as { variants: Array<{ culture: string | null; name: string }> }
+      expect(now.variants.find((v) => v.culture === 'da-DK')?.name).toBe('Anden')
+    }
+  }, 30_000)
+})
+
 describe(`a direct edit in Shared (${dialectUnderTest})`, () => {
   test('to a form, a workflow, a language or a blueprint is recorded as the person’s change', async () => {
     const { h, send } = await site()

@@ -18,6 +18,7 @@ export async function statementsOf(db: Db, run: (db: Db) => Promise<unknown>) {
       return db.query(sql, params)
     },
     exec: (sql, params) => db.exec(sql, params),
+    run: (sql, params) => db.run(sql, params),
     transaction: (fn) => db.transaction(fn),
     readSnapshot: (fn) => db.readSnapshot(fn),
   }

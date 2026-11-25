@@ -197,7 +197,12 @@ export async function signIn(
       return send(path, { ...init, headers })
     }
     if (page && (method === 'PUT' || method === 'PATCH') && !headers.has('if-match')) {
-      const read = await send(`${V1}/document/${page[1]}`)
+      // Read where it is saved: a workspace's copy has a revision of its own.
+      const workspace = headers.get('crombolo-workspace')
+      const read = await send(
+        `${V1}/document/${page[1]}`,
+        workspace ? { headers: { 'crombolo-workspace': workspace } } : {},
+      )
       const etag = read.headers.get('etag')
       if (etag) headers.set('if-match', etag)
       // Deleted meanwhile by a concurrent writer: let the save answer for a missing page.

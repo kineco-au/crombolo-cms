@@ -452,6 +452,7 @@ export function tracedDb(db: Db): Db {
     },
     query: (sql, params) => run(sql, () => handle.query(sql, params)),
     exec: (sql, params) => run(sql, () => handle.exec(sql, params)),
+    run: (sql, params) => run(sql, () => handle.run(sql, params)),
     transaction: (fn) => handle.transaction((tx) => fn(wrap(tx))),
     readSnapshot: (fn) => handle.readSnapshot((reader) => fn(wrap(reader))),
     close: () => handle.close(),

@@ -60,6 +60,10 @@ function counted(db: Db) {
       statements += 1
       return inner.exec(sql, params)
     },
+    run: (sql, params) => {
+      statements += 1
+      return inner.run(sql, params)
+    },
     transaction: (fn) => inner.transaction(fn),
     readSnapshot: (fn) => inner.readSnapshot((reader) => fn(wrap(reader))),
     close: () => inner.close(),

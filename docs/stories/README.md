@@ -503,7 +503,7 @@ implementation; creating them does not settle those architectural choices.
 | `221` | Kysely as the query layer | should | XL | done | — |
 | `230` | No render waits seconds through a burst of publishes | could | M | done | 175 |
 | `231` | The local Postgres suite fits the database's connections | could | S | done | — |
-| `426` | An update says how many rows it changed | should | S | ready | 221 |
+| `426` | An update says how many rows it changed | should | S | done | 221 |
 
 ### Epic S — Workspaces and changes
 

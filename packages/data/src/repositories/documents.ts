@@ -899,14 +899,22 @@ export class DocumentRepository {
           date: DbDate.toDb(new Date()),
         })
         .execute()
-      const changed = await this.#db.q
-        .updateTable('workspace_document_culture')
-        .set({ name: variant.name, available: t, edited: t })
+      const held = await this.#db.q
+        .selectFrom('workspace_document_culture')
+        .select('language_id')
         .where('workspace_id', '=', workspace)
         .where('node_id', '=', nodeId)
         .where('language_id', '=', languageId)
-        .executeTakeFirst()
-      if (Number(changed.numUpdatedRows ?? 0) === 0)
+        .execute()
+      if (held.length > 0)
+        await this.#db.q
+          .updateTable('workspace_document_culture')
+          .set({ name: variant.name, available: t, edited: t })
+          .where('workspace_id', '=', workspace)
+          .where('node_id', '=', nodeId)
+          .where('language_id', '=', languageId)
+          .execute()
+      else
         await this.#db.q
           .insertInto('workspace_document_culture')
           .values({

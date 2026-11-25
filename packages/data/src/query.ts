@@ -59,8 +59,7 @@ class DbConnection implements DatabaseConnection {
   async executeQuery<R>(compiled: CompiledQuery): Promise<QueryResult<R>> {
     const params = compiled.parameters as unknown[]
     if (readsRows(compiled)) return { rows: await this.db.query<R>(compiled.sql, params) }
-    await this.db.exec(compiled.sql, params)
-    return { rows: [] }
+    return { rows: [], numAffectedRows: BigInt(await this.db.run(compiled.sql, params)) }
   }
 
   // biome-ignore lint/correctness/useYield: refuses before streaming anything
@@ -150,7 +149,7 @@ export function compilerFor<Tables = CoreTables>(dialect: DbDialect): Kysely<Tab
     const refuse = async (): Promise<never> => {
       throw new Error('This builder only compiles; run what it compiles on a Db.')
     }
-    const stub = { dialect, query: refuse, exec: refuse } as unknown as Db
+    const stub = { dialect, query: refuse, exec: refuse, run: refuse } as unknown as Db
     k = new Kysely<unknown>({ dialect: kyselyDialect(stub) })
     compilers.set(dialect.name, k)
   }

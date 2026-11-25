@@ -579,6 +579,11 @@ class RecordingDb implements Db {
     )
   }
 
+  async run(sql: string, params: unknown[] = []): Promise<number> {
+    await this.exec(sql, params)
+    return 0
+  }
+
   async transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
     return fn(this)
   }

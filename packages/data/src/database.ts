@@ -14,6 +14,8 @@ export interface Db {
   readonly q: Query
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
   exec(sql: string, params?: unknown[]): Promise<void>
+  /** A statement that changes rows, answering how many it changed (story 426). */
+  run(sql: string, params?: unknown[]): Promise<number>
   transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>
   /**
    * Runs `fn` against one consistent, read-only view of committed data (story
@@ -96,6 +98,10 @@ class SqliteDb implements Db {
 
   async exec(sql: string, params: unknown[] = []): Promise<void> {
     this.#db.query(this.dialect.render(sql)).run(...(params as never[]))
+  }
+
+  async run(sql: string, params: unknown[] = []): Promise<number> {
+    return this.#db.query(this.dialect.render(sql)).run(...(params as never[])).changes
   }
 
   async transaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
@@ -218,6 +224,12 @@ class PostgresDb implements Db {
   async exec(sql: string, params: unknown[] = []): Promise<void> {
     if (this.#wraps) return this.transaction((tx) => tx.exec(sql, params))
     await this.#sql.unsafe(this.dialect.render(sql), params)
+  }
+
+  async run(sql: string, params: unknown[] = []): Promise<number> {
+    if (this.#wraps) return this.transaction((tx) => tx.run(sql, params))
+    const result = (await this.#sql.unsafe(this.dialect.render(sql), params)) as { count?: number }
+    return Number(result.count ?? 0)
   }
 
   confine(role: string, schema: string): Db {
