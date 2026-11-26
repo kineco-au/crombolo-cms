@@ -425,6 +425,10 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       values: [{ alias: 'title', culture: null, segment: null, value: 'Page' }],
       variants: [{ culture: null, segment: null, name: 'Page' }],
     })
+    // Postgres's harness keeps the ledger across a file's tests: count what is there now.
+    const upgradesBefore = (await readLedger(live.server.db)).filter(
+      (r) => r.kind === 'upgrade',
+    ).length
     await live.db.close()
     open.pop()
 
@@ -448,7 +452,10 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     const rolled = await signedInServer({ keepDatabase: true, config })
     open.push(rolled)
     expect(rolled.server.schema.report?.action).toBe('applied')
-    expect((await readLedger(rolled.server.db)).some((r) => r.kind === 'upgrade')).toBe(false)
+    // Rolled out at boot: no upgrade step of its own.
+    expect((await readLedger(rolled.server.db)).filter((r) => r.kind === 'upgrade').length).toBe(
+      upgradesBefore,
+    )
   }, 10_000)
 })
 

@@ -146,7 +146,8 @@ describe('failures and outcomes', () => {
       ['bundle', 'install-code', '.', 'out'],
     ])
       expect(run(old).code).toBe(ERROR_KINDS.usage.exitCode)
-  }, 10_000)
+    // Four processes, on a runner busy with the Postgres shards beside it.
+  }, 30_000)
 
   test('bundle install refuses --wire with --profile, and --code-into with a grant', () => {
     const wired = run(['extension', 'install', '@acme/crm', '--wire', '--profile', 'production'])
