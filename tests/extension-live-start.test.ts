@@ -50,7 +50,7 @@ export function live() {
       },
     },
     events: {
-      'Umbraco.ContentPublish': () => ({ ok: true }),
+      'Crombolo.ContentPublish': () => ({ ok: true }),
     },
     routes: [
       route('/live/pid', { GET: () => Response.json({ pid: Deno.pid }) }),

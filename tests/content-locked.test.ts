@@ -1070,6 +1070,8 @@ name = "Notices"
 applies-to = { branches = [], content-types = ["notice"] }
 publishers-may-skip = false
 scheduling = true
+# Story 229: the administrator sending is the stage's only approver.
+self-approval = "allowed"
 
 [[stage]]
 alias = "legal"

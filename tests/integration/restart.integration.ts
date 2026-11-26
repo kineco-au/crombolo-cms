@@ -13,6 +13,12 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join, resolve } from 'node:path'
+import {
+  dropSiteDatabases,
+  postgresEnv,
+  type SiteDatabase,
+  siteDatabase,
+} from './support/database.ts'
 
 const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
@@ -29,6 +35,7 @@ describe('restarting a supervised site, end to end', () => {
   const site = () => join(dir, 'site')
   const read = (path: string) => JSON.parse(readFileSync(join(site(), path), 'utf8'))
 
+  let database: SiteDatabase | undefined
   function environment(): Record<string, string> {
     const inherited = { ...(process.env as Record<string, string>) }
     for (const name of [
@@ -43,6 +50,7 @@ describe('restarting a supervised site, end to end', () => {
     return {
       ...inherited,
       CROMBOLO_DB: 'sqlite',
+      ...postgresEnv(database),
       CROMBOLO_LOGS_DIR: join(dir, 'logs'),
       CROMBOLO_LOG_TO_CONSOLE: 'false',
       CROMBOLO_ADMIN_PASSWORD: 'integration-password',
@@ -70,6 +78,7 @@ describe('restarting a supervised site, end to end', () => {
   beforeAll(async () => {
     mkdirSync(join(ROOT, 'output'), { recursive: true })
     dir = mkdtempSync(join(ROOT, 'output', 'restart-'))
+    database = await siteDatabase(dir, 'restart')
     mkdirSync(site(), { recursive: true })
     const init = await cli('init', '--name', 'Restarts', '--template', 'basic')
     expect(init.code, init.out).toBe(0)
@@ -80,6 +89,7 @@ describe('restarting a supervised site, end to end', () => {
       await proc.exited
     }
     rmSync(dir, { recursive: true, force: true })
+    await dropSiteDatabases()
   })
 
   test('start supervises: the server is its child, and says where it answers', async () => {

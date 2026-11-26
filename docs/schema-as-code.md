@@ -215,7 +215,7 @@ crombolo types property add blog blocks --type pageBlocks
 crombolo languages add fr-FR --fallback en-US
 crombolo forms new contact
 crombolo workflows new article-sign-off --content-type article --approver editor
-crombolo webhooks new searchIndex --url https://search.example/hook --event Umbraco.ContentPublish --content-type article
+crombolo webhooks new searchIndex --url https://search.example/hook --event Crombolo.ContentPublish --content-type article
 ```
 
 `types new` writes the type and the `components/<alias>.tsx` it declares, with

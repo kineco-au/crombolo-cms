@@ -12,17 +12,38 @@ through the Management API's webhook operations.
 
 | Event | Raised by |
 | --- | --- |
-| `Umbraco.ContentSaved` | creating or saving a page |
-| `Umbraco.ContentPublish` | publishing, by hand or on schedule |
-| `Umbraco.ContentUnpublish` | unpublishing, by hand or on schedule |
-| `Umbraco.ContentDelete` | deleting a page, from the bin or directly |
-| `Umbraco.ContentMovedToRecycleBin` | moving a page to the bin |
-| `Umbraco.ContentMoved` | moving a page, or restoring one from the bin |
-| `Umbraco.ContentCopied` | copying a page |
-| `Umbraco.ContentSorted` | sorting a page's children; the key is the parent's |
-| `Umbraco.ContentRolledBack` | rolling a page back to an earlier version |
-| `Umbraco.MediaSave` | creating or saving a media item |
-| `Umbraco.MediaDelete` | deleting a media item |
+| `Crombolo.ContentSaved` | creating or saving a page |
+| `Crombolo.ContentPublish` | publishing, by hand or on schedule |
+| `Crombolo.ContentUnpublish` | unpublishing, by hand or on schedule |
+| `Crombolo.ContentDelete` | deleting a page for good, from the bin or directly; not by emptying the bin |
+| `Crombolo.ContentMovedToRecycleBin` | moving a page to the bin |
+| `Crombolo.ContentMoved` | moving a page, or restoring one from the bin |
+| `Crombolo.ContentCopied` | copying a page |
+| `Crombolo.ContentSorted` | sorting a page's children; the key is the parent's |
+| `Crombolo.ContentRolledBack` | rolling a page back to an earlier version |
+| `Crombolo.ContentEmptiedRecycleBin` | emptying the pages' bin, once, with `Keys`: every page it deleted (story 440) |
+| `Crombolo.MediaSave` | creating or saving a media item |
+| `Crombolo.MediaDelete` | deleting a media item for good; not by emptying the bin |
+| `Crombolo.MediaMoved` | moving a media item, or restoring one from the bin |
+| `Crombolo.MediaMovedToRecycleBin` | moving a media item to the bin |
+| `Crombolo.MediaSorted` | sorting a folder's media; the key is the folder's (Umbraco has no such event) |
+| `Crombolo.MediaEmptiedRecycleBin` | emptying the media's bin, once, with `Keys` |
+| `Crombolo.ElementSaved` | creating or saving a Library item |
+| `Crombolo.ElementPublish` | publishing a Library item |
+| `Crombolo.ElementUnpublish` | unpublishing a Library item |
+| `Crombolo.ElementDelete` | deleting a Library item for good, from the bin |
+| `Crombolo.ElementCopied` | copying a Library item; the key is the copy's |
+| `Crombolo.ElementMoved` | moving a Library item, or restoring one from the bin |
+| `Crombolo.ElementMovedToRecycleBin` | moving a Library item to the bin |
+| `Crombolo.ElementEmptiedRecycleBin` | emptying the Library's bin, once, with `Keys` |
+| `Crombolo.ElementRolledBack` | rolling a Library item back to an earlier version |
+| `Crombolo.ApprovalSent` | a page sent for approval, or a request restarted (story 441) |
+| `Crombolo.ApprovalStageReached` | a stage now waiting, naming it and its groups |
+| `Crombolo.ApprovalApproved` | a stage approved, by whom |
+| `Crombolo.ApprovalSentBack` | sent back, from which stage, by whom |
+| `Crombolo.ApprovalWithdrawn` | withdrawn, superseded, or restarted (then Sent again) |
+| `Crombolo.ApprovalStalled` | a waiting stage left with nobody who could approve it (story 229) |
+| `Crombolo.ApprovalFinished` | published, taken down or scheduled, as `Outcome` |
 | `Crombolo.ChangePublished` | a person's publish, or setting or clearing a page's schedule, finishing their change, and a publish in their own workspace merging that page (stories 388, 395, 397); and their unpublish, move, reorder or delete, the same way (story 411): the page's facts, and `Change: { Key, Name, By, Tool?, Needs?, From?, Kind?, Page?, Schedule?, ApprovedBy?, Workflow? }` for a host to take and apply elsewhere. `By` is `person`, or `tool` for a sign-in exchanged with an actor, named in `Tool: { Id, Name }`; `Needs`, once a host reports what the served copy holds, lists each change not yet there that the page's type, template or blocks need, as `{ Key, Name, Items: [{ Kind, Alias }] }`; `From` is `own-workspace` for the merge of a publish in the person's own workspace, and absent for a publish straight in Shared. `Kind` says what it did: `unpublish`, `move` (a restore from the recycle bin too), `reorder`, `delete` (to the recycle bin, or for good from outside it) or `schedule` (a time set or cleared with nothing published now, story 417), and is absent for a publish; `Schedule: [{ Culture, PublishTime, UnpublishTime }]` (UTC) carries the times a change set, empty when it cleared them, beside a `schedule` kind or a publish that set a time too; a delete names the page it took as `Page: { Key, Name }`, named as it was. A page with pages below it raises one, for the page acted on. Emptying the recycle bin raises none. An approval that publishes, takes down or schedules a page raises it for the editor's change, with `ApprovedBy: { Key, Name }` and `Workflow` (story 413, [`workflows.md`](workflows.md)). A schedule firing raises it too, naming the change that set the schedule, with `Kind: unpublish` for a page coming down, beside the page's ordinary published or unpublished webhook (story 414); since both the site where content is made and the serving site fire a schedule, a host may hear of a change it has applied already. A named workspace's merge raises none |
 | `Crombolo.WorkspaceOpened` | a workspace opened, by name, as a person's own, for a staged change, or for a change reopened (story 400) |
 | `Crombolo.WorkspaceMerged` | a merge that closed a workspace, with `Change: { Key, Name }`, the change it made. A person's own workspace's one-page merges do not close it, and raise `ChangePublished` only |
@@ -33,8 +54,27 @@ A workspace event's payload is `{ Id, Workspace: { Key, Name, Personal, Owner, S
 with what the event names, whichever payload the webhook asks for: `Personal` is `true`
 for a person's own workspace, so a host can leave those out (`docs/workspaces.md`).
 
-The aliases are Umbraco's, so the backoffice's event picker and an imported
-site mean the same thing. An event is raised only when the change really
+**Every event is `Crombolo.` and Umbraco's word for it** (story 440), whatever names it: a
+webhook, the site's `events` in `crombolo.config.ts`, an extension's handlers. An old name,
+`Umbraco.ContentPublish` or Umbraco's `mediaMoved` among them, is refused where it is
+written, naming the new one: in a webhook file at boot, in a save, in an import, in the
+config at boot, and in an extension at install and by `crombolo extension check`. Webhooks
+kept in the database were renamed by migration 104.
+
+**An approval's event** (story 441) is `{ "Id": "<request>", "Approval": { Request, Page:
+{ Key, Name }, Workflow: { Alias, Name }, Stage?: { Alias, Name, Groups }, By?: { Key, Name },
+At, Action, Schedule?, Outcome? } }`, whichever payload the webhook asks for: facts only,
+never a comment, and nothing of the page's unpublished content. It is raised in the step's
+own transaction, from wherever the step is recorded. The page's type narrows it as a page's
+events are narrowed, and a webhook may also name workflows, `workflows = ["sign-off"]` in
+its file or its **Workflows** panel in the back office, and then hears only theirs.
+
+**A bin emptied** raises one event, with `{ "Keys": [...] }`, every item it deleted and
+everything below them, 1,000 to a delivery, each delivery carrying the same
+`Webhook-Event-Id`. It raises no delete for each. **A Library event, and a bin's**, reaches
+every webhook that hears it, whatever content types the webhook names. **A Library item's
+event, with Crombolo's payload**, also carries `UsedBy`, the published pages that show it,
+up to 1,000, and `UsedByMore` when there are more. An event is raised only when the change really
 happened. A publish request that only schedules a publish raises nothing until
 the schedule runs, and then raises the same event as a publish by hand. Every
 document write raises its event from the same place, `webhookFor` in
@@ -72,7 +112,7 @@ not a secret, so it is shown as written.
 alias = "searchIndex"
 name = "Search index"
 url = "https://search.example/hook"
-events = ["Umbraco.ContentPublish", "Umbraco.ContentDelete"]
+events = ["Crombolo.ContentPublish", "Crombolo.ContentDelete"]
 content-types = ["article"]
 
 [webhook.headers]
@@ -121,7 +161,7 @@ its cache for a page and every page that lists it.
 [webhook]
 alias = "nextRevalidate"
 url = "https://www.example.com/api/crombolo/revalidate"
-events = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish", "Umbraco.ContentDelete"]
+events = ["Crombolo.ContentPublish", "Crombolo.ContentUnpublish", "Crombolo.ContentDelete"]
 payload = "crombolo"
 
 [webhook.headers]
@@ -231,7 +271,7 @@ A server bundle declares handlers by event alias:
 export const hooks = (): ServerBundle => ({
   id: 'acme-hooks', section: 'settings', capabilities: [], routes: [],
   events: {
-    'Umbraco.ContentPublish': async ({ payload, attempt, fetch, log, signal }) => {
+    'Crombolo.ContentPublish': async ({ payload, attempt, fetch, log, signal }) => {
       await fetch('https://cdn.example/purge', { method: 'POST', body: payload.Id })
       return { ok: true }        // or { ok: false, error, retry }
     },

@@ -272,6 +272,34 @@ describe(`exchanging a provider's token for a person (${process.env.CROMBOLO_DB 
     expect(await refusedFor(await providerToken())).toContain('locked out')
   })
 
+  test('linked ahead of a first sign-in, a provider naming people by sub finds them by the link', async () => {
+    const { h, key, signIn, refusedFor } = await site({ claims: { identity: 'sub' } })
+    const logins = new ExternalLoginRepository(h.server.db)
+    const corp = externalLoginProvider('user', 'corp')
+    // As `PUT users/{key}/logins` links them, with no identity yet (story 404).
+    await logins.link(key, corp, 'pairwise-for-the-api')
+    await signIn(await providerToken())
+    // The identity is recorded from it, so the link is found as any other from now on.
+    expect((await logins.find(corp, 'pairwise-for-the-api'))?.identity).toEqual({
+      value: 'pairwise-for-the-api',
+      issuer,
+    })
+    // A subject from another issuer is still nobody.
+    expect(await refusedFor(await providerToken({ sub: 'someone-else' }))).toContain(
+      'sign in to the back office once',
+    )
+  })
+
+  test('a provider naming people by another claim never takes a link’s subject for it', async () => {
+    const { h, key, refusedFor } = await site()
+    await new ExternalLoginRepository(h.server.db).link(
+      key,
+      externalLoginProvider('user', 'corp'),
+      'oid-1',
+    )
+    expect(await refusedFor(await providerToken())).toContain('sign in to the back office once')
+  })
+
   test('it makes nothing that outlives it, and signing the device out ends it', async () => {
     const { h, key, link, signIn, as } = await site()
     await link()

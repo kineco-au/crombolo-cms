@@ -43,6 +43,7 @@ import {
   canConnect,
   dialectUnderTest,
   freshDb,
+  resetPostgresSchema,
   undoMigrationsSinceContentEditing,
 } from './support/db.ts'
 
@@ -320,17 +321,20 @@ describe(`migrations (${dialectUnderTest})`, () => {
 })
 
 describe('boot and backup rules', () => {
-  test('production refuses to boot with steps pending on an existing database, but installs a fresh one', async () => {
-    if (dialectUnderTest !== 'sqlite') return
+  test(`production refuses to boot with steps pending on an existing database, but installs a fresh one (${dialectUnderTest})`, async () => {
     const dir = mkdtempSync(join(process.cwd(), 'output', 'upgrade-'))
     dirs.push(dir)
     const file = join(dir, 'site.sqlite')
     const { bootstrapDatabase } = await import('@crombolo/server')
+    // Story 085: on both databases; Postgres's is emptied first, as a fresh install's is.
+    if (dialectUnderTest === 'postgres') await resetPostgresSchema()
     const prod = loadConfig({
-      sqliteFile: file,
+      ...(dialectUnderTest === 'sqlite' ? { sqliteFile: file } : { dialect: 'postgres' as const }),
       development: false,
       componentsDir: dir,
       schemaDir: join(dir, 'schema'),
+      // Postgres takes a backup before it writes; a production boot on it names the command.
+      ...(dialectUnderTest === 'postgres' ? { pgDump: 'true' } : {}),
     })
 
     // Fresh: installs
@@ -339,7 +343,11 @@ describe('boot and backup rules', () => {
 
     // Newer code with one more step: production refuses; development applies
     const { connect } = await import('@crombolo/data')
-    const d = await connect({ dialect: 'sqlite', file })
+    const at = () =>
+      dialectUnderTest === 'sqlite'
+        ? connect({ dialect: 'sqlite', file })
+        : connect({ dialect: 'postgres' })
+    const d = await at()
     await d.exec("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'", [
       cromboloPlan.migrations.at(-2)?.to as string,
     ])
@@ -356,7 +364,7 @@ describe('boot and backup rules', () => {
 
     // Wait — that state already has the tables; a real re-run of 003 would fail on them.
     // Point the state back at the final one so the development boot proves the branch only.
-    const d2 = await connect({ dialect: 'sqlite', file })
+    const d2 = await at()
     await d2.exec("UPDATE key_value SET value = ? WHERE key = 'Crombolo.Core.Upgrader.State'", [
       cromboloPlan.finalState,
     ])

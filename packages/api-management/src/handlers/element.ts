@@ -470,7 +470,9 @@ export function registerElementHandlers(
   ])
     handle(operation, async (ctx) => {
       const body = await readBody(ctx)
-      const result = await port.restore(
+      // Story 440: through the operations, which audit it and raise its event.
+      const result = await operations.restore(
+        actorOf(ctx),
         ctx.params.id as string,
         'target' in body ? refId(body.target) : undefined,
       )
@@ -480,14 +482,15 @@ export function registerElementHandlers(
     })
 
   handle('DeleteRecycleBinElement', async (ctx) => {
-    await port.emptyRecycleBin()
+    const emptied = await operations.emptyBin(actorOf(ctx))
+    if (!emptied.ok) return failed('Could not empty the recycle bin', emptied)
     return done(ctx, 'Recycle bin emptied')
   })
 
   for (const operation of ['DeleteRecycleBinElementById', 'DeleteRecycleBinElementFolderById'])
     handle(operation, async (ctx) => {
-      const removed = await port.remove(ctx.params.id as string)
-      if (!removed) return problemResponse(notFound('The item could not be found'))
+      const removed = await operations.remove(actorOf(ctx), ctx.params.id as string)
+      if (!removed.ok) return missing('Could not delete it', 'The item could not be found', removed)
       return done(ctx, 'Element deleted')
     })
 
@@ -525,8 +528,9 @@ export function registerElementHandlers(
   })
 
   handle('PostElementVersionByIdRollback', async (ctx) => {
-    const rolled = await port.rollback(ctx.params.id as string)
-    if (!rolled) return problemResponse(notFound('The version could not be found'))
+    const rolled = await operations.rollback(actorOf(ctx), ctx.params.id as string)
+    if (!rolled.ok)
+      return missing('Could not roll it back', 'The version could not be found', rolled)
     return done(ctx, 'Element rolled back')
   })
 

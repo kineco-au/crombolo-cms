@@ -12,6 +12,7 @@ import {
   bootstrapDatabase,
   changeMember,
   clearPageAccess,
+  createMemberResetLinks,
   groupsOf,
   listMembers,
   MemberAdminError,
@@ -31,6 +32,7 @@ import {
   setPageAccess,
   showMember,
   siteDocumentOperations,
+  siteEmail,
   siteMemberPorts,
 } from '@crombolo/server'
 import { BaseCommand } from '../base.ts'
@@ -59,6 +61,8 @@ export interface MemberSite {
   create(input: NewMember): Promise<MemberDetail>
   change(ref: string, change: MemberChange): Promise<MemberChanged>
   remove(ref: string): Promise<MemberDetail>
+  /** Story 282: a reset link sent where the site sends mail; the link itself when it cannot. */
+  resetLink(ref: string): Promise<{ key: string; sent: boolean; link?: string }>
   groups(): Promise<MemberGroupInfo[]>
   newGroup(name: string): Promise<{ key: string; name: string }>
   removeGroup(name: string, confirmed: boolean): Promise<MemberGroupInfo>
@@ -114,6 +118,22 @@ export async function withMembers<T>(
         create: (input) => newMember(ports, me(), input),
         change: (ref, change) => changeMember(ports, me(), ref, change),
         remove: (ref) => removeMember(ports, me(), ref),
+        async resetLink(ref) {
+          const member = await showMember(ports, me(), ref)
+          const port = await siteEmail(db, config)
+          const outcome = await createMemberResetLinks(db, config, () => port).sendResetLink({
+            key: member.key,
+            name: member.name,
+            email: member.email,
+            username: member.login,
+          })
+          if ('refused' in outcome) throw resetRefusal(outcome.refused)
+          return {
+            key: member.key,
+            sent: outcome.sent,
+            ...(outcome.sent ? {} : { link: outcome.link }),
+          }
+        },
         groups: () => groupsOf(ports),
         newGroup: (name) => newGroup(ports, name),
         removeGroup: (name, confirmed) => removeGroup(ports, name, confirmed),
@@ -170,6 +190,13 @@ async function hostedMembers(
     async remove(ref) {
       return send(`members/${(await member(ref)).key}`, 'DELETE')
     },
+    async resetLink(ref) {
+      const key = (await member(ref)).key
+      return {
+        key,
+        ...(await send<{ sent: boolean; link?: string }>(`members/${key}/reset-link`, 'POST', {})),
+      }
+    },
     groups: async () => (await send<{ groups: MemberGroupInfo[] }>('member-groups', 'GET')).groups,
     newGroup: (name) => send('member-groups', 'POST', { name }),
     removeGroup: (name, confirmed) =>
@@ -189,6 +216,18 @@ async function hostedMembers(
     clearAccess: (page) => send(`content/${page}/access`, 'DELETE'),
   }
 }
+
+/** Why no link was made (story 282), as the command says it. */
+const resetRefusal = (why: 'provider' | 'unavailable') =>
+  why === 'provider'
+    ? new CliError(
+        'refused',
+        'They sign in only through an identity provider, so have no password to reset.',
+        { hint: 'To give them one all the same, pass --password.' },
+      )
+    : new CliError('unavailable', 'This site has no page for setting a password.', {
+        hint: 'Name one in members.resetPasswordPage in crombolo.config.ts, or pass --password.',
+      })
 
 /** "Ana Lee <ana@example.com>". */
 export const describeMember = (member: Pick<MemberSummary, 'name' | 'email'>): string =>

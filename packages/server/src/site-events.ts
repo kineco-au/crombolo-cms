@@ -4,7 +4,7 @@
  * (`SITE_EVENT_JOB`), so a handler runs on a node that owns writes, retried as
  * jobs are, with the site's tables and `site()`. docs/rendering.md, "Content events".
  */
-import { WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management/domain'
+import { eventNameProblem } from '@crombolo/api-management/domain'
 import type { SiteContentEvent, SiteServices } from '@crombolo/render'
 import type { JobHandler, JobInfo } from './owner-jobs.ts'
 import { withSiteWrites } from './site-content.ts'
@@ -27,8 +27,8 @@ export const SITE_EVENT_JOB = 'crombolo:event'
 export function siteEventProblems(events: Readonly<Record<string, unknown>> | undefined): string[] {
   const problems: string[] = []
   for (const [alias, handler] of Object.entries(events ?? {})) {
-    if (!WEBHOOK_EVENT_ALIASES.has(alias))
-      problems.push(`The site handles "${alias}", which is not an event this site raises.`)
+    const problem = eventNameProblem(alias)
+    if (problem) problems.push(`The site's events in crombolo.config.ts: ${problem}`)
     if (typeof handler !== 'function')
       problems.push(`The site's handler for "${alias}" is not a function.`)
   }

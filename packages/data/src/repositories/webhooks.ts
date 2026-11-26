@@ -17,6 +17,8 @@ export interface WebhookRow {
   enabled: boolean
   events: string[]
   contentTypeKeys: string[]
+  /** Story 441: the workflows whose approvals it hears, by alias; none hears every one. */
+  workflows: string[]
   /** The headers as one sealed value; the server holds the key that opens it. */
   sealedHeaders: string | null
 }
@@ -47,6 +49,7 @@ export class WebhookRepository {
         'enabled',
         'events',
         'content_type_keys',
+        'workflows',
         'headers',
       ])
       .orderBy('create_date')
@@ -60,6 +63,7 @@ export class WebhookRepository {
       enabled: fromDbBool(row.enabled),
       events: parseList(row.events),
       contentTypeKeys: parseList(row.content_type_keys),
+      workflows: parseList(row.workflows),
       sealedHeaders: (row.headers as string | null) ?? null,
     }))
   }
@@ -77,6 +81,7 @@ export class WebhookRepository {
       enabled: this.#db.dialect.boolValue(webhook.enabled),
       events: JSON.stringify(webhook.events),
       content_type_keys: JSON.stringify(webhook.contentTypeKeys),
+      workflows: webhook.workflows.length > 0 ? JSON.stringify(webhook.workflows) : null,
       headers: webhook.sealedHeaders,
       update_date: now,
     }

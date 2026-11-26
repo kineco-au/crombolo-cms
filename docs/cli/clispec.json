@@ -5968,6 +5968,34 @@
       "errors": ["usage", "internal", "not_found", "refused"]
     },
     {
+      "name": "install",
+      "description": "install the site's packages, and check it will start",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "version",
+          "type": "string",
+          "description": "the site's crombolo"
+        },
+        {
+          "name": "extensions",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "--production",
+          "type": "boolean",
+          "description": "leave the development dependencies out"
+        }
+      ],
+      "errors": ["usage", "internal", "not_found", "refused"]
+    },
+    {
       "name": "jobs list",
       "description": "the site's and its bundles' background jobs, newest first: what each is, its state and how far it got",
       "effects": "read_only",
@@ -8678,7 +8706,7 @@
     },
     {
       "name": "members reset-password",
-      "description": "give a member a new password, and end their sessions",
+      "description": "send a member a link to set a new password, or give them one",
       "effects": "non_idempotent",
       "cardinality": "single",
       "output_fields": [
@@ -8691,10 +8719,21 @@
           "type": "string"
         },
         {
+          "name": "sent",
+          "type": "boolean",
+          "description": "whether a link went by e-mail"
+        },
+        {
+          "name": "link",
+          "type": "string",
+          "nullable": true,
+          "description": "the link, when it could not be sent"
+        },
+        {
           "name": "password",
           "type": "string",
           "nullable": true,
-          "description": "the one made; null when given"
+          "description": "with --password, the one made; null when given or for a link"
         }
       ],
       "args": [
@@ -8703,6 +8742,11 @@
           "type": "string",
           "required": true,
           "description": "their e-mail address, login or key"
+        },
+        {
+          "name": "--password",
+          "type": "boolean",
+          "description": "give them a new password instead of a link"
         },
         {
           "name": "--stdin",

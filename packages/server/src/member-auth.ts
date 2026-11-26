@@ -15,6 +15,8 @@
  *   POST /umbraco/members/login/2fa  code, returnUrl?   the second step, when 2FA is on
  *   GET  /umbraco/members/2fa                           the signed-in member's 2FA state
  *   POST /umbraco/members/2fa/setup | enable | disable   turning it on and off (story 032)
+ *   POST /umbraco/members/forgot-password  email, returnUrl?   a link to set a password (story 282)
+ *   POST /umbraco/members/reset-password   token, password, returnUrl?
  *
  * A form post is answered with a redirect, a JSON post with JSON, so the same
  * endpoint serves a plain `<form>` in a TSX template and a fetch from the page.
@@ -26,6 +28,7 @@ import {
   antiforgeryToken,
   expireCookie,
   hashPassword,
+  hashToken,
   isNativeHash,
   isSameOrigin,
   memberCookieName,
@@ -61,10 +64,15 @@ import {
   type PublishedContent,
   type RequestMember,
 } from '@crombolo/render'
-import type { CromboloConfig } from './config.ts'
+import { recordAudit } from './adapters/audit.ts'
+import { type CromboloConfig, DEFAULT_MEMBER_RATE_LIMITS } from './config.ts'
+import type { EmailPort } from './email.ts'
 import { createExternalSignIn, type ExternalAccount } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
+import { logger } from './logging.ts'
 import { MemberClaims } from './member-claims.ts'
+import { createMemberResetLinks, type ResetLinkOutcome } from './member-reset.ts'
+import { SharedRateLimiter } from './shared-rate-limit.ts'
 import { MEMBER_TWO_FACTOR_PROVIDER, TwoFactorService } from './two-factor.ts'
 
 /** The key member tickets are signed with, generated once and shared by every node. */
@@ -83,7 +91,11 @@ export interface MemberAuthOptions {
   nodeState?: NodeSchemaState
   nodeId?: string
   log?: (message: string) => void
+  /** Story 282: the site's e-mail, asked each time as Settings can change it. */
+  email?: () => EmailPort | undefined
 }
+
+export { MEMBER_RESET_HOURS } from './member-reset.ts'
 
 /** A member signed in by the site's cookie, with that session's anti-forgery token. */
 export interface MemberSession {
@@ -107,8 +119,16 @@ export interface MemberAuth {
   decide(content: PublishedContent, member: RequestMember | undefined): Promise<AccessDecision>
   /** A member by key, as a page sees them, for previewing as them (story 264). */
   byKey(key: string): Promise<RequestMember | undefined>
-  /** Handles the member endpoints, or undefined when the path is not one. */
-  handle(request: Request, pathname: string): Promise<Response | undefined>
+  /**
+   * Handles the member endpoints, or undefined when the path is not one. `caller` is the
+   * address the request came from, for the rate limits (story 282).
+   */
+  handle(request: Request, pathname: string, caller?: string): Promise<Response | undefined>
+  /** Story 282: a reset link for the member, sent or, without e-mail, handed back. */
+  sendResetLink(
+    member: { key: string; name: string; email: string; username: string },
+    options?: { origin?: string },
+  ): Promise<ResetLinkOutcome>
   /** The `Set-Cookie` value that ends a member's site session. */
   signOutCookie(): string
   /**
@@ -146,6 +166,16 @@ async function readInput(request: Request): Promise<Record<string, string>> {
  * guarantee of anything.
  */
 const safeReturnUrl = (value: string | undefined): string | undefined => localReturnUrl(value)
+
+/** The page a form was posted from, on this site; `/` when not known. */
+const backFrom = (request: Request): string => {
+  const referer = request.headers.get('referer')
+  if (!referer) return '/'
+  const from = new URL(referer, request.url)
+  return from.origin === new URL(request.url).origin
+    ? (safeReturnUrl(`${from.pathname}${from.search}`) ?? '/')
+    : '/'
+}
 
 export function createMemberAuth(
   db: Db,
@@ -640,10 +670,139 @@ export function createMemberAuth(
     )
   }
 
+  // ------------------------------------------------------------ story 282: password reset
+  const limits = { ...DEFAULT_MEMBER_RATE_LIMITS, ...config.members?.rateLimits }
+  const limiter = new SharedRateLimiter(db)
+  const MINUTE = 60_000
+  const HOUR = 60 * MINUTE
+  const tooMany = (request: Request, seconds: number, back: string) => {
+    const response = answer(
+      request,
+      { ok: false, status: 429, error: `Too many attempts. Try again in ${seconds} seconds.` },
+      { returnUrl: flagged(back, 'memberTooMany=1') },
+    )
+    response.headers.set('retry-after', String(seconds))
+    return response
+  }
+  const signInLimit = (caller: string | undefined) =>
+    limiter.take(`member-sign-in:${caller ?? 'unknown'}`, limits.signInPerIpPerMinute, MINUTE)
+
+  const resets = createMemberResetLinks(db, config, () => options.email?.())
+  const { mailer, providerOf, providerWords, sendResetLink } = resets
+
+  const forgotPassword = async (
+    request: Request,
+    caller: string | undefined,
+  ): Promise<Response> => {
+    const input = await readInput(request)
+    const back = safeReturnUrl(input.returnUrl) ?? '/'
+    if (!config.members?.resetPasswordPage || !mailer())
+      return answer(
+        request,
+        { ok: false, status: 503, error: 'Resetting a password is not available on this site.' },
+        { returnUrl: flagged(back, 'memberResetUnavailable=1') },
+      )
+    const wait = await limiter.take(
+      `member-forgot:${caller ?? 'unknown'}`,
+      limits.forgotPerIpPerHour,
+      HOUR,
+    )
+    if (wait) return tooMany(request, wait, back)
+    const email = (input.email ?? '').trim().toLowerCase()
+    const sent = answer(
+      request,
+      {
+        ok: true,
+        body: {
+          ok: true,
+          message: 'If that address has an account here, a message is on its way to it.',
+        },
+      },
+      { returnUrl: flagged(back, 'memberResetSent=1') },
+    )
+    if (!email.includes('@')) return sent
+    // Past an address's limit the answer is the same, and nothing more is sent.
+    if (await limiter.take(`member-forgot-address:${email}`, limits.forgotPerAddressPerHour, HOUR))
+      return sent
+    const origin = new URL(request.url).origin
+    // Sent after answering, so how long the answer takes says nothing of the address.
+    void (async () => {
+      const member = await members.byEmail(email)
+      if (!member) return
+      const provider = await providerOf(member.key)
+      if (provider) {
+        await mailer()?.(
+          { name: member.name, email: member.email },
+          providerWords(member.name, provider),
+        )
+        return
+      }
+      await sendResetLink(member, { origin })
+    })().catch((error) =>
+      logger('members').error('Could not send a password reset e-mail: {error}', { error }),
+    )
+    return sent
+  }
+
+  const resetPassword = async (request: Request, caller: string | undefined): Promise<Response> => {
+    const input = await readInput(request)
+    const back = safeReturnUrl(input.returnUrl) ?? '/'
+    const page = config.members?.resetPasswordPage ?? '/'
+    const token = input.token ?? ''
+    const again = (flag: string, keepToken: boolean) =>
+      flagged(
+        keepToken && token ? flagged(page, `token=${encodeURIComponent(token)}`) : page,
+        `memberResetFailed=${flag}`,
+      )
+    const wait = await signInLimit(caller)
+    if (wait) return tooMany(request, wait, page)
+    const password = input.password ?? ''
+    if (!isValidPassword(password))
+      return answer(
+        request,
+        {
+          ok: false,
+          status: 400,
+          error: `A password must be at least ${DEFAULT_PASSWORD_CONFIGURATION.minimumPasswordLength} characters.`,
+        },
+        { returnUrl: again('password', true) },
+      )
+    const expired = () =>
+      answer(
+        request,
+        {
+          ok: false,
+          status: 400,
+          error: 'This link has expired or has already been used. Ask for a new one.',
+        },
+        { returnUrl: again('expired', false) },
+      )
+    const key = token ? await members.takeResetToken(hashToken(token)) : undefined
+    const member = key ? await members.byKey(key) : undefined
+    if (!member || (await providerOf(member.key))) return expired()
+    await members.resetPassword(member.key, await hashPassword(password), passwordConfigJson())
+    await recordAudit(db, {
+      category: 'member',
+      action: 'ResetPassword',
+      source: 'request',
+      entityType: 'Member',
+      entityKey: member.key,
+      entityName: member.name,
+      detail: 'From a reset link',
+      ipAddress: caller ?? null,
+    })
+    return answer(
+      request,
+      { ok: true, body: { ok: true } },
+      { returnUrl: flagged(back, 'memberPasswordReset=1') },
+    )
+  }
+
   return {
     resolve,
     session,
     decide,
+    sendResetLink,
     async byKey(key) {
       const member = await members.byKey(key)
       return member ? withProperties(member) : undefined
@@ -653,7 +812,7 @@ export function createMemberAuth(
       config.memberIdentityProviders.some((p) => p.oidc.id === providerId)
         ? external?.startUrl(providerId, returnUrl)
         : undefined,
-    async handle(request, pathname) {
+    async handle(request, pathname, caller) {
       if (!pathname.startsWith(`${MEMBER_ROUTE_PREFIX}/`)) return undefined
       if (pathname.startsWith(`${MEMBER_EXTERNAL_PATH}/`))
         return external?.handle(request, pathname) ?? undefined
@@ -672,9 +831,16 @@ export function createMemberAuth(
         return new Response('Forbidden', { status: 403 })
       switch (action) {
         case 'login':
-          return login(request)
-        case 'login/2fa':
-          return verifyTwoFactor(request)
+        case 'login/2fa': {
+          const wait = await signInLimit(caller)
+          // A form is sent back where it came from, as a wrong password is.
+          if (wait) return tooMany(request, wait, backFrom(request))
+          return action === 'login' ? login(request) : verifyTwoFactor(request)
+        }
+        case 'forgot-password':
+          return forgotPassword(request, caller)
+        case 'reset-password':
+          return resetPassword(request, caller)
         case 'logout':
           return logout(request)
         case 'register':

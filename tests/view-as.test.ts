@@ -321,6 +321,8 @@ describe(`viewing the back office as a group (${dialectUnderTest})`, () => {
 
   test("an automatic self-approval counts the viewed groups, not the administrator's own", async () => {
     const { admin, byAlias, page, viewAs } = await site()
+    // Story 229: someone in Legal, or nobody could approve its stage and sending is refused.
+    open.push(await signInAsGroup(admin, 'legal', 'legal-member@example.com'))
     const send = async (key: string) => {
       const response = await admin.post(`${APPROVALS}/page/${key}/send`, { action: 'publish' })
       expect(response.status, await response.clone().text()).toBe(200)

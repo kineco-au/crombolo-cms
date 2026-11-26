@@ -24,7 +24,15 @@ import {
   previewWorkflow,
   saveWorkflow,
 } from './workflow-client.js'
-import { ancestors, BOX, drawGraph, GRAPH_STYLES, layout, wouldLoop } from './workflow-graph.js'
+import {
+  ancestors,
+  BOX,
+  drawGraph,
+  GRAPH_STYLES,
+  layout,
+  missingGroups,
+  wouldLoop,
+} from './workflow-graph.js'
 
 const ON_EDIT = {
   withdraw: 'Saving withdraws the request; the editor sends it again',
@@ -513,6 +521,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
         <div class="canvas" @pointermove=${(e) => editable && this.#pointerMove(e)} @pointerup=${() => this.#pointerUp()} @pointerleave=${() => this.#pointerUp()}>
           ${drawGraph(w.stages, {
             selected: this._selected,
+            groups: this._list.groups,
             onStage: (alias) => this.#onStage(alias),
             onArrow: (from, to) => editable && this.#onArrow(from, to),
             onPointerDown: (alias, event) => editable && this.#pointerDown(alias, event),
@@ -567,7 +576,17 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       ${property(
         'Approved by',
         'The user groups whose members decide this stage',
-        html`<div class="checks">${this._list.groups.map(
+        html`${missingGroups(stage, this._list.groups).map(
+          (alias) =>
+            html`<p class="missing">"${alias}" is not a group here, so it gives this stage nobody to approve it.${
+              editable
+                ? html` <uui-button compact look="secondary" label="Remove it" @click=${() => {
+                    stage.approvers = stage.approvers.filter((a) => a !== alias)
+                    this.#touch()
+                  }}></uui-button>`
+                : nothing
+            }</p>`,
+        )}<div class="checks">${this._list.groups.map(
           (g) =>
             html`<uui-checkbox label=${g.name} ?disabled=${!editable} ?checked=${stage.approvers.includes(g.alias)} @change=${(
               e,
@@ -723,6 +742,9 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
   }
 
   static styles = css`
+    .missing {
+      color: var(--uui-color-danger);
+    }
     :host { display: block; height: 100%; container-type: inline-size; }
     .list { padding: var(--uui-size-layout-1); }
     .actions { text-align: right; white-space: nowrap; }

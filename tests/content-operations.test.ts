@@ -484,12 +484,12 @@ describe('what an event announces', () => {
   test('the same webhooks, notifications and live events whoever made the change', () => {
     expect(webhookFor({ type: 'scheduled', key: 'k' })).toBeUndefined()
     expect(webhookFor({ type: 'rolledBack', key: 'k', versionId: '1' })?.alias).toBe(
-      'Umbraco.ContentRolledBack',
+      'Crombolo.ContentRolledBack',
     )
-    expect(webhookFor({ type: 'sorted', parentKey: 'p' })?.alias).toBe('Umbraco.ContentSorted')
-    expect(webhookFor({ type: 'restored', key: 'k' })?.alias).toBe('Umbraco.ContentMoved')
+    expect(webhookFor({ type: 'sorted', parentKey: 'p' })?.alias).toBe('Crombolo.ContentSorted')
+    expect(webhookFor({ type: 'restored', key: 'k' })?.alias).toBe('Crombolo.ContentMoved')
     expect(webhookFor({ type: 'copied', key: 'k', copyKey: 'c' })).toEqual({
-      alias: 'Umbraco.ContentCopied',
+      alias: 'Crombolo.ContentCopied',
       key: 'c',
     })
     expect(notificationFor({ type: 'unpublished', key: 'k', cultures: null })).toBeUndefined()

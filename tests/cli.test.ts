@@ -481,7 +481,7 @@ describe('writing schema from the command line (story 161)', () => {
       '--url',
       'https://search.example/hook',
       '--event',
-      'Umbraco.ContentPublish',
+      'Crombolo.ContentPublish',
       '--content-type',
       'page',
     )
@@ -496,7 +496,7 @@ describe('writing schema from the command line (story 161)', () => {
       '--url',
       'https://x.example/',
       '--event',
-      'Umbraco.ContentPublish',
+      'Crombolo.ContentPublish',
     )
     refused('refused', 'webhooks', 'new', 'bad', '--url', 'ftp://x', '--event', 'Nope')
 

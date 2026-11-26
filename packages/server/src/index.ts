@@ -20,6 +20,7 @@ export * from './atomic-write.ts'
 export * from './background-jobs.ts'
 export * from './backup.ts'
 export * from './boot-failure.ts'
+export { buildAhead } from './build-ahead.ts'
 export * from './bundle-admin.ts'
 export {
   API_PERMISSIONS,
@@ -83,6 +84,7 @@ export {
   extensionEntryProblems,
   settingsOf,
 } from './extension-discovery.ts'
+export { extensionEventNameProblems } from './extension-event-names.ts'
 export {
   type InstallExtensionOptions,
   type InstallExtensionResult,
@@ -131,6 +133,11 @@ export * from './member-admin.ts'
 export * from './member-auth.ts'
 export { claimAsStored } from './member-claims.ts'
 export { linkMembersByProperty, type MemberLinkOutcome } from './member-links.ts'
+export {
+  createMemberResetLinks,
+  MEMBER_RESET_HOURS,
+  type ResetLinkOutcome,
+} from './member-reset.ts'
 export * from './middleware.ts'
 export * from './models-builder.ts'
 export * from './no-nodes.ts'

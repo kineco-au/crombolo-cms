@@ -14,6 +14,14 @@ import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { deriveChallenge, generateToken, parseCookies } from '@crombolo/auth'
 import { DEFAULT_BACKOFFICE_PATH, managementApiPath } from '@crombolo/core'
+import {
+  copySiteDatabase,
+  dropSiteDatabases,
+  onPostgres,
+  postgresEnv,
+  type SiteDatabase,
+  siteDatabase,
+} from './support/database.ts'
 
 const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
@@ -38,7 +46,9 @@ export default function Page({ model }: PageProps) {
 
 let dir: string
 
-function environment(): Record<string, string> {
+/** Each copy's database on Postgres, by its folder; on SQLite each has its own file. */
+const databases = new Map<string, SiteDatabase>()
+function environment(root?: string): Record<string, string> {
   const inherited = { ...(process.env as Record<string, string>) }
   for (const name of [
     'CROMBOLO_SQLITE_FILE',
@@ -55,6 +65,7 @@ function environment(): Record<string, string> {
   return {
     ...inherited,
     CROMBOLO_DB: 'sqlite',
+    ...postgresEnv(root ? databases.get(root) : undefined),
     CROMBOLO_LOGS_DIR: join(dir, 'logs'),
     CROMBOLO_LOG_TO_CONSOLE: 'false',
     CROMBOLO_ADMIN_PASSWORD: PASSWORD,
@@ -66,7 +77,7 @@ function environment(): Record<string, string> {
 async function ok(cwd: string, ...args: string[]) {
   const proc = Bun.spawn(['bun', CLI, ...args], {
     cwd,
-    env: environment(),
+    env: environment(cwd),
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -90,7 +101,7 @@ class Site {
     const proc = Bun.spawn(['bun', CLI, 'start'], {
       cwd: this.root,
       env: {
-        ...environment(),
+        ...environment(this.root),
         NODE_ENV: 'production',
         PORT: '0',
         CROMBOLO_WORKSPACES: 'true',
@@ -226,10 +237,76 @@ class Site {
 
   /** A change made in a workspace and merged here, taken over the remote protocol. */
   async changeMade(name: string, title: string) {
+    return this.changeOf(name, (workspace) => this.title(title, workspace))
+  }
+
+  /** A new page at the top, its title set and published, in a workspace; its key. */
+  async newPage(name: string, title: string, workspace: string): Promise<string> {
+    const roots = (await (
+      await this.call(
+        'GET',
+        `${API}/document-type/allowed-at-root?skip=0&take=10`,
+        undefined,
+        workspace,
+      )
+    ).json()) as { items: Array<{ id: string }> }
+    const key = crypto.randomUUID()
+    // The template Home has, so the page renders.
+    const home = (await (
+      await this.call('GET', `${API}/document/${await this.home()}`, undefined, workspace)
+    ).json()) as { template: { id: string } | null }
+    const made = await this.call(
+      'POST',
+      `${API}/document`,
+      {
+        id: key,
+        documentType: { id: roots.items[0]?.id },
+        template: home.template,
+        parent: null,
+        values: [{ alias: 'title', culture: null, segment: null, value: title }],
+        variants: [{ culture: null, segment: null, name }],
+      },
+      workspace,
+    )
+    expect(made.status, await made.clone().text()).toBe(201)
+    await this.publish(key, workspace)
+    return key
+  }
+
+  /** A page's title set and published, in a workspace when one is named. */
+  async retitle(key: string, value: string, workspace?: string) {
+    const document = (await (
+      await this.call('GET', `${API}/document/${key}`, undefined, workspace)
+    ).json()) as Record<string, unknown> & { values: Array<{ alias: string }> }
+    const saved = await this.call(
+      'PUT',
+      `${API}/document/${key}`,
+      {
+        ...document,
+        values: document.values.map((v) => (v.alias === 'title' ? { ...v, value } : v)),
+      },
+      workspace,
+    )
+    expect(saved.status, await saved.clone().text()).toBe(200)
+    await this.publish(key, workspace)
+  }
+
+  async publish(key: string, workspace?: string) {
+    const published = await this.call(
+      'PUT',
+      `${API}/document/${key}/publish`,
+      { publishSchedules: [{ culture: null }] },
+      workspace,
+    )
+    expect(published.status, await published.clone().text()).toBe(200)
+  }
+
+  /** Whatever `work` does in a workspace, merged here and taken as a change. */
+  async changeOf(name: string, work: (workspace: string) => Promise<unknown>) {
     const workspace = (await (await this.call('POST', WORKSPACES, { name })).json()) as {
       key: string
     }
-    await this.title(title, workspace.key)
+    await work(workspace.key)
     const merged = await this.call('POST', `${WORKSPACES}/${workspace.key}/merge`, { accept: [] })
     expect(merged.status, await merged.clone().text()).toBe(200)
     const list = (await (await this.send(`${REMOTE}/changes`)).json()) as {
@@ -267,12 +344,18 @@ beforeAll(async () => {
   dir = mkdtempSync(join(ROOT, 'output', 'change-transfer-'))
   const first = join(dir, 'made')
   mkdirSync(first)
+  databases.set(first, await siteDatabase(dir, 'made'))
   await ok(first, 'init', '--name', 'Harbour', '--empty')
   await ok(first, 'types', 'new', 'content-type', 'page', '--name', 'Page', '--at-root')
   writeFileSync(join(first, 'components', 'page.tsx'), TEMPLATE)
   await ok(first, 'content', 'new', '/Home', '--type', 'page', '--set', 'title=Home', '--publish')
   // The second copy begins as the first, its pages and their keys alike.
   cpSync(first, join(dir, 'served'), { recursive: true })
+  if (onPostgres)
+    databases.set(
+      join(dir, 'served'),
+      await copySiteDatabase(databases.get(first) as SiteDatabase, 'served'),
+    )
   made = new Site(first)
   served = new Site(join(dir, 'served'))
   await Promise.all([made.start(), served.start()])
@@ -281,6 +364,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await Promise.all([made?.stop(), served?.stop()])
   if (dir) rmSync(dir, { recursive: true, force: true })
+  await dropSiteDatabases()
 })
 
 describe('a change moved between two running copies of a site', () => {
@@ -312,7 +396,70 @@ describe('a change moved between two running copies of a site', () => {
     const summer = await made.changeMade('Summer', 'Summer')
     const refused = await served.put(summer)
     expect(refused.status).toBe(409)
-    expect(JSON.stringify(await refused.json())).toContain('title')
+    const said = (await refused.json()) as { workspace: string }
+    expect(JSON.stringify(said)).toContain('title')
     expect(await served.live()).toContain('Ours')
+
+    // Story 439: the conflict waits with both values, is answered for the change, and applies.
+    const home = await served.home()
+    const plan = (await (
+      await served.call('GET', `${WORKSPACES}/${said.workspace}/merge`)
+    ).json()) as { conflicts: Array<{ field: string; mine: unknown; theirs: unknown }> }
+    expect(plan.conflicts).toMatchObject([{ field: 'title||', mine: 'Summer', theirs: 'Ours' }])
+    const answered = await served.call('POST', `${WORKSPACES}/${said.workspace}/conflicts`, {
+      page: home,
+      answers: { 'title||': 'mine' },
+    })
+    expect(answered.status, await answered.clone().text()).toBe(200)
+    const applied = await served.call('POST', `${WORKSPACES}/${said.workspace}/merge`, {
+      accept: [],
+    })
+    expect(applied.status, await applied.clone().text()).toBe(200)
+    await served.liveSays('Summer')
+    const summerHeld = (await (
+      await served.send(`${REMOTE}/changes/held?keys=${summer.key}`)
+    ).json()) as { held: string[] }
+    expect(summerHeld.held).toEqual([summer.key])
+  }, 120_000)
+
+  test('story 434: a change staged after another, into the same workspace, builds on it', async () => {
+    let offers = ''
+    const made1 = await made.changeOf('Offers', async (w) => {
+      offers = await made.newPage('Offers', 'Offers', w)
+    })
+    const made2 = await made.changeOf('Half price', (w) => made.retitle(offers, 'Half price', w))
+    const first = await served.put(made1, '?stage=true')
+    expect(first.status, await first.clone().text()).toBe(200)
+    const { workspace } = (await first.json()) as { workspace: string }
+    const second = await served.put(made2, `?stage=true&into=${workspace}`)
+    expect(second.status, await second.clone().text()).toBe(200)
+    expect((await served.live('/offers/')).includes('Half price')).toBe(false)
+    const merged = await served.call('POST', `${WORKSPACES}/${workspace}/merge`, { accept: [] })
+    expect(merged.status, await merged.clone().text()).toBe(200)
+    for (let n = 0; n < 60 && !(await served.live('/offers/')).includes('Half price'); n++)
+      await Bun.sleep(500)
+    expect(await served.live('/offers/')).toContain('Half price')
+  }, 120_000)
+
+  test('story 436: two workspaces making the same new page each merge, and it is made once', async () => {
+    const events = await made.changeOf('Events', (w) => made.newPage('Events', 'Events', w))
+    const stagings: string[] = []
+    for (let i = 0; i < 2; i++) {
+      const staged = await served.put(events, '?stage=true')
+      expect(staged.status, await staged.clone().text()).toBe(200)
+      stagings.push(((await staged.json()) as { workspace: string }).workspace)
+    }
+    expect(new Set(stagings).size).toBe(2)
+    for (const workspace of stagings) {
+      const merged = await served.call('POST', `${WORKSPACES}/${workspace}/merge`, { accept: [] })
+      expect(merged.status, await merged.clone().text()).toBe(200)
+    }
+    const roots = (await (
+      await served.call('GET', `${API}/tree/document/root?skip=0&take=50`)
+    ).json()) as { items: Array<{ variants: Array<{ name: string }> }> }
+    expect(roots.items.filter((i) => i.variants[0]?.name === 'Events')).toHaveLength(1)
+    for (let n = 0; n < 60 && !(await served.live('/events/')).includes('Events'); n++)
+      await Bun.sleep(500)
+    expect(await served.live('/events/')).toContain('Events')
   }, 120_000)
 })

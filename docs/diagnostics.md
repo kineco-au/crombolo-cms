@@ -21,6 +21,7 @@ the Settings section.
 | Media | Media storage | a small file written, read back and removed — on disk, S3 or Azure alike |
 | E-mail | E-mail delivery | whether a provider is configured, and which features are off until one is |
 | Servers | Servers | every node seen in the last minute, its role, release and schema, and a warning when releases or schema files disagree |
+| Content | Approval workflows | each workflow stage nobody could approve, its groups, and how many pages wait at it (story 229) |
 
 The Servers check reads `server.crombolo_version` (migration 034), written by
 every node at boot and on each poll beside the schema version it already wrote.

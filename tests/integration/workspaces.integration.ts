@@ -17,6 +17,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { join, resolve } from 'node:path'
 import { deriveChallenge, generateToken, parseCookies } from '@crombolo/auth'
 import { DEFAULT_BACKOFFICE_PATH, managementApiPath } from '@crombolo/core'
+import {
+  dropSiteDatabases,
+  postgresEnv,
+  type SiteDatabase,
+  siteDatabase,
+} from './support/database.ts'
 
 const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
@@ -56,6 +62,7 @@ const absorb = (response: Response) => {
 
 const site = () => join(dir, 'harbour')
 
+let database: SiteDatabase | undefined
 function environment(): Record<string, string> {
   const inherited = { ...(process.env as Record<string, string>) }
   for (const name of [
@@ -73,6 +80,7 @@ function environment(): Record<string, string> {
   return {
     ...inherited,
     CROMBOLO_DB: 'sqlite',
+    ...postgresEnv(database),
     CROMBOLO_LOGS_DIR: join(dir, 'logs'),
     CROMBOLO_LOG_TO_CONSOLE: 'false',
     CROMBOLO_ADMIN_PASSWORD: PASSWORD,
@@ -237,6 +245,7 @@ async function liveSays(text: string, path = '/') {
 beforeAll(async () => {
   mkdirSync(join(ROOT, 'output'), { recursive: true })
   dir = mkdtempSync(join(ROOT, 'output', 'workspaces-'))
+  database = await siteDatabase(dir, 'workspaces')
   mkdirSync(site())
   await ok('init', '--name', 'Harbour', '--empty')
   await ok('types', 'new', 'content-type', 'page', '--name', 'Page', '--at-root')
@@ -252,6 +261,7 @@ afterAll(async () => {
   server?.kill()
   await server?.exited
   if (dir) rmSync(dir, { recursive: true, force: true })
+  await dropSiteDatabases()
 })
 
 describe('a workspace on a running site, end to end', () => {
@@ -432,5 +442,79 @@ describe('a workspace on a running site, end to end', () => {
     expect(
       (await call('GET', `${API}/stylesheet/${encodeURIComponent('/later.css')}`)).status,
     ).toBe(404)
+  }, 120_000)
+
+  test('story 439: a page edited in the workspace and in Shared is refused, answered field by field, merged', async () => {
+    const home = await homeKey()
+    const edit = async (values: Record<string, string>, workspace?: string) => {
+      const document = await json<Record<string, unknown> & { values: Array<{ alias: string }> }>(
+        await call('GET', `${API}/document/${home}`, undefined, workspace),
+      )
+      // Its other values as they are: an earlier test made one of them required.
+      const kept = document.values.filter((v) => !(v.alias in values))
+      const saved = await call(
+        'PUT',
+        `${API}/document/${home}`,
+        {
+          ...document,
+          values: [
+            ...kept,
+            ...Object.entries(values).map(([alias, value]) => ({
+              alias,
+              culture: null,
+              segment: null,
+              value,
+            })),
+          ],
+        },
+        workspace,
+      )
+      expect(saved.status, await saved.clone().text()).toBe(200)
+      const published = await call(
+        'PUT',
+        `${API}/document/${home}/publish`,
+        { publishSchedules: [{ culture: null }] },
+        workspace,
+      )
+      expect(published.status, await published.clone().text()).toBe(200)
+    }
+    const copy = await open('Copy edits')
+    // The footnote an earlier test made required, the same on both sides.
+    await edit(
+      {
+        title: 'Ours, from the workspace',
+        strapline: 'Workspace strapline',
+        footnote: 'Terms apply',
+      },
+      copy.key,
+    )
+    await edit({
+      title: 'Shared’s own title',
+      strapline: 'Shared strapline',
+      footnote: 'Terms apply',
+    })
+    await liveSays('Shared’s own title')
+
+    // Both changed both fields: the merge is refused, naming each.
+    const plan = await json<{
+      conflicts: Array<{ field: string; mine: unknown; theirs: unknown }>
+    }>(await call('GET', `${WORKSPACES}/${copy.key}/merge`))
+    expect(plan.conflicts.map((c) => c.field).sort()).toEqual(['strapline||', 'title||'])
+    const refused = await call('POST', `${WORKSPACES}/${copy.key}/merge`, {})
+    expect(refused.status).toBe(409)
+
+    // One answer from each side, then the merge goes.
+    await json(
+      await call('POST', `${WORKSPACES}/${copy.key}/conflicts`, {
+        page: home,
+        answers: { 'title||': 'mine', 'strapline||': 'theirs' },
+      }),
+    )
+    await json(await call('POST', `${WORKSPACES}/${copy.key}/merge`, {}))
+    await liveSays('Ours, from the workspace')
+    const merged = await json<{ values: Array<{ alias: string; value: unknown }> }>(
+      await call('GET', `${API}/document/${home}`),
+    )
+    expect(merged.values.find((v) => v.alias === 'strapline')?.value).toBe('Shared strapline')
   }, 120_000)
 })

@@ -44,23 +44,43 @@ with no password, invited or brought from elsewhere, has no way in at all.
 6. **`members reset-password` sends the link** where the site sends mail, or prints it, and
    refuses a provider-only member; `--password` (with `--stdin`) still sets one directly.
 
-Needs a migration: the members' reset tokens and the rate-limit counts. It names the
-release it ships in.
+Needs a migration: the members' reset tokens and the rate-limit counts. It names 0.82.0,
+the next release, chosen by the maintainer on 2026-11-26.
 
 ## Acceptance criteria
 
-- [ ] `POST /umbraco/members/forgot-password` takes an email, answers the same whether
+- [x] `POST /umbraco/members/forgot-password` takes an email, answers the same whether
       or not the address is known, and sends a link to the site's reset page through the
       site's email provider, in crombolo's words or the site's.
-- [ ] A member linked to an identity provider is sent no link, and told how they sign in.
-- [ ] `POST /umbraco/members/reset-password` takes the token and a new password, and
+- [x] A member linked to an identity provider is sent no link, and told how they sign in.
+- [x] `POST /umbraco/members/reset-password` takes the token and a new password, and
       works for a member with no password yet; the token is single-use and expires.
       It unlocks the account, ends the member's other sessions and spends their other links.
-- [ ] Asking, resetting and signing in are rate limited per address and per IP, across
+- [x] Asking, resetting and signing in are rate limited per address and per IP, across
       nodes, with the limits configurable; a site with no email provider or no reset page
       answers that reset is unavailable; `render` offers `<ResetPasswordForm />` and a
       forgot-password form, as for sign-in.
-- [ ] `crombolo members reset-password <member>` sends or prints the link; `--password`
+- [x] `crombolo members reset-password <member>` sends or prints the link; `--password`
       sets one directly.
-- [ ] Documented in `docs/operations.md` and `docs/rendering.md`, with the release notes;
+- [x] Documented in `docs/operations.md` and `docs/rendering.md`, with the release notes;
       covering tests on both dialects.
+
+## What was built
+
+- Migration 103 `AddMemberPasswordReset` (0.82.0): `member_reset_token` (by hash, with its
+  member and expiry) and `rate_limit_hit`; undone in every test rewind.
+- `MemberRepository`: `saveResetToken`, `takeResetToken` (spent as it is read, once even
+  when two arrive together), `resetPassword` (unlocks, turns the security stamp, spends
+  the member's other links); a deleted member's links go with them.
+- `packages/server/src/shared-rate-limit.ts`: `SharedRateLimiter`, counted in the
+  database and swept of day-old rows.
+- `packages/server/src/member-reset.ts`: the link made and sent in crombolo's words or the
+  site's, a provider member told how they sign in, development's log standing in for mail.
+- `member-auth.ts`: `forgot-password` and `reset-password`, the sign-in limit on `login`
+  and `login/2fa`; the server passes the caller's address. Config: `members.resetPasswordPage`,
+  `resetPasswordEmail`, `rateLimits` (`DEFAULT_MEMBER_RATE_LIMITS`), checked at boot.
+- `@crombolo/render`: `ForgotPasswordForm`, `ResetPasswordForm` and their paths.
+- The remote protocol's `members/<key>/reset-link`; `crombolo members reset-password` sends
+  or prints the link, `--password` sets one.
+- Tests: `member-reset.test.ts`, `member-reset-forms.test.ts`, `members-cli.test.ts`.
+- Docs: `operations.md`, `rendering.md`, the release notes.

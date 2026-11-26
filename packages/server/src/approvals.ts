@@ -17,6 +17,7 @@ import {
   systemActor,
 } from '@crombolo/content'
 import {
+  ADMIN_GROUP_ALIAS,
   approvalsNeeded,
   DocumentPermissions,
   descendantStages,
@@ -38,6 +39,7 @@ import {
   type ApprovalScheduleEntry,
   type ApprovalStep,
   AuditLog,
+  ContentEventRepository,
   type Db,
   DocumentRepository,
   NodeRepository,
@@ -85,6 +87,8 @@ export interface ApprovalsOptions {
   backOfficeUrl?: string
   /** Queues the content notifications a publish on approval makes (story 045). */
   notifier?: ContentNotifier
+  /** Story 441: told an approval's webhook is waiting, so the outbox runs soon. */
+  nudge?(): void
 }
 
 /** A refusal a person reads: why, and what to do instead. */
@@ -104,7 +108,42 @@ interface PageFacts {
   chain: string[]
   trashed: boolean
   contentTypeAlias: string | undefined
+  contentTypeKey?: string
   variesByCulture: boolean
+}
+
+/** Story 441: the webhooks each step a request's history records raises. */
+const STEP_EVENTS: Partial<
+  Record<string, { aliases: string[]; outcome?: 'published' | 'unpublished' | 'scheduled' }>
+> = {
+  sent: { aliases: ['Crombolo.ApprovalSent'] },
+  approved: { aliases: ['Crombolo.ApprovalApproved'] },
+  'sent-back': { aliases: ['Crombolo.ApprovalSentBack'] },
+  withdrawn: { aliases: ['Crombolo.ApprovalWithdrawn'] },
+  superseded: { aliases: ['Crombolo.ApprovalWithdrawn'] },
+  restarted: { aliases: ['Crombolo.ApprovalWithdrawn', 'Crombolo.ApprovalSent'] },
+  stalled: { aliases: ['Crombolo.ApprovalStalled'] },
+  published: { aliases: ['Crombolo.ApprovalFinished'], outcome: 'published' },
+  unpublished: { aliases: ['Crombolo.ApprovalFinished'], outcome: 'unpublished' },
+  scheduled: { aliases: ['Crombolo.ApprovalFinished'], outcome: 'scheduled' },
+}
+
+/** Story 441: what an approval's webhook says, facts only: never a comment, nor the page's content. */
+export interface ApprovalWebhookFacts {
+  request: string
+  page: { key: string; name: string }
+  workflow: { alias: string; name: string }
+  stage?: { alias: string; name: string; groups: string[] }
+  by?: { key: string; name: string }
+  at: string
+  action: ApprovalAction
+  schedule?: Array<{
+    culture: string | null
+    publishTime: string | null
+    unpublishTime: string | null
+  }>
+  /** ApprovalFinished: published, taken down, or scheduled. */
+  outcome?: 'published' | 'unpublished' | 'scheduled'
 }
 
 export interface PageApproval {
@@ -139,6 +178,8 @@ export interface RequestView {
     state: 'waiting' | 'approved' | 'pending' | 'discarded'
     approvals: number
     needed: number
+    /** Story 229: waiting, with nobody who could approve it now: why, in words. */
+    nobody?: string
   }>
   history: Array<{
     kind: string
@@ -183,6 +224,11 @@ export interface Approvals {
   ): Promise<void>
   /** Ends scheduled requests whose schedule is gone: the recycle bin, an import, the CLI. */
   sweepScheduled(now?: number): Promise<void>
+  /**
+   * Story 229: each waiting request whose stage now has nobody who could approve it, told
+   * to the site's administrators once, and noted on the request.
+   */
+  sweepStalled(): Promise<void>
   send(
     principal: Principal,
     key: string,
@@ -297,9 +343,120 @@ function refuseUnattended(principal: Principal): void {
     )
 }
 
+/**
+ * Story 229: the people in these groups who could approve: enabled, not locked, not a
+ * service account, and not `except` (the sender, where the workflow refuses self-approval).
+ */
+export async function approversIn(
+  db: Db,
+  aliases: readonly string[],
+  except?: string,
+): Promise<number> {
+  if (aliases.length === 0) return 0
+  let query = db.q
+    .selectFrom('user_account as u')
+    .innerJoin('user_group_member as m', 'm.user_id', 'u.id')
+    .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+    .select((eb) => eb.fn.count('u.id').distinct().as('n'))
+    .where('g.alias', 'in', aliases)
+    .where('u.kind', '=', 0)
+    .where('u.is_approved', '=', db.dialect.boolValue(true) as boolean)
+    .where('u.is_locked_out', '=', db.dialect.boolValue(false) as boolean)
+  if (except) query = query.where('u.key', '!=', normaliseUuid(except))
+  const rows = await query.execute()
+  return Number(rows[0]?.n ?? 0)
+}
+
+/** Story 229: a stage nobody can approve, and why: each of its groups, and whether it is there. */
+export interface StageNobodyCanApprove {
+  workflow: string
+  workflowKey: string
+  stage: string
+  stageName: string
+  groups: Array<{ alias: string; name: string | undefined }>
+}
+
+/** Story 229: the stages of these workflows nobody could approve, sent by `sender` when given. */
+export async function stagesNobodyCanApprove(
+  db: Db,
+  workflows: readonly SchemaWorkflow[],
+  sender?: string,
+): Promise<StageNobodyCanApprove[]> {
+  const known = new Map(
+    (await new UserGroupRepository(db).all()).map((g) => [g.alias, g.name] as const),
+  )
+  const out: StageNobodyCanApprove[] = []
+  for (const workflow of workflows)
+    for (const stage of workflow.stages) {
+      const except = sender && workflow.selfApproval === 'refused' ? sender : undefined
+      if ((await approversIn(db, stage.approvers, except)) > 0) continue
+      out.push({
+        workflow: workflow.name,
+        workflowKey: workflow.key ?? workflow.alias,
+        stage: stage.alias,
+        stageName: stage.name ?? stage.alias,
+        groups: stage.approvers.map((alias) => ({ alias, name: known.get(alias) })),
+      })
+    }
+  return out
+}
+
+/** "Legal has no one who can approve it", "Legal is not a group here", for each group. */
+export function nobodyWords(stage: StageNobodyCanApprove): string {
+  const why = stage.groups.map((g) =>
+    g.name === undefined
+      ? `"${g.alias}" is not a group here`
+      : `${g.name} has nobody who can approve`,
+  )
+  return `Nobody can approve "${stage.stageName}": ${why.join('; ')}.`
+}
+
 export function createApprovals(options: ApprovalsOptions): Approvals {
   const { db } = options
-  const requests = (tx: Db = db): ApprovalRepositoryType => new ApprovalRepository(tx)
+  /**
+   * Story 441: the requests on `tx`, each step recorded or stage reached announced as its
+   * webhook in the same transaction, so no tool that takes a step can leave it unsaid.
+   */
+  const requests = (tx: Db = db): ApprovalRepositoryType => {
+    const repo = new ApprovalRepository(tx)
+    const nameOf = async (key: string | null | undefined) => {
+      if (!key) return undefined
+      const row = await tx.q
+        .selectFrom('user_account')
+        .select('user_name')
+        .where('key', '=', normaliseUuid(key))
+        .executeTakeFirst()
+      return { id: key, name: String(row?.user_name ?? 'Someone') }
+    }
+    const addStep = repo.addStep.bind(repo)
+    const record = repo.record.bind(repo)
+    repo.addStep = async (requestId, stage) => {
+      const id = await addStep(requestId, stage)
+      const request = await repo.byId(requestId)
+      if (request) await announce(tx, 'Crombolo.ApprovalStageReached', request, { stage })
+      return id
+    }
+    repo.record = async (requestId, entry) => {
+      await record(requestId, entry)
+      const said = STEP_EVENTS[entry.kind]
+      if (!said) return
+      const request = await repo.byId(requestId)
+      if (!request) return
+      const stage =
+        entry.stage ??
+        (entry.stepId
+          ? (await repo.steps(requestId)).find((s) => s.id === entry.stepId)?.stage
+          : undefined)
+      const by = await nameOf(entry.userKey)
+      for (const alias of said.aliases)
+        await announce(tx, alias, request, {
+          ...(stage ? { stage } : {}),
+          ...(by ? { by } : {}),
+          ...(said.outcome ? { outcome: said.outcome } : {}),
+        })
+    }
+    return repo
+  }
   const nodes = new NodeRepository(db)
   const groups = new UserGroupRepository(db)
   const audit = new AuditLog(db)
@@ -317,11 +474,13 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
     const type = await db.q
       .selectFrom('content as c')
       .innerJoin('content_type as ct', 'ct.node_id', 'c.content_type_id')
-      .select(['ct.alias', 'ct.variations'])
+      .innerJoin('node as tn', 'tn.id', 'c.content_type_id')
+      .select(['ct.alias', 'ct.variations', 'tn.unique_id as type_key'])
       .where('c.node_id', '=', node.id)
       .execute()
     return {
       key: node.key,
+      contentTypeKey: type[0]?.type_key ? normaliseUuid(String(type[0].type_key)) : undefined,
       name: node.text ?? node.key,
       chain: ids.flatMap((id) => keyOf.get(id) ?? []),
       trashed: node.trashed,
@@ -390,16 +549,74 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       : `Taking "${facts.name}" down needs approval through "${workflow.name}". Request it from its Workflow tab.`
   }
 
-  const membersOf = async (aliases: readonly string[]): Promise<number> => {
-    if (aliases.length === 0) return 0
-    const rows = await db.q
-      .selectFrom('user_group_member as m')
-      .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
-      .select((eb) => eb.fn.count('m.user_id').distinct().as('n'))
-      .where('g.alias', 'in', aliases)
-      .execute()
-    return Number(rows[0]?.n ?? 0)
+  /**
+   * Story 441: an approval step's webhook, in the step's own transaction through the outbox,
+   * narrowed as a page's by the page's content type, and by its workflow.
+   */
+  const announce = async (
+    tx: Db,
+    alias: string,
+    request: ApprovalRequest,
+    step: {
+      stage?: string
+      by?: Principal | { id: string; name: string }
+      outcome?: ApprovalWebhookFacts['outcome']
+    } = {},
+  ) => {
+    const facts = await page(request.nodeKey)
+    const stage = step.stage ? stageOf(request.workflow, step.stage) : undefined
+    const approval: ApprovalWebhookFacts = {
+      request: request.key,
+      page: { key: request.nodeKey, name: facts?.name ?? request.nodeKey },
+      workflow: { alias: request.workflow.alias, name: request.workflow.name },
+      ...(stage
+        ? {
+            stage: { alias: stage.alias, name: stage.name ?? stage.alias, groups: stage.approvers },
+          }
+        : {}),
+      ...(step.by ? { by: { key: normaliseUuid(step.by.id), name: step.by.name } } : {}),
+      at: new Date().toISOString(),
+      action: request.action,
+      ...(request.schedule?.length
+        ? {
+            schedule: request.schedule.map((e) => ({
+              culture: e.culture,
+              publishTime: e.publishTime?.toISOString() ?? null,
+              unpublishTime: e.unpublishTime?.toISOString() ?? null,
+            })),
+          }
+        : {}),
+      ...(step.outcome ? { outcome: step.outcome } : {}),
+    }
+    await new ContentEventRepository(tx).record({
+      // The outbox's kind is 32 characters at most: `approval:StageReached`.
+      kind: `approval:${alias.replace('Crombolo.Approval', '')}`,
+      entityType: 'ApprovalRequest',
+      entityKey: request.key,
+      facts: {
+        v: 1,
+        webhook: {
+          alias,
+          key: request.key,
+          ...(facts?.contentTypeKey ? { contentTypeKey: facts.contentTypeKey } : {}),
+          ...(facts?.contentTypeAlias ? { contentTypeAlias: facts.contentTypeAlias } : {}),
+          approval,
+        },
+      },
+      actor: step.by
+        ? { kind: 'user', name: step.by.name, userKey: normaliseUuid(step.by.id) }
+        : { kind: 'system', name: 'System', userKey: null },
+    })
+    options.nudge?.()
   }
+
+  /** Story 229: who could approve a stage of this request: not its sender, where refused. */
+  const membersOf = async (request: ApprovalRequest, aliases: readonly string[]) =>
+    approversIn(
+      db,
+      aliases,
+      request.workflow.selfApproval === 'refused' ? request.requestedBy : undefined,
+    )
 
   const stageOf = (workflow: SchemaWorkflow, alias: string) =>
     workflow.stages.find((s) => s.alias === alias)
@@ -419,7 +636,7 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
   }
 
   const notify = async (
-    to: 'approvers' | 'editor',
+    to: 'approvers' | 'editor' | 'administrators',
     request: ApprovalRequest,
     stages: readonly string[],
     subject: string,
@@ -427,7 +644,19 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
   ) => {
     if (!emailReady(options.email)) return
     let emails: string[] = []
-    if (to === 'editor') {
+    if (to === 'administrators') {
+      const rows = await db.q
+        .selectFrom('user_account as u')
+        .innerJoin('user_group_member as m', 'm.user_id', 'u.id')
+        .innerJoin('user_group as g', 'g.id', 'm.user_group_id')
+        .select('u.email')
+        .distinct()
+        .where('g.alias', '=', ADMIN_GROUP_ALIAS)
+        .where('u.kind', '=', 0)
+        .where('u.is_approved', '=', db.dialect.boolValue(true) as boolean)
+        .execute()
+      emails = rows.map((r) => r.email).filter(Boolean)
+    } else if (to === 'editor') {
       const rows = await db.q
         .selectFrom('user_account')
         .select('email')
@@ -537,7 +766,9 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
         const stage = stageOf(request.workflow, step.stage)
         if (!stage) continue
         const given = await approvalsIn(repo, request, step)
-        if (given.size >= approvalsNeeded(stage.required, await membersOf(stage.approvers))) {
+        if (
+          given.size >= approvalsNeeded(stage.required, await membersOf(request, stage.approvers))
+        ) {
           await repo.setStepState(step.id, 'approved')
           moved = true
         }
@@ -739,6 +970,17 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       const given = step
         ? history.filter((h) => h.kind === 'approved' && h.stepId === step.id).length
         : 0
+      const able = await membersOf(request, stage.approvers)
+      const stuck =
+        step?.state === 'waiting' && request.state === 'waiting' && able === 0
+          ? (
+              await stagesNobodyCanApprove(
+                db,
+                [{ ...request.workflow, stages: [stage] }],
+                request.workflow.selfApproval === 'refused' ? request.requestedBy : undefined,
+              )
+            )[0]
+          : undefined
       stages.push({
         alias: stage.alias,
         state: step
@@ -747,7 +989,8 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
             ? 'discarded'
             : 'pending',
         approvals: given,
-        needed: approvalsNeeded(stage.required, await membersOf(stage.approvers)),
+        needed: approvalsNeeded(stage.required, able),
+        ...(stuck ? { nobody: nobodyWords(stuck) } : {}),
       })
     }
     const waiting = request.state === 'waiting'
@@ -942,6 +1185,18 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
       const timed = (schedule ?? []).filter((e) => e.publishTime || e.unpublishTime)
       const refusal = scheduleRefusal(workflow, action, cultures, timed)
       if (refusal) throw new ApprovalRefused(refusal)
+      // Story 229: every stage on its path must have someone who could approve it.
+      const nobody = await stagesNobodyCanApprove(db, [workflow], principal.id)
+      if (nobody.length > 0)
+        throw new ApprovalRefused(
+          `${nobody.map(nobodyWords).join(' ')} Ask an administrator to add someone who can approve to ${
+            nobody
+              .flatMap((n) => n.groups.filter((g) => g.name !== undefined).map((g) => g.name))
+              .filter((name, i, all) => all.indexOf(name) === i)
+              .join(' or ') || 'its groups'
+          }, or to change the workflow.`,
+          409,
+        )
       const stored = (await readWorkflows(db)).find(
         (s) => (s.workflow.key ?? s.workflow.alias) === (workflow.key ?? workflow.alias),
       )
@@ -1160,6 +1415,43 @@ export function createApprovals(options: ApprovalsOptions): Approvals {
           row.action === action && request.schedule?.some((e) => same(e.culture, row.culture)),
       )
       if (!left) await approved(request, undefined)
+    },
+
+    async sweepStalled() {
+      if (!emailReady(options.email)) return
+      for (const stored of await readWorkflows(db)) {
+        const workflowKey = stored.workflow.key ?? stored.workflow.alias
+        for (const request of await requests().waitingUnder(workflowKey)) {
+          const history = await requests().history(request.id)
+          for (const step of (await requests().steps(request.id)).filter(
+            (s) => s.state === 'waiting',
+          )) {
+            if (history.some((h) => h.kind === 'stalled' && h.stepId === step.id)) continue
+            const stage = stageOf(request.workflow, step.stage)
+            if (!stage || (await membersOf(request, stage.approvers)) > 0) continue
+            const [stuck] = await stagesNobodyCanApprove(
+              db,
+              [{ ...request.workflow, stages: [stage] }],
+              request.workflow.selfApproval === 'refused' ? request.requestedBy : undefined,
+            )
+            if (!stuck) continue
+            const facts = await page(request.nodeKey)
+            const said = nobodyWords(stuck)
+            await notify(
+              'administrators',
+              request,
+              [],
+              `Nobody can approve "${facts?.name ?? 'a page'}"`,
+              `"${facts?.name ?? 'A page'}" is waiting for approval through "${request.workflow.name}". ${said} Add someone who can approve to the stage's groups, or withdraw the request.`,
+            )
+            await requests().record(request.id, {
+              kind: 'stalled',
+              stepId: step.id,
+              comment: `${said} Administrators were told.`,
+            })
+          }
+        }
+      }
     },
 
     async sweepScheduled(now = Date.now()) {

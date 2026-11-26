@@ -39,7 +39,7 @@ async function site() {
     enabled: true,
     contentTypeKeys: [],
     headers: {},
-    events: ['Umbraco.ContentPublish', 'Umbraco.ContentUnpublish', 'Umbraco.MediaSave'],
+    events: ['Crombolo.ContentPublish', 'Crombolo.ContentUnpublish', 'Crombolo.MediaSave'],
     url: 'http://127.0.0.1:9/hook',
   })
   expect(created.status).toBe(201)
@@ -65,7 +65,7 @@ describe('a change and what it announces commit together', () => {
     expect(recorded).toHaveLength(1)
     expect(recorded[0]?.facts).toMatchObject({
       v: 1,
-      webhook: { alias: 'Umbraco.ContentPublish', key: page },
+      webhook: { alias: 'Crombolo.ContentPublish', key: page },
     })
     await s.h.server.jobs.runEvents()
     const queued = await deliveries(s)
@@ -107,8 +107,8 @@ describe('a change and what it announces commit together', () => {
     await s.h.put(`${V1}/document/${page}/unpublish`, { cultures: null })
     await s.h.server.jobs.runEvents()
     expect((await deliveries(s)).map((d) => d.eventAlias).sort()).toEqual([
-      'Umbraco.ContentPublish',
-      'Umbraco.ContentUnpublish',
+      'Crombolo.ContentPublish',
+      'Crombolo.ContentUnpublish',
     ])
   })
 
@@ -208,7 +208,7 @@ describe('keeping the queues tidy and visible', () => {
     await db.exec("UPDATE webhook_delivery SET state = 'done', update_date = ?", [longAgo])
     await db.exec('UPDATE content_event SET update_date = ?', [longAgo])
     await new WebhookDeliveryRepository(db).enqueue([
-      { subscriber: 'gone', eventAlias: 'Umbraco.ContentPublish', payload: {} },
+      { subscriber: 'gone', eventAlias: 'Crombolo.ContentPublish', payload: {} },
     ])
     await db.exec(
       "UPDATE webhook_delivery SET state = 'failed', update_date = ? WHERE subscriber = 'gone'",

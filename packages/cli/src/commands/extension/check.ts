@@ -9,7 +9,7 @@ import {
   SITE_PACKAGE_NOT_INSTALLED,
   validateBundlePackage,
 } from '@crombolo/backoffice-host/registry'
-import { extractTarball } from '@crombolo/server'
+import { extensionEventNameProblems, extractTarball } from '@crombolo/server'
 import { loadBundle } from '@crombolo/transfer'
 import { Args } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
@@ -57,7 +57,8 @@ export default class ExtensionCheck extends BaseCommand {
     const field = json.crombolo as { bundleType?: unknown; content?: unknown } | undefined
     const problems =
       field?.bundleType === 'site' ? [SITE_PACKAGE_NOT_INSTALLED] : validateBundlePackage(json, dir)
-    if (field?.bundleType !== 'site') problems.push(...extensionDialogProblems(dir))
+    if (field?.bundleType !== 'site')
+      problems.push(...extensionDialogProblems(dir), ...extensionEventNameProblems(dir))
     if (problems.length === 0 && field?.content === true)
       problems.push(
         ...loadBundle(dir).problems.map((problem) => `${problem.file}: ${problem.message}`),

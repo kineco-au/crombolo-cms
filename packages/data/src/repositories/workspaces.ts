@@ -27,6 +27,11 @@ export const TOUCHED_WITHIN_MS = 7 * 24 * 60 * 60 * 1000
 export interface StagedChange {
   key: string
   name: string | null
+  /**
+   * Story 439: for a field this site changed since the change began, the value the change
+   * found, by page key and merge field: the merge reads it as the field's base, so it asks.
+   */
+  bases?: Record<string, Record<string, unknown>>
   schedules?: Array<{
     key: string
     kind: string
@@ -428,6 +433,38 @@ export class WorkspaceRepository {
       .execute()
   }
 
+  /** Story 439: a page's staged bases, every change's together; none once answered. */
+  async stagedBases(id: number, pageKey: string): Promise<Record<string, unknown>> {
+    const row = await this.#db.q
+      .selectFrom('workspace')
+      .select('staged_changes')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    const key = normaliseUuid(pageKey)
+    const out: Record<string, unknown> = {}
+    for (const change of stagedOf(row?.staged_changes as string | null).stagedChanges ?? [])
+      Object.assign(out, change.bases?.[key] ?? {})
+    return out
+  }
+
+  /** Story 439: a page's conflicts answered, its staged bases go. */
+  async clearStagedBases(id: number, pageKey: string): Promise<void> {
+    const row = await this.#db.q
+      .selectFrom('workspace')
+      .select('staged_changes')
+      .where('id', '=', id)
+      .executeTakeFirst()
+    const staged = stagedOf(row?.staged_changes as string | null)
+    if (!staged.stagedChanges) return
+    const key = normaliseUuid(pageKey)
+    const changes = staged.stagedChanges.map((change) => {
+      if (!change.bases?.[key]) return change
+      const { [key]: _gone, ...rest } = change.bases
+      return { ...change, bases: rest }
+    })
+    await this.setStaged(id, changes, staged.stagedReadOnly)
+  }
+
   async schemaBuilt(id: number): Promise<boolean> {
     const rows = await this.#db.q
       .selectFrom('workspace')
@@ -810,9 +847,6 @@ function stagedOf(
   text: string | null | undefined,
 ): Pick<Workspace, 'stagedChanges' | 'stagedReadOnly'> {
   if (!text) return { stagedChanges: null, stagedReadOnly: false }
-  const parsed = JSON.parse(String(text)) as {
-    readOnly: boolean
-    changes: Array<{ key: string; name: string | null }>
-  }
+  const parsed = JSON.parse(String(text)) as { readOnly: boolean; changes: StagedChange[] }
   return { stagedChanges: parsed.changes, stagedReadOnly: parsed.readOnly }
 }

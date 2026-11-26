@@ -125,11 +125,12 @@ describe.skipIf(!reachable)('a server booted twice over one database', () => {
 
     const second = await boot()
     expect(await readKeyValue(second.server.db, 'Test.Leak')).toBeUndefined()
-    if (dialectUnderTest !== 'postgres') return
-    // The applied state survived, so the second boot skipped the migrations
-    // instead of replaying them — which is where the saving comes from. A replay
-    // would have appended to the ledger.
-    expect((await readLedger(second.server.db)).length).toBe(ledgerBefore.length)
-    expect(ledgerBefore.length).toBeGreaterThan(0)
+    if (dialectUnderTest === 'postgres') {
+      // The applied state survived, so the second boot skipped the migrations
+      // instead of replaying them — which is where the saving comes from. A replay
+      // would have appended to the ledger.
+      expect((await readLedger(second.server.db)).length).toBe(ledgerBefore.length)
+      expect(ledgerBefore.length).toBeGreaterThan(0)
+    }
   })
 })

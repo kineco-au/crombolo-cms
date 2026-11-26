@@ -29,6 +29,8 @@ export type ApprovalHistoryKind =
   | 'unpublished'
   | 'scheduled'
   | 'superseded'
+  /** Story 229: its stage had nobody who could approve it, and administrators were told. */
+  | 'stalled'
 
 /** When a request asked to publish or take down one culture (null: the invariant variant). */
 export interface ApprovalScheduleEntry {
@@ -182,6 +184,16 @@ export class ApprovalRepository {
       .selectFrom('approval_request')
       .selectAll()
       .where('key', '=', normaliseUuid(key))
+      .executeTakeFirst()
+    return row ? requestFrom(row) : undefined
+  }
+
+  /** Story 441: a request by its row id, for what announces each of its steps. */
+  async byId(id: number): Promise<ApprovalRequest | undefined> {
+    const row = await this.#db.q
+      .selectFrom('approval_request')
+      .selectAll()
+      .where('id', '=', id)
       .executeTakeFirst()
     return row ? requestFrom(row) : undefined
   }

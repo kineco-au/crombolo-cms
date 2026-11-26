@@ -36,7 +36,7 @@ prints as it finishes, then the totals. On 14 cores the SQLite suite takes about
 two minutes and Postgres under four, against 7.5 and 13 in one process.
 
 **CI shards across jobs, then each job across its processes.** SQLite always, and
-Postgres for a release or a commit saying `--postgres-tests`, each run as four jobs;
+Postgres on every push to `main` (story 085; a pull request runs SQLite alone), each run as four jobs;
 each job runs `bun run test:ci:shard --shard <n>/4`, its share of the files split
 again across two processes, so no job runs much past ten minutes (one SQLite job had
 grown past half an hour). The shares come from `tests/shard-weights.json`, each
@@ -659,9 +659,9 @@ its own database. `scripts/test-shard.ts` splits the files by their measured
 Postgres time in `tests/shard-weights.json`, heaviest first onto the lightest
 shard. A file with no time counts as the median, so a new file needs nothing.
 To refresh the times, take them from a Release run's per-file groups.
-`test (sqlite)` stays one job, under the same name. `--postgres-tests` in the commit message adds the Postgres leg on
-`main`, and a release always runs both dialects (`postgres_tests: true` from
-`release.yml`), since both are what it publishes. Locally, `docker:test:all` is
+`test (sqlite)` stays one job, under the same name. Every push to `main` runs the
+Postgres leg too (story 085), and `integration-postgres` runs the integration files
+where the database matters on Postgres. Locally, `docker:test:all` is
 the release's matrix.
 
 The release's `load (postgres)` leg is also sharded (story `201`): three jobs
@@ -1053,6 +1053,46 @@ configured. That matters as much as the pid: a fixture site with its own
 `siteDir` keeps its own cache, and two fixtures whose views happen to be
 identical do not share a generation that evicting would pull out from under
 either of them.
+
+## One database only
+
+Story 085: every behaviour is proven on SQLite and on Postgres. CI runs the unit suite on
+both on every push to `main` (conformance included, `tests/remote-conformance.test.ts`), and
+the integration files where the database matters on both. A test that runs on one database
+only is in the table below, with why it cannot run on the other, and
+`tests/dialect-skips.test.ts` fails on one that is not, or a row whose test is gone. It
+finds `test.skipIf(dialectUnderTest !== …)`, a helper made from one, and the integration
+suite's `skipIf(onPostgres)`; an early `if (dialectUnderTest !== …) return` is refused
+outright, since it passes without running.
+
+The browser suite runs on SQLite alone: it proves the back office's screens, which reach
+the database only through the API both unit suites prove. Of the integration suite,
+`bun run test:integration:postgres` runs `first-boot`, `upgrade`, `server-roles`, `restart`,
+`workspaces` and `change-transfer` on Postgres, each site with a database of its own
+(`tests/integration/support/database.ts`); the rest drive the command line, its output and
+files, where the database plays no part.
+
+| File | Test | Runs on | Why |
+| --- | --- | --- | --- |
+| `tests/cache-notify.test.ts` | SQLite (sqlite) | sqlite | SQLite has nothing to listen on: this proves appending notifies nobody, where Postgres's twin below proves it notifies |
+| `tests/cache-notify.test.ts` | two nodes over one database (postgres) | postgres | LISTEN/NOTIFY between two nodes is Postgres's; SQLite's nodes poll, which the row above covers |
+| `tests/concurrency.test.ts` | another node holding the lock times the wait out through Postgres itself | postgres | the wait is Postgres's `lock_timeout` on an advisory lock; SQLite's locks are in-process, proven by the rest of the file on both |
+| `tests/concurrency.test.ts` | waiters queue in-process, so a small pool cannot starve the holder | postgres | only Postgres has a connection pool to starve |
+| `tests/content-checkpoint.test.ts` | it never waits for a writer, and never sees what a writer has not committed | sqlite | the reader is a SQLite snapshot of the file under WAL; Postgres's reads are MVCC, with nothing to wait for |
+| `tests/forms-bundle-types.test.ts` | a web node, which serves no backoffice, still renders the bundle type | postgres | two nodes need one shared database, and the suite's SQLite is in memory, one per process |
+| `tests/harness-isolation.test.ts` | leaves a database a cold rebuild would not tell apart | postgres | it proves the Postgres harness's truncate fast path; SQLite's database is new for every test |
+| `tests/maintenance.test.ts` | nodes while the database moves (sqlite) | sqlite | the database is a file the operator moves or replaces under running nodes; a Postgres database does not move under them |
+| `tests/schema-boot.test.ts` | two nodes on one database: newer files win, the older node reads, refuses writes, and sees publishes | postgres | two nodes need one shared database, and the suite's SQLite is in memory |
+| `tests/server-roles.test.ts` | a web node refuses a database nothing has migrated | sqlite | a SQLite file that is not there yet; on Postgres the same refusal is `tests/integration/server-roles.integration.ts`'s first test |
+| `tests/status.test.ts` | says there is no database yet, and does not make one | sqlite | a SQLite file that is not there, and must not be made; a Postgres database is always there to ask |
+| `tests/status.test.ts` | reads a database that exists with nothing in it, and installs nothing | sqlite | an empty SQLite file, which opening must not install into; a Postgres database is not a file that can be found empty, and installing into an empty one is `migrations.test.ts`'s, on both |
+| `tests/table-types.test.ts` | the table types | postgres | `tables.gen.ts` is written from Postgres's catalogue, the stricter of the two |
+| `tests/upgrade.test.ts` | serves reads throughout, then reports 503 and refuses writes after the cut-over | sqlite | the server and the command line share one SQLite file, and its backup is the file's copy; on Postgres the cut-over under a serving node is `schema-boot.test.ts`'s two nodes |
+| `tests/webhooks.test.ts` | two nodes draining the queue at once deliver each event once | postgres | two nodes need one shared database, and the suite's SQLite is in memory |
+| `tests/worker.test.ts` | an api node and a worker (postgres) | postgres | an api node and a worker need one shared database, and the suite's SQLite is in memory |
+| `tests/custom-tables.test.ts` | the files sit beside crombolo’s, and the pre-upgrade backup copies them | sqlite | a site's and a bundle's tables are SQLite files of their own; on Postgres they are schemas in the one database, which the file proves on both |
+| `tests/integration/first-boot.integration.ts` | a database the previous release left is upgraded by `crombolo upgrade`, and then starts | sqlite | the rewind to the last release edits SQLite's file; on Postgres the same upgrade is `tests/upgrade-from-release.test.ts`, from a real release's database |
+| `tests/integration/upgrade.integration.ts` | restoring the backup puts the database back before the upgrade | sqlite | a SQLite backup is a file to copy back; a Postgres one is the operator's own dump, restored with their own tools |
 
 ## Running the tests
 

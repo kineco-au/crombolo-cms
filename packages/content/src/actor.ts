@@ -28,7 +28,7 @@ export interface ActorOrigin {
   forwardedFor?: string | null
   /**
    * The site's own code that made the change (story 298): `route POST /api/listings`,
-   * `action contact.send`, `job imports.nightly`, `event Umbraco.ContentPublish <key>`.
+   * `action contact.send`, `job imports.nightly`, `event Crombolo.ContentPublish <key>`.
    */
   via?: string
 }

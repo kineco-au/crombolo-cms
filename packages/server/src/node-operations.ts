@@ -164,6 +164,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     email: options.email,
     backOfficeUrl: options.backOfficeUrl,
     notifier: options.notifier,
+    nudge: options.nudgeEvents,
     publisher: {
       publish: (key, cultures, actor, approvedHead) =>
         (documents as DocumentOperations).publish(actor, key, {
@@ -208,7 +209,9 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
         instructedBy: options.instructedBy,
         valueIntake: repository.valueIntake,
       }),
-    events: watched(createElementEventSink()),
+    events: watched(
+      createElementEventSink({ webhooks: options.webhooks, nudge: options.nudgeEvents }),
+    ),
     onChange: () => cache?.invalidate(),
   })
   /** A workspace's media and Library (story 390): audited, announced nowhere else. */

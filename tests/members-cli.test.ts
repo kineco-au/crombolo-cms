@@ -156,7 +156,7 @@ describe('in a site folder', () => {
     })
     const provider = ok('members', 'new', 'ext@example.com', '--type', 'customer', '--login', 'ext')
     expect(provider.out).toContain('only through an identity provider')
-    expect(provider.out).toContain('members reset-password ext --stdin')
+    expect(provider.out).toContain('members reset-password ext')
     expect(run('members', 'new', 'ANA@example.com', '--type', 'customer').code).toBe(
       ERROR_KINDS.conflict.exitCode,
     )
@@ -196,14 +196,19 @@ describe('in a site folder', () => {
     expect(ok('members', 'reset-2fa', 'ana@example.com').out).toContain('no change')
 
     const made = json<{ password: string | null }>(
-      run('members', 'reset-password', 'ana@example.com', '-o', 'json'),
+      run('members', 'reset-password', 'ana@example.com', '--password', '-o', 'json'),
     )
     expect(made.password?.length).toBeGreaterThan(10)
-    const refused = run('members', 'reset-password', 'ext')
-    expect(refused.code).toBe(ERROR_KINDS.refused.exitCode)
-    expect(refused.err).toContain('--stdin')
+    // Story 282: a link by default, which a site with no page for it cannot give.
+    const noPage = run('members', 'reset-password', 'ext')
+    expect(noPage.code).toBe(ERROR_KINDS.unavailable.exitCode)
+    expect(noPage.err).toContain('members.resetPasswordPage')
     const given = json<{ password: string | null }>(
-      piped(here, ['members', 'reset-password', 'ext', '--stdin', '-o', 'json'], 'a-new-one-12'),
+      piped(
+        here,
+        ['members', 'reset-password', 'ext', '--password', '--stdin', '-o', 'json'],
+        'a-new-one-12',
+      ),
     )
     expect(given.password).toBeNull()
     expect(json<Member>(run('members', 'show', 'ext', '-o', 'json')).signsIn).toBe('password')
@@ -492,9 +497,13 @@ describe('on a hosted site, with --profile', () => {
     expect((await ok('members', 'unlock', 'ana@example.com')).out).toContain('can sign in again')
     expect((await ok('members', 'reset-2fa', 'ana@example.com')).out).toContain('no change')
     const password = json<{ password: string }>(
-      await run(['members', 'reset-password', 'ana@example.com', '-o', 'json']),
+      await run(['members', 'reset-password', 'ana@example.com', '--password', '-o', 'json']),
     )
     expect(password.password.length).toBeGreaterThan(10)
+    // Story 282: the hosted site has no page for a reset link, and says so.
+    const noPage = await run(['members', 'reset-password', 'ana@example.com'])
+    expect(noPage.code).not.toBe(0)
+    expect(noPage.err).toContain('members.resetPasswordPage')
     await ok('members', 'groups', 'new', 'Staff')
     await ok('members', 'groups', 'add', 'ana@example.com', 'Staff')
     await ok('members', 'groups', 'leave', 'ana@example.com', 'Subscribers')

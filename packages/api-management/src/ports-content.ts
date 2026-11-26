@@ -126,7 +126,8 @@ export interface ElementPort {
   remove(key: string): Promise<boolean>
   /** `targetKey` undefined restores to where it was trashed from. */
   restore(key: string, targetKey: string | null | undefined): Promise<{ ok: true } | PortFailure>
-  emptyRecycleBin(): Promise<void>
+  /** Story 440: answers every item it deleted. */
+  emptyRecycleBin(): Promise<string[]>
   /** null at the root; undefined when the element does not exist. */
   originalParent(key: string): Promise<string | null | undefined>
   recycleBin(parentKey: string | null, paging: SkipTake): Promise<Page<ElementTreeItem>>
@@ -145,6 +146,8 @@ export interface ElementPort {
     versionId: string,
   ): Promise<{ versionId: string; document: DocumentAggregate } | undefined>
   rollback(versionId: string): Promise<boolean>
+  /** Story 440: an earlier version brought back, answering the element's key. */
+  rollbackElement(versionId: string): Promise<string | undefined>
   setPreventCleanup(versionId: string, prevent: boolean): Promise<boolean>
   /** The author the audit log falls back to, as documents and media do. */
   systemUserKey(): Promise<string | null>

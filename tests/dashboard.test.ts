@@ -127,6 +127,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.Workflows',
       'workspaceView:Crombolo.WorkspaceView.BundleEditor.UserGroups',
       'workspaceView:Crombolo.WorkspaceView.Webhook.Storage',
+      'workspaceView:Crombolo.WorkspaceView.Webhook.Workflows',
       'workspaceView:Crombolo.WorkspaceView.UserGroup.Editor',
       'workspaceView:Crombolo.WorkspaceView.User.CliTokens',
       'dashboard:Crombolo.Dashboard.ContentSettings',
@@ -402,13 +403,13 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
     )
   }, 10_000)
 
-  test('production boot refuses a schema change that needs data work, naming the command', async () => {
-    if (dialectUnderTest !== 'sqlite') return
+  test(`production boot refuses a schema change that needs data work, naming the command (${dialectUnderTest})`, async () => {
     const s = site('1.0.0', '')
+    // Story 085: on both databases. Postgres's own, kept between boots; its backup is a command.
     const config = {
       schemaDir: s.schemaDir,
       componentsDir: s.componentsDir,
-      sqliteFile: s.sqliteFile,
+      ...(dialectUnderTest === 'sqlite' ? { sqliteFile: s.sqliteFile } : { pgDump: 'true' }),
       development: false,
       schemaWritable: false,
       nodeId: 'prod',

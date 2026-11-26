@@ -1138,6 +1138,8 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'PutUsersInSettings',
       'KeysPerWorkspace',
       'AddServiceAccountSecrets',
+      'AddMemberPasswordReset',
+      'RenameWebhookEvents',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

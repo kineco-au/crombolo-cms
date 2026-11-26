@@ -5,6 +5,7 @@
  * record. The Marketplace installs through it, and so does `installExtension`,
  * a host's own way to install. docs/bundles.md, "The record and the roots".
  */
+
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
@@ -30,6 +31,7 @@ import {
 } from '@crombolo/backoffice-host'
 import { LOCAL_BUNDLES_DIR, localBundleFileName } from '@crombolo/transfer'
 import { loadConfig } from './config.ts'
+import { extensionEventNameProblems } from './extension-event-names.ts'
 import {
   type ProvenancePolicy,
   type ProvenanceResult,
@@ -475,6 +477,9 @@ function landedProblem(
   const dialogs = extensionDialogProblems(dir)
   if (dialogs.length > 0)
     return `${name}@${read.bundle.version} was removed again: ${dialogs.join('; ')}.`
+  const events = extensionEventNameProblems(dir)
+  if (events.length > 0)
+    return `${name}@${read.bundle.version} was removed again: ${events.join('; ')}.`
   return undefined
 }
 

@@ -2,16 +2,15 @@
 # a pull request, and by release.yml before it publishes, so a release runs the
 # build that guards main plus the two legs below that main leaves out.
 #
-# Two things are opt-in on main and unconditional for a release. The browser suite
-# is slow and runner-sensitive, so it runs only when the commit message says
-# `--browser-tests`. The Postgres leg of the unit suite rebuilds the schema per
-# test and is several times slower than SQLite on a runner, so main runs SQLite
-# alone and Postgres only when the commit message says `--postgres-tests`; a
-# release always runs both dialects, because that is what it publishes.
+# The browser suite is opt-in on main and unconditional for a release: it is slow
+# and runner-sensitive, so it runs only when the commit message says
+# `--browser-tests`. Every push to main runs the unit suite on SQLite and Postgres,
+# in shards side by side (story 085), and the integration files where the database
+# matters on Postgres too; a pull request runs SQLite alone.
 #
 # The integration suites are the other thing `bun test` does not collect — they
 # spawn the CLI per step — but they are cheap, so the pipeline always runs them.
-# Locally: `bun run test:integration`.
+# Locally: `bun run test:integration`, and `bun run docker:test:integration:postgres`.
 name: CI
 
 on:
@@ -22,10 +21,6 @@ on:
         inputs:
             browser_tests:
                 description: Run the browser suite regardless of the commit message.
-                type: boolean
-                default: false
-            postgres_tests:
-                description: Run the unit suite on Postgres as well as SQLite, regardless of the commit message.
                 type: boolean
                 default: false
 
@@ -124,17 +119,14 @@ jobs:
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
-            # SQLite always, Postgres for a release or when the commit asks, each in
+            # SQLite always, Postgres on main and for a release (story 085), each in
             # four jobs split by measured time (scripts/test-shard.ts), and each job
             # across two processes (scripts/test-parallel.ts --shard), so no job runs
             # much past ten minutes: SQLite in one job had grown past half an hour.
             # Each process is isolated, with its own database (tests/support/isolate.ts).
             matrix: >-
                 ${{ fromJSON(
-                  (inputs.postgres_tests ||
-                   (github.event_name == 'push' &&
-                    github.ref == 'refs/heads/main' &&
-                    contains(github.event.head_commit.message, '--postgres-tests')))
+                  github.event_name != 'pull_request'
                   && '{"include":[{"dialect":"sqlite","shard":1,"shards":4},{"dialect":"sqlite","shard":2,"shards":4},{"dialect":"sqlite","shard":3,"shards":4},{"dialect":"sqlite","shard":4,"shards":4},{"dialect":"postgres","shard":1,"shards":4},{"dialect":"postgres","shard":2,"shards":4},{"dialect":"postgres","shard":3,"shards":4},{"dialect":"postgres","shard":4,"shards":4}]}'
                   || '{"include":[{"dialect":"sqlite","shard":1,"shards":4},{"dialect":"sqlite","shard":2,"shards":4},{"dialect":"sqlite","shard":3,"shards":4},{"dialect":"sqlite","shard":4,"shards":4}]}') }}
         services:
@@ -248,6 +240,71 @@ jobs:
                       'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
                   fail-on-cache-miss: true
             - run: bun run test:integration
+
+    # Story 087: the ready-to-run image, built from this commit's packages as a release would
+    # build it from npm, and started as a cloud console would: a setup code, then Postgres.
+    image:
+        name: container image
+        needs: [client, check]
+        if: github.event_name != 'pull_request'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - run: bun install --frozen-lockfile
+            - run: bun run generate:types
+            - uses: actions/cache/restore@v6
+              with:
+                  path: ${{ env.DIST_PATH }}
+                  key: >-
+                      backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
+                  fail-on-cache-miss: true
+            - run: bun run image:build
+            - run: bun run image:check
+
+    # Story 085: the integration files where the database matters, on Postgres, each site
+    # with a database of its own (tests/integration/support/database.ts). Main only.
+    integration-postgres:
+        name: CLI end to end (integration, postgres)
+        if: github.event_name != 'pull_request'
+        needs: [client, check]
+        runs-on: ubuntu-latest
+        services:
+            db:
+                image: postgres:18-alpine
+                env:
+                    POSTGRES_USER: crombolo
+                    POSTGRES_PASSWORD: crombolo
+                    POSTGRES_DB: crombolo_test
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd "pg_isready -U crombolo -d crombolo_test"
+                    --health-interval 2s
+                    --health-timeout 3s
+                    --health-retries 30
+        env:
+            CROMBOLO_POSTGRES_URL: postgres://crombolo:crombolo@localhost:5432/crombolo_test
+        steps:
+            - uses: actions/checkout@v5
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: ${{ env.BUN_VERSION }}
+            - run: bun install --frozen-lockfile
+            - run: bun run generate:types
+            - uses: actions/cache/restore@v6
+              with:
+                  path: ${{ env.DIST_PATH }}
+                  key: >-
+                      backoffice-dist-${{ hashFiles('bun.lock', 'scripts/vendor-backoffice.ts',
+                      'packages/backoffice-dist/upstream-static/**',
+                      'packages/backoffice-dist/UMBRACO_CLIENT', 'scripts/fork.ts') }}
+                  fail-on-cache-miss: true
+            - run: bun run test:integration:postgres
 
     # Story 311: an extension is confined by Deno's own permissions, which must
     # hold on every platform a site runs on, with no Docker. The extension tests,

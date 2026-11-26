@@ -66,6 +66,13 @@ export interface ElementStore {
   ): Promise<{ ok: true; key: string } | StoreFailure>
   move(key: string, targetKey: string | null): Promise<{ ok: true } | StoreFailure>
   moveToRecycleBin(key: string): Promise<boolean>
+  /** Story 440: deleted for good, from the bin. */
+  remove(key: string): Promise<boolean>
+  restore(key: string, targetKey: string | null | undefined): Promise<{ ok: true } | StoreFailure>
+  /** Story 440: the bin emptied, answering every item it deleted by key. */
+  emptyRecycleBin(): Promise<string[]>
+  /** Story 440: an earlier version brought back, answering the element's key. */
+  rollbackElement(versionId: string): Promise<string | undefined>
   moveFolder(key: string, targetKey: string | null): Promise<{ ok: true } | StoreFailure>
   folderToRecycleBin(key: string): Promise<boolean>
   folders: {
@@ -255,6 +262,45 @@ export function createElementOperations(options: ElementOperationsOptions) {
         async (store) =>
           found(await store.moveToRecycleBin(key), 'The element could not be found.'),
         () => ({ type: 'trashed', key }),
+      ),
+
+    /** Story 440: an element or folder deleted for good, from the bin. */
+    remove: (actor: Actor, key: string) =>
+      commit(
+        actor,
+        'delete',
+        async (store) => found(await store.remove(key), 'The item could not be found.'),
+        () => ({ type: 'deleted', key }),
+      ),
+
+    restore: (actor: Actor, key: string, targetKey: string | null | undefined) =>
+      commit(
+        actor,
+        'restore',
+        (store) => store.restore(key, targetKey),
+        () => ({ type: 'restored', key }),
+      ),
+
+    /** Story 440: every item in the bin deleted, said once with all their keys. */
+    emptyBin: (actor: Actor) =>
+      commit(
+        actor,
+        'emptyBin',
+        async (store) => ({ ok: true as const, keys: (await store.emptyRecycleBin()) ?? [] }),
+        (done) => ({ type: 'binEmptied', keys: done.keys }),
+      ),
+
+    rollback: (actor: Actor, versionId: string) =>
+      commit(
+        actor,
+        'rollback',
+        async (store) => {
+          const key = await store.rollbackElement(versionId)
+          return key
+            ? { ok: true as const, key }
+            : { ok: false as const, reason: 'The version could not be found.', status: 404 }
+        },
+        (done) => ({ type: 'rolledBack', key: done.key }),
       ),
 
     createFolder: (actor: Actor, input: { key?: string; name: string; parentKey: string | null }) =>

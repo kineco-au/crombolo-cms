@@ -25,9 +25,11 @@ export type DocumentEvent =
    * `name` is read before it went, since it cannot be read after. `was`: the page as it
    * stood, when it was deleted from outside the recycle bin (story 411).
    */
-  | { type: 'deleted'; key: string; name: string | null; was?: object }
+  /** `fromBin`: deleted by emptying the bin, which says so once for all of them (story 440). */
+  | { type: 'deleted'; key: string; name: string | null; was?: object; fromBin?: boolean }
   | { type: 'restored'; key: string }
-  | { type: 'binEmptied' }
+  /** Story 440: every item the emptying deleted, by key. */
+  | { type: 'binEmptied'; keys: string[] }
   /** `from`: where it was before, as its change carries it (story 411). */
   | { type: 'moved'; key: string; from?: { parentKey: string | null; trashed: boolean } }
   | { type: 'copied'; key: string; copyKey: string }
@@ -146,35 +148,41 @@ export function auditFor(event: DocumentEvent): {
 }
 
 /** The webhook an event raises, by Umbraco's alias, and the page it names. Pure. */
-export function webhookFor(event: DocumentEvent): { alias: string; key: string } | undefined {
+export function webhookFor(
+  event: DocumentEvent,
+): { alias: string; key: string; keys?: string[] } | undefined {
   switch (event.type) {
     case 'created':
     case 'saved':
-      return { alias: 'Umbraco.ContentSaved', key: event.key }
+      return { alias: 'Crombolo.ContentSaved', key: event.key }
     case 'createdAndPublished':
     case 'savedAndPublished':
     case 'published':
     case 'branchPublished':
-      return { alias: 'Umbraco.ContentPublish', key: event.key }
+      return { alias: 'Crombolo.ContentPublish', key: event.key }
     case 'unpublished':
-      return { alias: 'Umbraco.ContentUnpublish', key: event.key }
+      return { alias: 'Crombolo.ContentUnpublish', key: event.key }
     case 'deleted':
-      return { alias: 'Umbraco.ContentDelete', key: event.key }
+      // Emptying the bin says so once, for every item it took (story 440).
+      return event.fromBin ? undefined : { alias: 'Crombolo.ContentDelete', key: event.key }
     case 'trashed':
-      return { alias: 'Umbraco.ContentMovedToRecycleBin', key: event.key }
+      return { alias: 'Crombolo.ContentMovedToRecycleBin', key: event.key }
     // Out of the bin is a move, as Umbraco raises it.
     case 'moved':
     case 'restored':
-      return { alias: 'Umbraco.ContentMoved', key: event.key }
+      return { alias: 'Crombolo.ContentMoved', key: event.key }
     case 'copied':
-      return { alias: 'Umbraco.ContentCopied', key: event.copyKey }
+      return { alias: 'Crombolo.ContentCopied', key: event.copyKey }
     case 'sorted':
-      return event.parentKey ? { alias: 'Umbraco.ContentSorted', key: event.parentKey } : undefined
+      return event.parentKey ? { alias: 'Crombolo.ContentSorted', key: event.parentKey } : undefined
     case 'rolledBack':
-      return { alias: 'Umbraco.ContentRolledBack', key: event.key }
+      return { alias: 'Crombolo.ContentRolledBack', key: event.key }
+    case 'binEmptied':
+      return event.keys.length > 0
+        ? { alias: 'Crombolo.ContentEmptiedRecycleBin', key: '', keys: event.keys }
+        : undefined
     // A schedule publishes nothing yet: the job raises it when it fires.
     case 'scheduled':
-    case 'binEmptied':
     case 'domainsAssigned':
     case 'publicAccessChanged':
       return undefined
@@ -305,6 +313,11 @@ export type ElementEvent =
   | { type: 'trashed'; key: string }
   | { type: 'moved'; key: string }
   | { type: 'copied'; key: string; copyKey: string }
+  /** Story 440: deleted for good, restored from the bin, the bin emptied, rolled back. */
+  | { type: 'deleted'; key: string }
+  | { type: 'restored'; key: string }
+  | { type: 'binEmptied'; keys: string[] }
+  | { type: 'rolledBack'; key: string }
   | { type: 'folderCreated'; key: string }
   | { type: 'folderRenamed'; key: string }
   | { type: 'folderMoved'; key: string }
@@ -331,7 +344,7 @@ export function elementAuditFor(event: ElementEvent): {
     category: 'content' as const,
     action,
     entityType: 'Element' as const,
-    entityKey: event.key,
+    entityKey: 'key' in event ? event.key : '',
   })
   const folder = (action: string) => ({ ...element(action), entityType: 'ElementFolder' as const })
   switch (event.type) {
@@ -353,6 +366,14 @@ export function elementAuditFor(event: ElementEvent): {
       return element('Move')
     case 'copied':
       return element('Copy')
+    case 'deleted':
+      return element('Delete')
+    case 'restored':
+      return element('Restore')
+    case 'binEmptied':
+      return element('EmptyRecycleBin')
+    case 'rolledBack':
+      return element('RollBack')
     case 'folderCreated':
       return folder('Create')
     case 'folderRenamed':
@@ -361,6 +382,43 @@ export function elementAuditFor(event: ElementEvent): {
       return folder('Move')
     case 'folderTrashed':
       return folder('Trash')
+  }
+}
+
+/**
+ * Story 440: the webhook a Library event raises, by Umbraco's word for its elements; a
+ * folder's raises none. Pure.
+ */
+export function elementWebhookFor(
+  event: ElementEvent,
+): { alias: string; key: string; keys?: string[] } | undefined {
+  switch (event.type) {
+    case 'created':
+    case 'saved':
+      return { alias: 'Crombolo.ElementSaved', key: event.key }
+    case 'createdAndPublished':
+    case 'savedAndPublished':
+    case 'published':
+      return { alias: 'Crombolo.ElementPublish', key: event.key }
+    case 'unpublished':
+      return { alias: 'Crombolo.ElementUnpublish', key: event.key }
+    case 'trashed':
+      return { alias: 'Crombolo.ElementMovedToRecycleBin', key: event.key }
+    case 'moved':
+    case 'restored':
+      return { alias: 'Crombolo.ElementMoved', key: event.key }
+    case 'copied':
+      return { alias: 'Crombolo.ElementCopied', key: event.copyKey }
+    case 'deleted':
+      return { alias: 'Crombolo.ElementDelete', key: event.key }
+    case 'rolledBack':
+      return { alias: 'Crombolo.ElementRolledBack', key: event.key }
+    case 'binEmptied':
+      return event.keys.length > 0
+        ? { alias: 'Crombolo.ElementEmptiedRecycleBin', key: '', keys: event.keys }
+        : undefined
+    default:
+      return undefined
   }
 }
 

@@ -20,9 +20,24 @@
  * `bun run test:integration` runs it, and CI always does.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, resolve } from 'node:path'
 import { ERROR_KINDS, OUTCOMES } from '../../packages/cli/src/errors.ts'
+
+import {
+  dropSiteDatabases,
+  onPostgres,
+  type SiteDatabase,
+  siteDatabase,
+} from './support/database.ts'
 
 const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
@@ -190,14 +205,31 @@ describe('the upgrade, end to end through the CLI', () => {
   const firstDeploy: Record<Promoted, Run | undefined> = { dev: undefined, prod: undefined }
   /** The backup the fix took in `prod`, used by the restore test last. */
   let prodBackup = ''
+  /** Each environment's database: a file beside the releases, or a Postgres database. */
+  const databases: Partial<Record<Environment, SiteDatabase>> = {}
+
+  /** Whether the run took its backup: the SQLite copy it names, or the Postgres command's mark. */
+  const backedUp = (database: Promoted, out: string): string | undefined => {
+    if (onPostgres)
+      return readdirSync(dir).find(
+        (name) => name.startsWith(`${database}-fix-`) && name.endsWith('.dump'),
+      )
+    const backup = /backup\s+(\S+\.bak)/.exec(out)?.[1]
+    return backup && existsSync(backup) ? backup : undefined
+  }
 
   const releaseDir = (release: Release) => join(dir, 'releases', String(release))
 
   function environment(database: Environment, release: Release): Record<string, string> {
     return {
       ...(process.env as Record<string, string>),
-      CROMBOLO_DB: 'sqlite',
-      CROMBOLO_SQLITE_FILE: join(dir, `${database}.sqlite`),
+      ...(databases[database] as SiteDatabase).env,
+      // Story 085: on Postgres the backup is the operator's command; this one leaves a mark.
+      ...(onPostgres
+        ? {
+            CROMBOLO_PG_DUMP: `touch "${join(dir, database)}-$CROMBOLO_BACKUP_REASON-$CROMBOLO_BACKUP_STAMP.dump"`,
+          }
+        : {}),
       CROMBOLO_SCHEMA_DIR: join(releaseDir(release), 'schema'),
       CROMBOLO_COMPONENTS_DIR: join(releaseDir(release), 'components'),
       CROMBOLO_SCHEMA_REVISION: RELEASES[release].revision,
@@ -362,6 +394,8 @@ describe('the upgrade, end to end through the CLI', () => {
     mkdirSync(join(ROOT, 'output'), { recursive: true })
     dir = mkdtempSync(join(ROOT, 'output', 'integration-upgrade-'))
     writeFileSync(join(dir, 'seed.ts'), SEED)
+    for (const database of ['dev', 'prod', 'fresh'] as Environment[])
+      databases[database] = await siteDatabase(dir, database)
     for (const release of [1, 2, 3] as Release[]) deploy(release)
 
     for (const database of ['dev', 'prod'] as Promoted[]) {
@@ -380,8 +414,9 @@ describe('the upgrade, end to end through the CLI', () => {
     }
   }, 180_000)
 
-  afterAll(() => {
+  afterAll(async () => {
     if (dir) rmSync(dir, { recursive: true, force: true })
+    await dropSiteDatabases()
   })
 
   test('a database behind the framework defers the site part to the framework steps', async () => {
@@ -449,9 +484,7 @@ describe('the upgrade, end to end through the CLI', () => {
     expect(fix.out).toContain('findings: 0 blocking, 0 need a person, 0 automatic')
 
     // The backup is the rollback plan, so it has to exist before anything else.
-    const backup = /backup\s+(\S+\.bak)/.exec(fix.out)?.[1] as string
-    expect(backup).toBeDefined()
-    expect(existsSync(backup)).toBe(true)
+    expect(backedUp('dev', fix.out), fix.out).toBeDefined()
 
     // Prepared, not current: the database is still at release 1's version.
     expect(await stateOf('dev')).toEqual({ version: '1.0.0', revision: '1' })
@@ -538,8 +571,8 @@ describe('the upgrade, end to end through the CLI', () => {
     const fix = await cli('prod', 2, 'upgrade', 'check', '--fix')
     expect(fix.code, fix.out).toBe(0)
     expect(fix.out).toContain('applied  0001-summary-to-intro')
-    prodBackup = /backup\s+(\S+\.bak)/.exec(fix.out)?.[1] as string
-    expect(existsSync(prodBackup)).toBe(true)
+    prodBackup = backedUp('prod', fix.out) as string
+    expect(prodBackup, fix.out).toBeDefined()
 
     const upgraded = await cli('prod', 2, 'upgrade')
     expect(upgraded.code, upgraded.out).toBe(0)
@@ -561,18 +594,23 @@ describe('the upgrade, end to end through the CLI', () => {
     expect(await homePage('dev', 2)).toContain('<p id="intro">Intro: one</p>')
   })
 
-  test('restoring the backup puts the database back before the upgrade', async () => {
-    // Last, because it throws away everything `prod` did. A restore is the file
-    // and nothing else: the write-ahead log beside it belongs to the newer state.
-    const database = join(dir, 'prod.sqlite')
-    for (const suffix of ['-wal', '-shm']) rmSync(`${database}${suffix}`, { force: true })
-    copyFileSync(prodBackup, database)
+  // Story 085: a SQLite backup is a file to copy back; a Postgres one is the operator's dump,
+  // restored with their own tools.
+  test.skipIf(onPostgres)(
+    'restoring the backup puts the database back before the upgrade',
+    async () => {
+      // Last, because it throws away everything `prod` did. A restore is the file
+      // and nothing else: the write-ahead log beside it belongs to the newer state.
+      const database = join(dir, 'prod.sqlite')
+      for (const suffix of ['-wal', '-shm']) rmSync(`${database}${suffix}`, { force: true })
+      copyFileSync(prodBackup, database)
 
-    expect(await stateOf('prod')).toEqual({ version: '1.0.0', revision: '1' })
-    // The ledger went back with it, so the migration is pending again.
-    const check = await cli('prod', 2, 'upgrade', 'check')
-    expect(check.code, check.out).toBe(0)
-    expect(check.out).toContain('moves 3 value(s)')
-    expect(await homePage('prod', 1)).toContain('<p id="summary">alpha</p>')
-  })
+      expect(await stateOf('prod')).toEqual({ version: '1.0.0', revision: '1' })
+      // The ledger went back with it, so the migration is pending again.
+      const check = await cli('prod', 2, 'upgrade', 'check')
+      expect(check.code, check.out).toBe(0)
+      expect(check.out).toContain('moves 3 value(s)')
+      expect(await homePage('prod', 1)).toContain('<p id="summary">alpha</p>')
+    },
+  )
 })

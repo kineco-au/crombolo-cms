@@ -389,12 +389,55 @@ describe(`a change moved between sites (${dialectUnderTest})`, () => {
     }
     expect(body.conflicts.map((c) => c.says).join(' ')).toContain('title')
     expect(await target.fieldValue(HOME, 'title')).toBe('Ours')
-    // Left to settle: it can be edited there and merged.
+    // Left to settle: edited there, the edit kept as its answer, and merged.
     await target.edit(HOME, { title: 'Spring sale, ours' }, body.workspace)
+    expect(
+      (
+        await target.send('POST', `${WORKSPACES}/${body.workspace}/conflicts`, {
+          page: HOME,
+          answers: { 'title||': 'mine' },
+        })
+      ).status,
+    ).toBe(200)
     await target.merge(body.workspace)
     expect(await target.fieldValue(HOME, 'title')).toBe('Spring sale, ours')
     expect(await target.held([made.key])).toEqual([made.key])
   }, 20_000)
+
+  test('story 439: the field the target changed since is held with both values, and answered either way', async () => {
+    const made = await madeThere((s, w) => s.edit(HOME, { title: 'Spring sale' }, w))
+    for (const [answer, kept] of [
+      ['mine', 'Spring sale'],
+      ['theirs', 'Ours'],
+    ] as const) {
+      const target = await site()
+      await target.edit(HOME, { title: 'Ours' })
+      const staged = await target.put(made.bundle, '?stage=true')
+      expect(staged.status).toBe(409)
+      const { workspace } = (await staged.json()) as { workspace: string }
+      // The merge asks, with what each side has; until answered it is refused, naming it.
+      const plan = (await (
+        await target.send('GET', `${WORKSPACES}/${workspace}/merge`)
+      ).json()) as {
+        conflicts: Array<{ key: string; field: string; mine: unknown; theirs: unknown }>
+      }
+      expect(plan.conflicts).toMatchObject([
+        { key: HOME, field: 'title||', mine: 'Spring sale', theirs: 'Ours' },
+      ])
+      const refused = await target.send('POST', `${WORKSPACES}/${workspace}/merge`, { accept: [] })
+      expect(refused.status).toBe(409)
+      expect(await target.fieldValue(HOME, 'title')).toBe('Ours')
+
+      const answered = await target.send('POST', `${WORKSPACES}/${workspace}/conflicts`, {
+        page: HOME,
+        answers: { 'title||': answer },
+      })
+      expect(answered.status, await answered.clone().text()).toBe(200)
+      await target.merge(workspace)
+      expect(await target.fieldValue(HOME, 'title')).toBe(kept)
+      expect(await target.held([made.key])).toEqual([made.key])
+    }
+  }, 40_000)
 
   test('a staged change is looked at in a workspace nobody edits, and applied by its merge', async () => {
     const made = await madeThere((s, w) => s.edit(HOME, { title: 'Spring sale' }, w))

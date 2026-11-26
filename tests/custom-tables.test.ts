@@ -639,17 +639,18 @@ describe('roles (postgres)', () => {
   })
 })
 
-describe('boot and backup (sqlite)', () => {
-  const site = () => {
+describe('boot and backup', () => {
+  /** SQLite's files in a folder of their own; on Postgres the suite's database, its backup a command. */
+  const site = (dialect: 'sqlite' | 'postgres' = 'sqlite') => {
     const dir = mkdtempSync(join(process.cwd(), 'output', 'tables-boot-'))
     dirs.push(dir)
     return loadConfig({
-      sqliteFile: join(dir, 'crombolo.sqlite'),
+      ...(dialect === 'sqlite' ? { sqliteFile: join(dir, 'crombolo.sqlite') } : { pgDump: 'true' }),
       development: false,
       componentsDir: dir,
       schemaDir: join(dir, 'schema'),
       siteDir: dir,
-      dialect: 'sqlite',
+      dialect,
       database: { tables: observations },
     })
   }
@@ -660,9 +661,18 @@ describe('boot and backup (sqlite)', () => {
       [tasksPackage(version)],
     )
 
-  test('production refuses while a step is pending; development applies it', async () => {
-    if (dialectUnderTest !== 'sqlite') return
-    const config = site()
+  // Story 085: on both databases; Postgres's is emptied, owners and all, first.
+  test(`production refuses while a step is pending; development applies it (${dialectUnderTest})`, async () => {
+    if (dialectUnderTest === 'postgres') {
+      // A first install, as SQLite's new file is: nothing installed, owners and all.
+      const bare = await connect({ dialect: 'postgres', poolSize: 1 })
+      await dropOwners(bare)
+      await bare.exec('DROP SCHEMA IF EXISTS public CASCADE')
+      await bare.exec('CREATE SCHEMA public')
+      await bare.exec('CREATE EXTENSION IF NOT EXISTS citext SCHEMA public')
+      await bare.close()
+    }
+    const config = site(dialectUnderTest)
     const v1 = chains(config, '1.1.0')
     const first = await bootstrapDatabase(config, v1)
     await closeTables(v1)
@@ -692,36 +702,38 @@ describe('boot and backup (sqlite)', () => {
     expect((error as Error).message).toContain(TASKS_ID)
   })
 
-  test('the files sit beside crombolo’s, and the pre-upgrade backup copies them', async () => {
-    if (dialectUnderTest !== 'sqlite') return
-    const config = site()
-    const v1 = chains(config, '1.1.0')
-    const boot = await bootstrapDatabase(config, v1)
-    const site1 = databaseFor(v1[0] as never) as Observations
-    await site1.insertInto('species').values({ id: 1, code: 'WREN', name: 'Wren' }).execute()
-    await closeTables(v1)
-    await boot.db.close()
-    expect(existsSync(config.sqliteFile.replace(/\.sqlite$/, '.site.sqlite'))).toBe(true)
-    expect(existsSync(config.sqliteFile.replace(/\.sqlite$/, `.bundle.${TASKS_ID}.sqlite`))).toBe(
-      true,
-    )
+  test.skipIf(dialectUnderTest !== 'sqlite')(
+    'the files sit beside crombolo’s, and the pre-upgrade backup copies them',
+    async () => {
+      const config = site()
+      const v1 = chains(config, '1.1.0')
+      const boot = await bootstrapDatabase(config, v1)
+      const site1 = databaseFor(v1[0] as never) as Observations
+      await site1.insertInto('species').values({ id: 1, code: 'WREN', name: 'Wren' }).execute()
+      await closeTables(v1)
+      await boot.db.close()
+      expect(existsSync(config.sqliteFile.replace(/\.sqlite$/, '.site.sqlite'))).toBe(true)
+      expect(existsSync(config.sqliteFile.replace(/\.sqlite$/, `.bundle.${TASKS_ID}.sqlite`))).toBe(
+        true,
+      )
 
-    const backup = await backupBefore(config, { reason: 'upgrade' })
-    expect(backup.owners).toHaveLength(2)
-    const copy = await connect({
-      dialect: 'sqlite',
-      file: (backup.owners ?? []).find((file) => file.includes('.site.sqlite')) as string,
-    })
-    open.push(copy)
-    expect(await copy.query('SELECT name FROM species')).toEqual([{ name: 'Wren' }])
+      const backup = await backupBefore(config, { reason: 'upgrade' })
+      expect(backup.owners).toHaveLength(2)
+      const copy = await connect({
+        dialect: 'sqlite',
+        file: (backup.owners ?? []).find((file) => file.includes('.site.sqlite')) as string,
+      })
+      open.push(copy)
+      expect(await copy.query('SELECT name FROM species')).toEqual([{ name: 'Wren' }])
 
-    // A node that does not own the database opens the site's tables, never provisioning.
-    const reopened = chains(config, '1.1.0')
-    const reader = await connect({ dialect: 'sqlite', file: config.sqliteFile })
-    open.push(reader)
-    await openTables(reader, config, reopened, { provision: false })
-    const again = databaseFor(reopened[0] as never) as Observations
-    expect(await again.selectFrom('species').select('name').execute()).toEqual([{ name: 'Wren' }])
-    await closeTables(reopened)
-  })
+      // A node that does not own the database opens the site's tables, never provisioning.
+      const reopened = chains(config, '1.1.0')
+      const reader = await connect({ dialect: 'sqlite', file: config.sqliteFile })
+      open.push(reader)
+      await openTables(reader, config, reopened, { provision: false })
+      const again = databaseFor(reopened[0] as never) as Observations
+      expect(await again.selectFrom('species').select('name').execute()).toEqual([{ name: 'Wren' }])
+      await closeTables(reopened)
+    },
+  )
 })

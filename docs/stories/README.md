@@ -103,7 +103,7 @@ not cover.
 | `029` | Scheduled publishing through approval | could | M | done | 028 |
 | `182` | Extensions can dock a panel beside the back office | should | M | done | — |
 | `228` | User groups a site declares in files | should | M | done | 028 |
-| `229` | A workflow nobody can approve says so | should | S | ready | 028 |
+| `229` | A workflow nobody can approve says so | should | S | done | 028 |
 | `234` | A Settings landing page of cards | should | L | done | 021, 235 |
 | `235` | A fork of Umbraco's back-office client | should | L | done | — |
 | `236` | An overview to sign in to, and a guide in the empty site | should | M | done | — |
@@ -156,7 +156,7 @@ not cover.
 | `205` | Media Public Access with inherited permissions | should | M | done | 204 |
 | `191` | Azure AD B2C user flows for members | should | M | done | 031 |
 | `432` | Imported members keep their provider sign-in | must | M | done | 031 |
-| `282` | A member resets their password | should | M | ready | — |
+| `282` | A member resets their password | should | M | done | — |
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
 | `314` | An administrator sees the back office as a group does | should | M | done | — |
 | `389` | Users managed from outside the site | should | S | done | 031, 034 |
@@ -252,9 +252,9 @@ requests, only server-side and build-time front ends can call it.
 | `082` | Version cleanup at scale | could | S | ready | — |
 | `083` | Audit log | should | M | done | — |
 | `084` | Problem-details parity | should | M | ready | — |
-| `085` | A full Postgres parity run | must | M | ready | — |
+| `085` | A full Postgres parity run | must | M | done | — |
 | `086` | Performance of the tree and the published cache | should | M | done | — |
-| `087` | A ready-to-run container image | should | M | ready | — |
+| `087` | A ready-to-run container image | should | M | done | — |
 | `088` | A read-only group changes nothing | must | M | done | 023, 026, 027, 028 |
 | `200` | Bundle import fixtures close before reset | must | S | done | — |
 | `201` | Postgres load and benchmark shards | should | S | done | — |
@@ -365,6 +365,9 @@ requests, only server-side and build-time front ends can call it.
 | `431` | Staff screens reach the site's own tables | must | L | done | 189, 211, 289, 320, 323, 324 |
 | `437` | The site's own side panels, and modules from its packages | must | M | done | 182, 431 |
 | `438` | The site's own code as the back office starts, and panels for everyone | must | S | done | 431, 437 |
+| `439` | Conflicts resolved end to end | should | M | done | 085 |
+| `440` | Webhooks for media, Library items and emptied bins | should | M | done | — |
+| `441` | Webhooks for approvals | should | M | done | 028, 229, 440 |
 | `208` | A Next.js front end | should | L | done | — |
 | `209` | Interactive islands | should | M | done | — |
 | `210` | Middleware | should | M | done | — |

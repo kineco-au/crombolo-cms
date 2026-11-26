@@ -47,7 +47,7 @@ const webhook = (): WebhookDefinition => ({
   description: null,
   url: 'https://search.example/hook',
   enabled: true,
-  events: ['Umbraco.ContentPublish'],
+  events: ['Crombolo.ContentPublish'],
   contentTypeKeys: [],
   headers: {},
 })
@@ -123,13 +123,13 @@ describe('the workflow edits', () => {
 describe('the webhook edits', () => {
   test('events, content types and headers added and taken away', () => {
     const changed = updateWebhook(webhook(), {
-      addEvents: ['Umbraco.ContentUnpublish'],
+      addEvents: ['Crombolo.ContentUnpublish'],
       addContentTypes: ['page'],
       setHeaders: { Authorization: 'env:SEARCH_TOKEN' },
       enabled: false,
     })
     expect(changed.ok && changed.webhook).toMatchObject({
-      events: ['Umbraco.ContentPublish', 'Umbraco.ContentUnpublish'],
+      events: ['Crombolo.ContentPublish', 'Crombolo.ContentUnpublish'],
       contentTypeKeys: ['page'],
       headers: { Authorization: 'env:SEARCH_TOKEN' },
       enabled: false,
@@ -185,7 +185,7 @@ describe('the commands, on a site with a request waiting', () => {
       'schema/content-types/article.toml':
         '[content-type]\nalias = "article"\nname = "Article"\nallow-at-root = true\n',
       'schema/webhooks/searchIndex.toml':
-        '[webhook]\nalias = "searchIndex"\nurl = "https://search.example/hook"\nevents = ["Umbraco.ContentPublish"]\n',
+        '[webhook]\nalias = "searchIndex"\nurl = "https://search.example/hook"\nevents = ["Crombolo.ContentPublish"]\n',
       'components/page.tsx': 'export default () => <main />\n',
     }
     for (const [path, body] of Object.entries(files)) {
@@ -304,7 +304,7 @@ describe('the commands, on a site with a request waiting', () => {
       'update',
       'searchIndex',
       '--event',
-      'Umbraco.ContentUnpublish',
+      'Crombolo.ContentUnpublish',
       '--content-type',
       'page',
       '--header',
@@ -318,7 +318,7 @@ describe('the commands, on a site with a request waiting', () => {
         'alias = "searchIndex"',
         'url = "https://search.example/hook"',
         'enabled = false',
-        'events = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish"]',
+        'events = ["Crombolo.ContentPublish", "Crombolo.ContentUnpublish"]',
         'content-types = ["page"]',
         '',
         '[webhook.headers]',
@@ -326,7 +326,7 @@ describe('the commands, on a site with a request waiting', () => {
         '',
       ].join('\n'),
     )
-    const again = run('webhooks', 'update', 'searchIndex', '--event', 'Umbraco.ContentUnpublish')
+    const again = run('webhooks', 'update', 'searchIndex', '--event', 'Crombolo.ContentUnpublish')
     expect(again.out).toContain('nothing to change')
     const secret = run('webhooks', 'update', 'searchIndex', '--header', 'X-Key=abc123')
     expect(secret.code).toBe(ERROR_KINDS.refused.exitCode)
@@ -355,8 +355,9 @@ describe('the commands, on a site with a request waiting', () => {
       description: null,
       url: 'https://stored.example/hook',
       enabled: true,
-      events: ['Umbraco.ContentPublish'],
+      events: ['Crombolo.ContentPublish'],
       contentTypeKeys: [],
+      workflows: [],
       sealedHeaders: null,
     })
     await db.close()

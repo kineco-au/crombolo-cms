@@ -192,7 +192,16 @@ export function createPeopleExchange(options: {
     const loginProvider = externalLoginProvider('user', provider.oidc.id)
     const value = text(claims, provider.oidc.claims.identity ?? 'sub')
     if (!value) return 'the token names no person'
-    const linked = await logins.findByIdentity(loginProvider, { value, issuer })
+    let linked = await logins.findByIdentity(loginProvider, { value, issuer })
+    // Linked ahead of a first sign-in (`PUT users/{key}/logins`, story 404), a link has no
+    // identity yet: where the provider names people by `sub`, its subject is that identity.
+    if (!linked && (provider.oidc.claims.identity ?? 'sub') === 'sub') {
+      const bySubject = await logins.find(loginProvider, value)
+      if (bySubject && !bySubject.identity) {
+        await logins.recordIdentity(loginProvider, value, { value, issuer })
+        linked = bySubject
+      }
+    }
     if (linked) {
       const account = await options.accounts.byKey(linked.ownerKey)
       return account ?? 'the person it is linked to no longer exists'

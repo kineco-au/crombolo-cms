@@ -44,6 +44,8 @@ applies-to = { branches = [], content-types = ["policy"] }
 publishers-may-skip = true
 on-edit = "${onEdit}"
 unpublish = true
+# Story 229: the administrator is the stage's only approver, so may approve their own.
+self-approval = "allowed"
 
 [[stage]]
 alias = "legal"

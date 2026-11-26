@@ -83,21 +83,21 @@ describe('values by alias', () => {
 
 describe('the config’s events', () => {
   test('name events the site raises, each a function', () => {
-    expect(siteEventProblems({ 'Umbraco.ContentPublish': () => {} })).toEqual([])
-    expect(siteEventProblems({ 'Umbraco.Nothing': () => {}, 'Umbraco.ContentSaved': 3 })).toEqual([
-      'The site handles "Umbraco.Nothing", which is not an event this site raises.',
-      'The site\'s handler for "Umbraco.ContentSaved" is not a function.',
+    expect(siteEventProblems({ 'Crombolo.ContentPublish': () => {} })).toEqual([])
+    expect(siteEventProblems({ 'Umbraco.Nothing': () => {}, 'Crombolo.ContentSaved': 3 })).toEqual([
+      'The site\'s events in crombolo.config.ts: "Umbraco.Nothing" is not an event this site raises.',
+      'The site\'s handler for "Crombolo.ContentSaved" is not a function.',
     ])
   })
 
   test('the site hears what it handles, except a handler’s own change to its page', () => {
     const key = '11111111-2222-3333-4444-555555555555'
-    const publish = { alias: 'Umbraco.ContentPublish', key }
-    const handles = (alias: string) => alias === 'Umbraco.ContentPublish'
+    const publish = { alias: 'Crombolo.ContentPublish', key }
+    const handles = (alias: string) => alias === 'Crombolo.ContentPublish'
     expect(subscribersFor(publish, undefined, [], [], handles)).toEqual(['site'])
     expect(
       subscribersFor(
-        { ...publish, via: eventVia('Umbraco.ContentSaved', key) },
+        { ...publish, via: eventVia('Crombolo.ContentSaved', key) },
         undefined,
         [],
         [],
@@ -105,7 +105,7 @@ describe('the config’s events', () => {
       ),
     ).toEqual([])
     // A handler's change to another page is heard.
-    const other = eventVia('Umbraco.ContentSaved', '99999999-2222-3333-4444-555555555555')
+    const other = eventVia('Crombolo.ContentSaved', '99999999-2222-3333-4444-555555555555')
     expect(subscribersFor({ ...publish, via: other }, undefined, [], [], handles)).toEqual(['site'])
     expect(isOwnChange({ key, via: `route POST /x` })).toBe(false)
   })
@@ -113,14 +113,14 @@ describe('the config’s events', () => {
   test('an event as a handler receives it', () => {
     expect(
       siteEventOf({
-        alias: 'Umbraco.ContentPublish',
+        alias: 'Crombolo.ContentPublish',
         key: 'k',
         contentTypeAlias: 'listing',
         cultures: ['en-GB'],
         actor: { kind: 'user', name: 'Site code' },
       }),
     ).toEqual({
-      alias: 'Umbraco.ContentPublish',
+      alias: 'Crombolo.ContentPublish',
       key: 'k',
       contentType: 'listing',
       cultures: ['en-GB'],
@@ -138,10 +138,10 @@ describe('the audit', () => {
     expect(
       actorNote(
         userActor(principal, {
-          via: eventVia('Umbraco.ContentPublish', '11111111-2222-3333-4444-555555555555'),
+          via: eventVia('Crombolo.ContentPublish', '11111111-2222-3333-4444-555555555555'),
         } as never),
       ),
-    ).toBe('through event Umbraco.ContentPublish')
+    ).toBe('through event Crombolo.ContentPublish')
     expect(actorNote(userActor(principal))).toBeUndefined()
   })
 })

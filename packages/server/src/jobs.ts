@@ -77,7 +77,7 @@ export interface JobsOptions {
   contentNotifications?: ContentNotificationRunner
   contentNotificationsMs?: number
   /** Told what scheduled publishing did, for the approval requests waiting on it (story 029). */
-  approvals?: Pick<Approvals, 'scheduleFired' | 'sweepScheduled'>
+  approvals?: Pick<Approvals, 'scheduleFired' | 'sweepScheduled' | 'sweepStalled'>
   /**
    * Publishes what a schedule says, as the site (story 170): recorded, tracked and
    * announced as an editor's publish is.
@@ -199,6 +199,7 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
       else run.failed.push({ key: due.key, reason: result.reason })
     }
     await options.approvals?.sweepScheduled(now.getTime())
+    await options.approvals?.sweepStalled?.()
     // The operations recorded, announced and refreshed what they did themselves.
     return run
   }

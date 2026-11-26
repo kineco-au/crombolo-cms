@@ -9,6 +9,7 @@
  * What it does not decide — who may, and whether a page needs approval — is here.
  * docs/architecture.md, "Content writes".
  */
+
 import type { DocumentValidationError, DocumentValue } from '@crombolo/core'
 import { normaliseUuid, SystemNodes } from '@crombolo/core'
 import {
@@ -31,6 +32,7 @@ import {
   WriteRejectedError,
 } from '@crombolo/data'
 import type { Actor, ContentPrincipal } from './actor.ts'
+import { branchKeys } from './bin-keys.ts'
 import { duplicateBlockAlias } from './block-aliases.ts'
 import { auditEntryFor, type DocumentEvent, type EventSink } from './events.ts'
 import {
@@ -1032,18 +1034,20 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       const deleted = await commit(
         actor,
         async (tx) => {
+          const roots = await tx.trashedRoots()
+          const keys = await branchKeys(db, roots)
           const gone: Array<{ key: string; name: string | null }> = []
-          for (const node of await tx.trashedRoots())
+          for (const node of roots)
             if (await tx.delete(node.key)) gone.push({ key: node.key, name: node.text ?? null })
-          return gone
+          return { gone, keys }
         },
-        (gone): DocumentEvent[] => [
-          ...gone.map((node): DocumentEvent => ({ type: 'deleted', ...node })),
-          { type: 'binEmptied' },
+        ({ gone, keys }): DocumentEvent[] => [
+          ...gone.map((node): DocumentEvent => ({ type: 'deleted', ...node, fromBin: true })),
+          { type: 'binEmptied', keys: gone.length > 0 ? keys : [] },
         ],
       )
       changed()
-      return { ok: true, deleted: deleted.length }
+      return { ok: true, deleted: deleted.gone.length }
     },
 
     async restore(

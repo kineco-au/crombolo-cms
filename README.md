@@ -412,7 +412,7 @@ crombolo/
 ├── scripts/                       # vendoring, module-graph check, coverage, versioning and publishing
 ├── .github/workflows/             # ci.yml on every push to main; release.yml on a v* tag
 ├── .githooks/                     # pre-push: the host gate, wired by `bun run hooks:install`
-├── docker/                        # Dockerfile.cms and .browser, the entrypoint, the Postgres init script
+├── docker/                        # Dockerfile.cms and .browser, the entrypoint, the Postgres init script; image/, the published image (story 087)
 ├── compose.yaml                   # Postgres, one CMS node, and three test services behind a profile
 ├── LICENSE, NOTICE                # MIT, and the attribution for everything redistributed with it
 └── tests/                         # the suite; tests/support/ holds the dialect harness and signed-in server

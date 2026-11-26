@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.81.0",
+  "version": "0.82.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -511,6 +511,24 @@
         "label": "Where it's kept",
         "pathname": "where-kept",
         "icon": "icon-box"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.Webhook"
+        }
+      ]
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.Webhook.Workflows",
+      "name": "Crombolo Webhook Workflows View",
+      "element": "/crombolo-plugin/webhook-workflows.js",
+      "weight": 90,
+      "meta": {
+        "label": "Workflows",
+        "pathname": "workflows",
+        "icon": "icon-check"
       },
       "conditions": [
         {

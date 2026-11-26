@@ -11,7 +11,9 @@
  * by the generic folder repository, which is why they worked before elements
  * themselves did.
  */
+
 import type { ElementAuthor, ElementPort } from '@crombolo/api-management/domain'
+import { branchKeys } from '@crombolo/content'
 import {
   type ElementTreeItem,
   MENU_ALIAS_PROPERTY,
@@ -380,10 +382,18 @@ export function createElementPort(
           }
     },
 
+    /** Story 440: answers every item it deleted, read before they went. */
     async emptyRecycleBin() {
-      for (const node of await repo.trashedRoots()) {
-        if (await repo.delete(node.key)) await changed()
+      const roots = await repo.trashedRoots()
+      const keys = await branchKeys(db, roots)
+      let deleted = false
+      for (const node of roots) {
+        if (await repo.delete(node.key)) {
+          deleted = true
+          await changed()
+        }
       }
+      return deleted ? keys : []
     },
 
     originalParent: (key) => repo.originalParent(key),
@@ -410,6 +420,12 @@ export function createElementPort(
       const result = await repo.rollback(versionId)
       if (result) await changed()
       return result !== undefined
+    },
+    /** Story 440: the element brought back, by key, for its event. */
+    async rollbackElement(versionId) {
+      const result = await repo.rollback(versionId)
+      if (result) await changed()
+      return result?.key
     },
     setPreventCleanup: (versionId, prevent) => repo.setPreventCleanup(versionId, prevent),
 

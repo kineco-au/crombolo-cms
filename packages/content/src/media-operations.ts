@@ -5,6 +5,7 @@
  * one transaction holding the change, its audit entry, its webhook event and the
  * cache instruction. Files go after the rows they belong to have.
  */
+
 import {
   type DocumentValue,
   mediaFileOf,
@@ -28,6 +29,7 @@ import {
   WriteRejectedError,
 } from '@crombolo/data'
 import { actorName, actorUserKey, type MediaActor } from './actor.ts'
+import { branchKeys } from './bin-keys.ts'
 import type { Refusal, Result, SelectionResult } from './operations.ts'
 import { mayChangeMedia } from './policy.ts'
 
@@ -52,9 +54,10 @@ export type MediaEvent =
   | { type: 'saved'; key: string }
   | { type: 'trashed'; key: string }
   /** `name` is read before it went, since it cannot be read after. */
-  | { type: 'deleted'; key: string; name: string | null }
+  | { type: 'deleted'; key: string; name: string | null; fromBin?: boolean }
   | { type: 'restored'; key: string }
-  | { type: 'binEmptied' }
+  /** Story 440: every item the emptying deleted, by key. */
+  | { type: 'binEmptied'; keys: string[] }
   | { type: 'moved'; key: string }
   /** `parentKey` null: the top level. */
   | { type: 'sorted'; parentKey: string | null }
@@ -99,15 +102,28 @@ export function mediaAuditFor(event: MediaEvent): {
 }
 
 /** The webhook a media event raises, by Umbraco's alias. Pure. */
-export function mediaWebhookFor(event: MediaEvent): { alias: string; key: string } | undefined {
+export function mediaWebhookFor(
+  event: MediaEvent,
+): { alias: string; key: string; keys?: string[] } | undefined {
   switch (event.type) {
     case 'created':
     case 'saved':
-      return { alias: 'Umbraco.MediaSave', key: event.key }
+      return { alias: 'Crombolo.MediaSave', key: event.key }
     case 'deleted':
-      return { alias: 'Umbraco.MediaDelete', key: event.key }
-    default:
-      return undefined
+      // Emptying the bin says so once, for every item it took (story 440).
+      return event.fromBin ? undefined : { alias: 'Crombolo.MediaDelete', key: event.key }
+    // Story 440: as a page's. Out of the bin is a move, as Umbraco raises it.
+    case 'trashed':
+      return { alias: 'Crombolo.MediaMovedToRecycleBin', key: event.key }
+    case 'moved':
+    case 'restored':
+      return { alias: 'Crombolo.MediaMoved', key: event.key }
+    case 'sorted':
+      return event.parentKey ? { alias: 'Crombolo.MediaSorted', key: event.parentKey } : undefined
+    case 'binEmptied':
+      return event.keys.length > 0
+        ? { alias: 'Crombolo.MediaEmptiedRecycleBin', key: '', keys: event.keys }
+        : undefined
   }
 }
 
@@ -463,6 +479,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     progress: (done: number, total: number) => Promise<void>,
   ): Promise<number> => {
     const total = await branchSize(roots)
+    const keys = await branchKeys(db, roots)
     let done = 0
     let deleted = 0
     for (const root of roots) {
@@ -486,7 +503,9 @@ export function createMediaOperations(options: MediaOperationsOptions) {
             return last
           },
           (finished): MediaEvent[] =>
-            finished ? [{ type: 'deleted', key: root.key, name: root.text ?? null }] : [],
+            finished
+              ? [{ type: 'deleted', key: root.key, name: root.text ?? null, fromBin: true }]
+              : [],
           () => branches([root]),
         )
         await removeFiles(chunk.flatMap((row) => (row.file_url ? [String(row.file_url)] : [])))
@@ -501,7 +520,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
     await commit(
       actor,
       async () => true,
-      (): MediaEvent[] => [{ type: 'binEmptied' }],
+      (): MediaEvent[] => [{ type: 'binEmptied', keys: deleted > 0 ? keys : [] }],
     )
     return deleted
   }
@@ -705,6 +724,7 @@ export function createMediaOperations(options: MediaOperationsOptions) {
         return { ok: true, deleted: await emptyInChunks(actor, roots, run.progress) }
       const paths: string[] = []
       for (const node of roots) paths.push(...(await filesIn(node)))
+      const keys = await branchKeys(db, roots)
       const gone = await commit(
         actor,
         async (tx) => {
@@ -714,8 +734,8 @@ export function createMediaOperations(options: MediaOperationsOptions) {
           return out
         },
         (done): MediaEvent[] => [
-          ...done.map((node): MediaEvent => ({ type: 'deleted', ...node })),
-          { type: 'binEmptied' },
+          ...done.map((node): MediaEvent => ({ type: 'deleted', ...node, fromBin: true })),
+          { type: 'binEmptied', keys: done.length > 0 ? keys : [] },
         ],
         () => branches(roots),
       )

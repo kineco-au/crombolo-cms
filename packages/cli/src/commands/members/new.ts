@@ -78,7 +78,7 @@ export default class MembersNew extends MemberCommand {
       if (member.groups.length > 0) this.say(`  in   ${member.groups.join(', ')}`)
       if (member.signsIn === 'provider')
         this.say(
-          `\nThey sign in only through an identity provider: \`crombolo members reset-password ${member.login} --stdin\` gives them a password.`,
+          `\nThey sign in only through an identity provider: \`crombolo members reset-password ${member.login}\` sends them a link to set one, and \`--password --stdin\` gives them one.`,
         )
       return { ...summaryOf(member), changed: true }
     })

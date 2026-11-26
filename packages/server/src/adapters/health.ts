@@ -9,6 +9,7 @@ import type {
 } from '@crombolo/api-management/domain'
 import { RemotePermissions } from '@crombolo/core'
 import {
+  ApprovalRepository,
   changedSince,
   compareStates,
   cromboloPlan,
@@ -22,11 +23,13 @@ import {
   type QueueCounts,
   queueCounts,
   RemoteTrustRepository,
+  readWorkflows,
   searchProvidersOf,
   sql,
   UserGroupRepository,
   UserRepository,
 } from '@crombolo/data'
+import { nobodyWords, stagesNobodyCanApprove } from '../approvals.ts'
 import { type CromboloConfig, describeDatabase, VERSION } from '../config.ts'
 import { BundleConfigurationError, pendingTablesSteps, tablesChainsFor } from '../custom-tables.ts'
 import { type EmailPort, emailAvailability } from '../email.ts'
@@ -51,6 +54,7 @@ const CHECKS = {
   settings: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000008', name: 'Site settings' },
   code: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000009', name: 'Installing code' },
   search: { id: '6f1d4a8e-0047-4c1a-9e7d-00000000000a', name: 'Search providers' },
+  approvers: { id: '6f1d4a8e-0047-4c1a-9e7d-00000000000b', name: 'Approval workflows' },
 } as const
 
 /** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
@@ -95,6 +99,16 @@ const GROUPS: HealthCheckGroup[] = [
       {
         ...CHECKS.search,
         description: 'Which search the back office and the site use, and whether each answers.',
+      },
+    ],
+  },
+  {
+    name: 'Content',
+    checks: [
+      {
+        ...CHECKS.approvers,
+        description:
+          'Whether every stage of each approval workflow has someone who could approve it.',
       },
     ],
   },
@@ -402,6 +416,32 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
             : `"${f.name}" is a settings page below another page, so no site reads it. Move it directly below its site's top page.`,
         ),
       )
+    },
+    // Story 229: a stage nobody could approve, and the pages waiting at it.
+    [CHECKS.approvers.id]: async () => {
+      const workflows = (await readWorkflows(options.db)).map((s) => s.workflow)
+      const stuck = await stagesNobodyCanApprove(options.db, workflows)
+      if (stuck.length === 0)
+        return [result('Success', 'Every workflow stage has someone who could approve it.')]
+      const approvals = new ApprovalRepository(options.db)
+      const out: HealthCheckResult[] = []
+      for (const stage of stuck) {
+        let waiting = 0
+        for (const request of await approvals.waitingUnder(stage.workflowKey))
+          if (
+            (await approvals.steps(request.id)).some(
+              (s) => s.state === 'waiting' && s.stage === stage.stage,
+            )
+          )
+            waiting++
+        out.push(
+          result(
+            waiting > 0 ? 'Error' : 'Warning',
+            `"${stage.workflow}": ${nobodyWords(stage)}${waiting > 0 ? ` ${waiting} page(s) wait there.` : ' A page sent through it is refused.'}`,
+          ),
+        )
+      }
+      return out
     },
     [CHECKS.search.id]: async () => {
       const { backoffice, site } = searchProvidersOf(db)

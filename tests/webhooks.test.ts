@@ -48,7 +48,7 @@ const definition = (over: Partial<WebhookDefinition> = {}): WebhookDefinition =>
   description: null,
   url: 'https://search.example/hook',
   enabled: true,
-  events: ['Umbraco.ContentPublish'],
+  events: ['Crombolo.ContentPublish'],
   contentTypeKeys: [],
   headers: {},
   ...over,
@@ -108,7 +108,7 @@ describe('a webhook as a file', () => {
     const source = `[webhook]
 alias = "searchIndex"
 url = "https://search.example/hook"
-events = ["Umbraco.ContentPublish"]
+events = ["Crombolo.ContentPublish"]
 content-types = ["article"]
 `
     const parsed = parseWebhookFile('schema/webhooks/searchIndex.toml', source)
@@ -157,7 +157,7 @@ describe('sealing secrets', () => {
 })
 
 describe('who hears about an event', () => {
-  const event = { alias: 'Umbraco.ContentPublish', key: 'k' }
+  const event = { alias: 'Crombolo.ContentPublish', key: 'k' }
   const page = 'type-page'
 
   test('enabled webhooks naming the event, of the item’s type or of any; then bundles', () => {
@@ -166,10 +166,10 @@ describe('who hears about an event', () => {
       definition({ key: 'pages', contentTypeKeys: [page] }),
       definition({ key: 'other-type', contentTypeKeys: ['type-other'] }),
       definition({ key: 'off', enabled: false }),
-      definition({ key: 'unpublish-only', events: ['Umbraco.ContentUnpublish'] }),
+      definition({ key: 'unpublish-only', events: ['Crombolo.ContentUnpublish'] }),
     ]
     const bundles = [
-      { id: 'acme', events: { 'Umbraco.ContentPublish': () => ({ ok: true as const }) } },
+      { id: 'acme', events: { 'Crombolo.ContentPublish': () => ({ ok: true as const }) } },
     ]
     expect(subscribersFor(event, page, webhooks, bundles)).toEqual(['all', 'pages', 'bundle:acme'])
   })
@@ -183,7 +183,7 @@ describe('who hears about an event', () => {
   test('a bundle handling an event that does not exist is refused at boot', () => {
     expect(
       bundleEventProblems([{ id: 'acme', events: { 'Umbraco.Nope': () => ({ ok: true }) } }]),
-    ).toEqual(['The bundle "acme" handles "Umbraco.Nope", which is not an event this site raises.'])
+    ).toEqual(['The bundle "acme": "Umbraco.Nope" is not an event this site raises.'])
   })
 
   test('the panel says why a store is unavailable', () => {
@@ -231,7 +231,7 @@ const create = (s: TreeSite, body: Record<string, unknown>) =>
     enabled: true,
     contentTypeKeys: [],
     headers: {},
-    events: ['Umbraco.ContentPublish'],
+    events: ['Crombolo.ContentPublish'],
     ...body,
   })
 
@@ -252,7 +252,7 @@ describe('webhooks through the API', () => {
     }>(`${V1}/webhook/${id}`)
     expect(read.headers).toEqual({ Authorization: MASKED, 'X-Env': 'env:WEBHOOK_TEST_TOKEN' })
     expect(read.events).toEqual([
-      { alias: 'Umbraco.ContentPublish', eventName: 'Content Published', eventType: 'Content' },
+      { alias: 'Crombolo.ContentPublish', eventName: 'Content Published', eventType: 'Content' },
     ])
     expect(JSON.stringify(await s.h.json(`${V1}/webhook?skip=0&take=10`))).not.toContain('hunter2')
     const rows = await s.h.server.db.query<{ headers: string }>('SELECT headers FROM webhook')
@@ -263,7 +263,7 @@ describe('webhooks through the API', () => {
       (
         await s.h.put(`${V1}/webhook/${id}`, {
           ...read,
-          events: ['Umbraco.ContentPublish', 'Umbraco.ContentUnpublish'],
+          events: ['Crombolo.ContentPublish', 'Crombolo.ContentUnpublish'],
           contentTypeKeys: [],
           enabled: true,
         })
@@ -297,7 +297,7 @@ describe('webhooks through the API', () => {
     const events = await s.h.json<{ total: number; items: Array<{ alias: string }> }>(
       `${V1}/webhook/events?skip=0&take=100`,
     )
-    expect(events.items.map((e) => e.alias)).toContain('Umbraco.ContentPublish')
+    expect(events.items.map((e) => e.alias)).toContain('Crombolo.ContentPublish')
     expect(events.total).toBe(events.items.length)
   })
 })
@@ -329,7 +329,7 @@ describe('delivery', () => {
     expect(delivered?.body).toEqual({ Id: page })
     expect(delivered?.headers).toMatchObject({
       'content-type': 'application/json',
-      'webhook-event': 'Umbraco.ContentPublish',
+      'webhook-event': 'Crombolo.ContentPublish',
       'webhook-retry-count': '0',
       'webhook-id': id,
       authorization: 'Bearer hunter2',
@@ -424,7 +424,7 @@ describe("Crombolo's payload (story 208)", () => {
     mkdirSync(dir, { recursive: true })
     writeFileSync(
       join(dir, 'next.toml'),
-      `[webhook]\nalias = "next"\nurl = "${remote.url}"\nevents = ["Umbraco.ContentPublish", "Umbraco.ContentUnpublish", "Umbraco.ContentMovedToRecycleBin"]\npayload = "crombolo"\n`,
+      `[webhook]\nalias = "next"\nurl = "${remote.url}"\nevents = ["Crombolo.ContentPublish", "Crombolo.ContentUnpublish", "Crombolo.ContentMovedToRecycleBin"]\npayload = "crombolo"\n`,
     )
     const home = await createPage(s, 'Home')
     const section = await createPage(s, 'Section', home)
@@ -487,7 +487,7 @@ describe('where a webhook is kept', () => {
 
     await s.h.put(`${V1}/webhook/${id}`, {
       url: 'https://x.example/',
-      events: ['Umbraco.ContentPublish'],
+      events: ['Crombolo.ContentPublish'],
       enabled: true,
       contentTypeKeys: [],
       headers: { Authorization: 'env:TOKEN' },
@@ -515,7 +515,7 @@ describe('a bundle handles the events', () => {
       capabilities: [],
       routes: [],
       events: {
-        'Umbraco.ContentPublish': ({ event, payload, attempt }) => {
+        'Crombolo.ContentPublish': ({ event, payload, attempt }) => {
           calls.push({ event, payload, attempt })
           return attempt === 1 ? { ok: false, error: 'not yet', retry: true } : { ok: true }
         },
@@ -543,8 +543,8 @@ describe('a bundle handles the events', () => {
     expect((await s.h.server.jobs.runWebhooks()).retrying).toBe(1)
     expect((await s.h.server.jobs.runWebhooks(new Date(Date.now() + 2 * 60_000))).done).toBe(1)
     expect(calls).toEqual([
-      { event: 'Umbraco.ContentPublish', payload: { Id: page }, attempt: 1 },
-      { event: 'Umbraco.ContentPublish', payload: { Id: page }, attempt: 2 },
+      { event: 'Crombolo.ContentPublish', payload: { Id: page }, attempt: 1 },
+      { event: 'Crombolo.ContentPublish', payload: { Id: page }, attempt: 2 },
     ])
     const logs = await s.h.json<{ items: Array<{ url: string; isSuccessStatusCode: boolean }> }>(
       `${V1}/webhook/logs?skip=0&take=10`,
@@ -563,7 +563,7 @@ describe('a bundle handles the events', () => {
       capabilities: [],
       routes: [],
       events: {
-        'Umbraco.ContentPublish': async ({ fetch }) => {
+        'Crombolo.ContentPublish': async ({ fetch }) => {
           await fetch('https://169.254.169.254/latest/meta-data').catch((error: Error) => {
             refusal = error.message
           })

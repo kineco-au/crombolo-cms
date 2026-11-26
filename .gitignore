@@ -40,3 +40,5 @@ docs/internal/
 
 # macOS folder settings
 .DS_Store
+docker/image/local/*
+!docker/image/local/.gitkeep

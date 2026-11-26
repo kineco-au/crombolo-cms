@@ -218,6 +218,8 @@ describe(`approval before publishing (${dialectUnderTest})`, () => {
 
   test('the person who made the change cannot approve it', async () => {
     const { people, page, send, act } = await site()
+    // Story 229: someone else in Legal, or nobody could approve it and sending is refused.
+    open.push(await signInAsGroup(people.admin, 'legal', 'second-legal@example.com'))
     const key = await page('Mine', people.legal)
     const sent = await send(key, people.legal)
     const refused = await act(sent.key, 'approve', people.legal)

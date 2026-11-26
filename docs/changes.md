@@ -169,6 +169,12 @@ Management API's (above, "Moving a change without the remote").
   before anything is staged (409), each named ("needs the document type "event", which
   this site does not have"). Staging, applying and `check` alike. A page whose type is
   here under its alias but another key is staged with this site's.
+- **A field the target changed since** (story `439`) is staged with the change's value all
+  the same, and the staged change keeps what the change found as that field's base
+  (`StagedChange.bases`), so the workspace's merge asks, as it does for a workspace's own
+  page: `GET <plugin>/api/workspaces/{key}/merge` lists it with both values, the merge is
+  refused naming it, and `POST /{key}/conflicts { page, answers }` settles it, `mine` the
+  change's value and `theirs` this site's. A change this site lacks is named beside it.
 - **Applied** (`PUT changes`), it is staged and merged at once. A conflict leaves the
   workspace open to edit, holding the change, and changes nothing in Shared; a finding
   (`382`) is counted against the target and refused until accepted there (`?accept=`).

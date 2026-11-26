@@ -226,7 +226,7 @@ describe('the boot', () => {
       id: 'hooks',
       section: 'settings',
       capabilities: [],
-      events: { 'Umbraco.ContentPublish': () => ({ ok: true }) },
+      events: { 'Crombolo.ContentPublish': () => ({ ok: true }) },
       routes: [route('/hello', { GET: () => new Response('hi') })],
     } as unknown as ServerBundle
     await expect(

@@ -127,6 +127,12 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
         ${progress ? html`<small>${progress}</small>` : nothing}
       </p>
       ${request.schedule ? html`<p class="when">${describeWhen(request.action, request.schedule)}</p>` : nothing}
+      ${request.stages
+        .filter((s) => s.nobody)
+        .map(
+          (s) =>
+            html`<p class="nobody" role="alert">${s.nobody} An administrator can add someone, or the request can be withdrawn.</p>`,
+        )}
       <div class="graph-wrap">${drawGraph(request.workflow.stages, { states })}</div>
       ${
         request.can.approve.length > 0 || request.can.sendBack.length > 0 || request.can.withdraw
@@ -198,6 +204,7 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
     .message { color: var(--uui-color-danger); }
     .graph-wrap { overflow-x: auto; margin: var(--uui-size-space-4) 0; }
     .when { font-weight: 600; }
+    .nobody { color: var(--uui-color-danger); }
     .actions { display: flex; gap: var(--uui-size-space-3); margin: var(--uui-size-space-3) 0; }
     uui-textarea { width: 100%; }
     .history { padding-left: var(--uui-size-space-5); }

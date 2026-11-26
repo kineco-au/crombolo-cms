@@ -358,6 +358,63 @@ export class MemberRepository {
       .execute()
   }
 
+  /** Story 282: a reset link's token, by its hash, until it expires. */
+  async saveResetToken(memberKey: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    await this.#db.q
+      .insertInto('member_reset_token')
+      .values({
+        token_hash: tokenHash,
+        member_key: normaliseUuid(memberKey),
+        expires_at: DbDate.toDb(expiresAt),
+        create_date: DbDate.toDb(new Date()),
+      })
+      .execute()
+  }
+
+  /** Story 282: the member a token is for, spending it; undefined when unknown or out of date. */
+  async takeResetToken(tokenHash: string, now = new Date()): Promise<string | undefined> {
+    const row = await this.#db.q
+      .selectFrom('member_reset_token')
+      .select(['member_key', 'expires_at'])
+      .where('token_hash', '=', tokenHash)
+      .executeTakeFirst()
+    if (!row) return undefined
+    const deleted = await this.#db.q
+      .deleteFrom('member_reset_token')
+      .where('token_hash', '=', tokenHash)
+      .executeTakeFirst()
+    // Two uses at once: only the one whose delete took it goes on.
+    if (Number(deleted.numDeletedRows ?? 0) === 0) return undefined
+    const expires = DbDate.fromDb(row.expires_at)
+    return expires && expires.getTime() > now.getTime() ? String(row.member_key) : undefined
+  }
+
+  /**
+   * Story 282: a new password from a reset link. It unlocks the account, ends every
+   * session (the stamp turns) and spends every other link sent to the member.
+   */
+  async resetPassword(key: string, passwordHash: string, passwordConfig: string): Promise<boolean> {
+    const node = await this.#nodes.byKey(key)
+    if (!node || node.objectType !== ObjectTypes.Member) return false
+    await this.#db.q
+      .updateTable('member')
+      .set({
+        password: passwordHash,
+        password_config: passwordConfig,
+        last_password_change_date: DbDate.toDb(new Date()),
+        security_stamp_token: crypto.randomUUID(),
+        is_locked_out: this.#db.dialect.boolValue(false) as boolean | number,
+        failed_password_attempts: 0,
+      })
+      .where('node_id', '=', node.id)
+      .execute()
+    await this.#db.q
+      .deleteFrom('member_reset_token')
+      .where('member_key', '=', normaliseUuid(key))
+      .execute()
+    return true
+  }
+
   async recordLogin(key: string): Promise<void> {
     const node = await this.#nodes.byKey(key)
     if (!node) return
@@ -408,6 +465,7 @@ export class MemberRepository {
     await q.deleteFrom('external_login').where('user_or_member_key', '=', node.key).execute()
     await q.deleteFrom('two_factor_login').where('owner_key', '=', node.key).execute()
     await q.deleteFrom('two_factor_recovery_code').where('owner_key', '=', node.key).execute()
+    await q.deleteFrom('member_reset_token').where('member_key', '=', node.key).execute()
     await q.deleteFrom('member').where('node_id', '=', node.id).execute()
     return this.content.delete(key)
   }

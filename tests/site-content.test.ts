@@ -281,7 +281,7 @@ describe('the config’s events', () => {
     const seen: SiteContentEvent[] = []
     const { h, create, publish, settle } = await site({
       events: {
-        'Umbraco.ContentPublish': async (event: SiteContentEvent, { db }: { db: Tables }) => {
+        'Crombolo.ContentPublish': async (event: SiteContentEvent, { db }: { db: Tables }) => {
           calls++
           seen.push(event)
           if (calls === 1) throw new Error('not yet')
@@ -311,7 +311,7 @@ describe('the config’s events', () => {
     await h.server.backgroundJobs.runDue()
     expect(calls).toBe(2)
     expect(seen[0]).toMatchObject({
-      alias: 'Umbraco.ContentPublish',
+      alias: 'Crombolo.ContentPublish',
       key,
       contentType: 'listing',
       actor: { kind: 'user', name: 'API client' },
@@ -323,7 +323,7 @@ describe('the config’s events', () => {
     let calls = 0
     const { create, settle } = await site({
       events: {
-        'Umbraco.ContentSaved': async (
+        'Crombolo.ContentSaved': async (
           event: SiteContentEvent,
           { site }: { site: SiteServices },
         ) => {

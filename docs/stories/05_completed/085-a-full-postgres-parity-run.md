@@ -40,9 +40,32 @@ dialects in one run.
 
 ## Acceptance criteria
 
-- [ ] Every push to main runs the unit suite on SQLite and Postgres, and the integration
+- [x] Every push to main runs the unit suite on SQLite and Postgres, and the integration
       suite and remote conformance on both; all green.
-- [ ] The browser suite's SQLite-only run is listed with its reason.
-- [ ] Every dialect skip is listed in `docs/testing.md` with its reason, and a test holds the
+- [x] The browser suite's SQLite-only run is listed with its reason.
+- [x] Every dialect skip is listed in `docs/testing.md` with its reason, and a test holds the
       list to the code. Any that could run on both does.
-- [ ] The release skill and AGENTS.md drop `--postgres-tests` and the local Postgres run.
+- [x] The release skill and AGENTS.md drop `--postgres-tests` and the local Postgres run.
+
+## What was built
+
+- **Decision 2's scope, chosen 2026-11-26:** the integration files where the database
+  matters run on both (first-boot, upgrade, server-roles, restart, workspaces,
+  change-transfer); the rest drive the command line's output and files.
+- `.github/workflows/ci.yml`: the Postgres shards on every push to `main` (a pull request
+  runs SQLite alone), `postgres_tests` and `--postgres-tests` gone, and an
+  `integration-postgres` job.
+- `tests/integration/support/database.ts`: a database of its own per site on Postgres
+  (`CREATE DATABASE`, a copy by `TEMPLATE` for a second copy of a site, dropped after);
+  `bun run test:integration:postgres` and `docker:test:integration:postgres`. A Postgres
+  production start that migrates runs the operator's backup command, so the tests give one.
+- Run on both now: `migrations.test.ts` (production refuses pending steps),
+  `dashboard.test.ts` (a schema change needing data work), `custom-tables.test.ts` (a
+  bundle's pending steps); `harness-isolation.test.ts`'s Postgres-only check is no longer
+  an early return.
+- `tests/support/dialect-skips.ts` and `tests/dialect-skips.test.ts` hold the list in
+  `docs/testing.md`, "One database only" (19 rows), to the code, and refuse an early
+  return that hides a skip.
+- AGENTS.md "Releasing", the release skill and `docs/testing.md`: no local Postgres run
+  beside a release; CI's own.
+- Conformance (`tests/remote-conformance.test.ts`) is in the unit suite, so on both.

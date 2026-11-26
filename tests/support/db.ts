@@ -151,6 +151,13 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 104, webhook event names (story 440), and a webhook's workflows (story 441).
+  await db.exec('ALTER TABLE webhook DROP COLUMN workflows')
+  await db.exec("DELETE FROM migration_history WHERE name = 'RenameWebhookEvents'")
+  // 103, a member resets their password (story 282): two tables of its own.
+  for (const table of ['member_reset_token', 'rate_limit_hit'])
+    await db.exec(`DROP TABLE IF EXISTS ${table}`)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddMemberPasswordReset'")
   // 102, service accounts' secrets (story 433): columns on a table that stays.
   for (const column of ['last_used_at', 'old_secret_hash', 'old_secret_until'])
     await db.exec(`ALTER TABLE user_client_credential DROP COLUMN ${column}`)

@@ -61,11 +61,13 @@
 
 ## Releasing
 
-- CI runs the browser suite and the Postgres unit suite on `main` only when the last commit's
-  message says `--browser-tests` and `--postgres-tests`
+- CI runs the unit suite on SQLite and Postgres, and the integration files where the
+  database matters on both, on every push to `main` (story 085); the browser suite only
+  when the last commit's message says `--browser-tests`
+- A test that runs on one database only is listed in `docs/testing.md`, "One database
+  only", with why: `tests/dialect-skips.test.ts` enforces it
 - A release is cut in two pushes: first `main` alone, with `--browser-tests` in the last
-  commit's message, and the full Postgres suite run locally beside that CI run
-  (`bun run docker:test:postgres`); the tag only once both have passed
+  commit's message; the tag only once that CI run has passed
 - The tag's Release workflow does not run CI again: it runs the load test and benchmarks,
   then publishes. A failure found there costs a version number
 - `--skip-load-tests` in the tagged commit's message skips the load test and benchmarks,

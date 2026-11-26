@@ -48,6 +48,7 @@ const NONE = [
   'extension:migrate',
   'generate',
   'init',
+  'install',
   'keys:create',
   'keys:list',
   'login',

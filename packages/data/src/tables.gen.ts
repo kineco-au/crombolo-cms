@@ -614,6 +614,12 @@ export interface CoreTables {
     member_can_view: Bool
     property_type_id: Generated<number>
   }
+  member_reset_token: {
+    create_date: Timestamp
+    expires_at: Timestamp
+    member_key: string
+    token_hash: string
+  }
   migration_history: {
     applied_at: Timestamp
     applied_by: string | null
@@ -713,6 +719,11 @@ export interface CoreTables {
     public_access_id: number
     rule_type: string
     rule_value: string
+  }
+  rate_limit_hit: {
+    bucket: string
+    hit_at: Timestamp
+    id: string
   }
   redirect_url: {
     create_date: Timestamp
@@ -1003,6 +1014,7 @@ export interface CoreTables {
     name: string | null
     update_date: Timestamp
     url: string
+    workflows: string | null
   }
   webhook_delivery: {
     attempts: number

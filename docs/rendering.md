@@ -784,8 +784,32 @@ if (made.isOk()) await site().content.publish(made.value.key)
   and a write from one answers `forbidden`. A bundle's routes do not act as the site.
 - **Audited** as the API user, the entry naming the code: `Through route POST /listings`,
   `Through action listings.publish`, `Through job imports.nightly`,
-  `Through event Umbraco.ContentPublish`. Notifications say the same.
+  `Through event Crombolo.ContentPublish`. Notifications say the same.
 - **Refused at boot:** an `actAs` that is no API user's client id.
+
+### A member's password reset
+
+Story 282. The site's reset page, `members.resetPasswordPage`, and wherever it asks for a
+link, use the forms from `@crombolo/crombolo` (details in `operations.md`, "A member resets
+their password"):
+
+```tsx
+import { ForgotPasswordForm, ResetPasswordForm } from '@crombolo/crombolo'
+
+export default async function ResetPage({ searchParams }: PageProps) {
+  const { token, memberResetFailed } = await searchParams
+  return (
+    <main>
+      {memberResetFailed === 'expired' ? <p>That link has expired. Ask for another.</p> : null}
+      {token ? <ResetPasswordForm token={token} returnUrl="/sign-in" /> : <ForgotPasswordForm />}
+    </main>
+  )
+}
+```
+
+A refusal comes back to the page with `memberResetFailed=password` (the token kept) or
+`expired`; a reset goes on to `returnUrl` with `memberPasswordReset=1`. Reading
+`searchParams` makes the page personal, so it is never cached with someone's token.
 
 ### Members
 
@@ -842,7 +866,7 @@ Members permissions ("Staff screens" below).
 ```ts
 export default defineConfig({
   events: {
-    'Umbraco.ContentPublish': async (event, { db, site, job }) => {
+    'Crombolo.ContentPublish': async (event, { db, site, job }) => {
       await db.insertInto('listing_index').values({ key: event.key }).execute()
     },
   },

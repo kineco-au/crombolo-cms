@@ -14,6 +14,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import {
+  dropSiteDatabases,
+  onPostgres,
+  type SiteDatabase,
+  siteDatabase,
+} from './support/database.ts'
 
 const ROOT = resolve(import.meta.dir, '..', '..')
 const CLI = join(ROOT, 'packages/cli/bin/crombolo.ts')
@@ -46,6 +52,7 @@ describe('a split deployment, as separate processes', () => {
    * points SQLite at `:memory:`, which would give each process a database of
    * its own and hide the whole point of the test.
    */
+  let database: SiteDatabase | undefined
   function environment(role?: string): Record<string, string> {
     const inherited = { ...(process.env as Record<string, string>) }
     for (const name of [
@@ -59,8 +66,9 @@ describe('a split deployment, as separate processes', () => {
       delete inherited[name]
     return {
       ...inherited,
-      CROMBOLO_DB: 'sqlite',
-      CROMBOLO_SQLITE_FILE: join(dir, 'shared.sqlite'),
+      ...(database as SiteDatabase).env,
+      // Story 085: on Postgres a production start that migrates runs the operator's backup first.
+      ...(onPostgres ? { CROMBOLO_PG_DUMP: 'true' } : {}),
       CROMBOLO_LOGS_DIR: join(dir, 'logs', role ?? 'all'),
       CROMBOLO_LOG_TO_CONSOLE: 'false',
       CROMBOLO_ADMIN_PASSWORD: 'integration-password',
@@ -140,6 +148,7 @@ describe('a split deployment, as separate processes', () => {
   beforeAll(async () => {
     mkdirSync(join(ROOT, 'output'), { recursive: true })
     dir = mkdtempSync(join(ROOT, 'output', 'roles-'))
+    database = await siteDatabase(dir, 'shared')
     mkdirSync(site(), { recursive: true })
     // The basic template, because propagation needs a page to publish.
     const init = await cli(undefined, 'init', '--name', 'Split Site', '--template', 'basic')
@@ -159,6 +168,7 @@ describe('a split deployment, as separate processes', () => {
   afterAll(async () => {
     for (const server of [...running]) await server.stop()
     rmSync(dir, { recursive: true, force: true })
+    await dropSiteDatabases()
   })
 
   test('a web node refuses to start before anything has migrated the database', async () => {

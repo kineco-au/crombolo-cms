@@ -7,7 +7,7 @@
  * one differs from the one its alias derives, and names its content types by
  * alias. A legacy `<key>.toml` with keys still reads.
  */
-import { WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management/domain'
+import { eventNameProblem } from '@crombolo/api-management/domain'
 import { derivedKey } from '@crombolo/core'
 
 export type WebhookStore = 'files' | 'database'
@@ -23,6 +23,8 @@ export interface WebhookDefinition {
   events: string[]
   /** In memory, keys; in a file, aliases (a uuid-shaped value is a key). */
   contentTypeKeys: string[]
+  /** Story 441: the workflows whose approvals it hears, by alias; none (or absent) hears every one. */
+  workflows?: string[]
   /** A value is either `env:NAME` or, kept in the database only, the secret itself. */
   headers: Record<string, string>
   /**
@@ -62,9 +64,10 @@ export function webhookProblems(webhook: WebhookDefinition, store: WebhookStore)
     problems.push(
       "This webhook sends Crombolo's payload, which is set in its file, so it stays with the site's files.",
     )
-  for (const event of webhook.events)
-    if (!WEBHOOK_EVENT_ALIASES.has(event))
-      problems.push(`"${event}" is not an event this site raises.`)
+  for (const event of webhook.events) {
+    const problem = eventNameProblem(event)
+    if (problem) problems.push(problem)
+  }
   for (const [name, value] of Object.entries(webhook.headers)) {
     if (!HEADER_NAME.test(name)) problems.push(`"${name}" is not a header name.`)
     else if (RESERVED.has(name.toLowerCase()))
@@ -113,6 +116,7 @@ export function writeWebhookFile(
   if (!webhook.enabled) out.push('enabled = false')
   out.push(`events = ${list(webhook.events)}`)
   if (contentTypes.length > 0) out.push(`content-types = ${list(contentTypes)}`)
+  if (webhook.workflows?.length) out.push(`workflows = ${list(webhook.workflows)}`)
   if (webhook.payload === 'crombolo') out.push('payload = "crombolo"')
   const headers = Object.keys(webhook.headers).sort()
   if (headers.length > 0) {
@@ -131,6 +135,7 @@ const KEYS = new Set([
   'enabled',
   'events',
   'content-types',
+  'workflows',
   'headers',
   'payload',
 ])
@@ -185,6 +190,7 @@ export function parseWebhookFile(
       /^[0-9a-f-]{36}$/i.test(value) ? value.toLowerCase() : value,
     ),
     headers,
+    ...(strings('workflows').length > 0 ? { workflows: strings('workflows') } : {}),
     ...(payload === 'crombolo' ? { payload } : {}),
   }
   problems.push(...webhookProblems(webhook, 'files').map((message) => `${file}: ${message}`))

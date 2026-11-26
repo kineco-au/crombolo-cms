@@ -6,6 +6,99 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.82.0 — 2026-11-26
+
+### Features
+
+- **A member resets their password (282).** A member asks with their e-mail address and is
+  sent a link to the site's own page (`members.resetPasswordPage`), drawn with
+  `<ForgotPasswordForm />` and `<ResetPasswordForm />`. The answer is the same for any
+  address; the link works once, for a day, and setting the password unlocks the account and
+  ends every session. A member with no password sets one the same way; one who signs in
+  through an identity provider is told so instead. The e-mail is crombolo's, or the site's
+  through `members.resetPasswordEmail`.
+- **Member sign-in is rate limited (282),** per IP and shared by every server, as asking for
+  a link is per address and per IP: `members.rateLimits`, high enough by default for an
+  office behind one address.
+- **`crombolo members reset-password` sends the link (282),** or prints it where the site
+  cannot send mail; `--password` sets one directly, as it did before.
+
+- **A ready-to-run container image (087).** `ghcr.io/kineco-au/crombolo:<version>`, published
+  with each release for amd64 and arm64: started with a setup code it makes a site in its
+  `/data` volume and opens "Set up your new site"; a pipeline builds its site on top in three
+  lines. It runs as a user other than root, and Deno is in it, so extensions run.
+- **`crombolo install` (087)** installs a site's packages and checks it would start: its
+  crombolo version, its extensions, and that its views and back-office screens build.
+- **Webhooks for approvals (441).** Each step of a request raises one: sent, a stage reached,
+  approved, sent back, withdrawn, stalled and finished, with the facts (the page, the
+  workflow and stage, who acted, when) and never a comment. A webhook can be narrowed to
+  some workflows, in its file or a new Workflows panel on its screen.
+- **Webhooks for media, Library items and emptied bins (440).** A media item moved, moved
+  to the bin, restored or sorted raises its event, as a page does; every Library change
+  does too, with the published pages that show it in Crombolo's payload (`UsedBy`). Emptying
+  a bin raises one event listing every item it deleted, in place of a delete for each.
+- **Every event is renamed `Crombolo.` and its word (440):** `Umbraco.ContentPublish` is
+  `Crombolo.ContentPublish`, and so on, for webhooks, the site's event handlers and
+  extensions alike. Deleting, restoring, emptying the bin and rolling back a Library item
+  are audited now too.
+- **A change from another site that meets a local edit can be settled (439).** The field
+  both sides changed is staged with the change's value and waits as a conflict with both
+  values, answered field by field in the workspace's conflicts, as a workspace's own page
+  conflict is; then the change applies. Before, the incoming value was dropped, and the
+  only way through was to type it again.
+- **A workflow nobody can approve says so (229).** Sending a page through a stage with
+  nobody who could approve it is refused, naming the stage and its groups. A page already
+  waiting at one says so, and administrators are e-mailed once. The Content status check
+  lists each such stage, and the workflow designer marks a group that is not there. Only
+  enabled people count, and not the sender where self-approval is refused, so a disabled
+  member no longer holds a page up.
+- **Every behaviour proven on Postgres as well as SQLite (085).** CI runs the unit suite on
+  both databases on every push to `main`, and the integration files where the database
+  matters (first boot, upgrade, split servers, restart, workspaces, moving changes) on
+  Postgres too. Each test that runs on one database only is listed in `docs/testing.md`
+  with why, and a test holds that list to the code. Three that skipped Postgres now run on
+  both: production refusing pending steps, for crombolo's, the site's and a bundle's.
+
+### Fixes
+
+- **A person linked to an identity provider before their first sign-in is found by the token
+  exchange.** A link made with `PUT users/{key}/logins` carried no identity, so an exchange
+  acting as that person was refused until they had signed in once. Where the provider
+  names people by `sub`, the link's subject now stands for it, and is recorded.
+
+### Migrations
+
+- **104 `RenameWebhookEvents`** (expand, 440, 441): each webhook kept in the database renamed
+  to the events' new names, and `webhook.workflows`, the workflows a webhook hears.
+- **103 `AddMemberPasswordReset`** (expand, 282): `member_reset_token`, the links sent to
+  members by their hash, and `rate_limit_hit`, the requests counted against a limit.
+
+### Upgrade notes
+
+- **Every event name changed (440), and an old one is refused.** Change each name in your
+  webhook files (`schema/webhooks/*.toml`), the `events` in `crombolo.config.ts`, and any
+  extension of your own; `Webhook-Event` sends the new names, so a receiver matching on it
+  changes too. Webhooks made in Settings were renamed for you (migration 104).
+
+  | Before | Now |
+  | --- | --- |
+  | `Umbraco.ContentSaved` … `Umbraco.ContentRolledBack` | `Crombolo.ContentSaved` … `Crombolo.ContentRolledBack` |
+  | `Umbraco.MediaSave`, `Umbraco.MediaDelete` | `Crombolo.MediaSave`, `Crombolo.MediaDelete` |
+  | `Umbraco.ContentEmptiedRecycleBin`, `mediaMoved`, `mediaMovedToRecycleBin`, `mediaEmptiedRecycleBin` | `Crombolo.ContentEmptiedRecycleBin`, `Crombolo.MediaMoved`, `Crombolo.MediaMovedToRecycleBin`, `Crombolo.MediaEmptiedRecycleBin` |
+  | `Umbraco.Element…` | `Crombolo.Element…` |
+- **Emptying a bin no longer raises a delete for each item (440):** it raises
+  `Crombolo.ContentEmptiedRecycleBin` or `Crombolo.MediaEmptiedRecycleBin` once. A receiver
+  that cleared its cache on each delete listens for those too.
+- **A workflow whose stage has nobody who could approve it now refuses to send (229).** A
+  stage whose only approver is the sender, where self-approval is refused, counts as
+  nobody. Run the Content status check, "Approval workflows", after upgrading, and add
+  someone to each group it names.
+- **`crombolo members reset-password` sends a link now.** A script that relied on it
+  setting a password passes `--password` (with `--stdin` to give one).
+- **Member sign-in allows 60 attempts a minute from one IP** by default. A site whose
+  members sign in from one address in greater numbers raises
+  `members.rateLimits.signInPerIpPerMinute`.
+
 ## v0.81.0 — 2026-11-26
 
 ### Features

@@ -47,6 +47,7 @@ import { recordSearchRemovals, searchesOutsideDatabase } from '../search-provide
 import type { CoreTables } from '../tables.gen.ts'
 import { recordFiles } from './media-access.ts'
 import { NodeRepository, type NodeRow } from './nodes.ts'
+import { WorkspaceRepository } from './workspaces.ts'
 
 export type EventKind = 'save' | 'publish' | 'rollback' | 'migrate'
 
@@ -1280,6 +1281,12 @@ export class DocumentRepository {
         theirs: fromDbBool(theirsCulture?.published),
       })
     }
+    // Story 439: a field a staged change brought, which this site had changed since, is
+    // read from what the change found, so the merge asks rather than overwrites.
+    if (!fresh) {
+      const bases = await new WorkspaceRepository(this.#db).stagedBases(workspace, node.key)
+      for (const field of fields) if (field.field in bases) field.base = bases[field.field]
+    }
     const document = (
       await this.#db.q
         .selectFrom('document')
@@ -1364,6 +1371,8 @@ export class DocumentRepository {
         if (!node || !wd || wd.created) return false
         const merge = await repo.#mergePage(node, wd)
         const head = await repo.#headEvent(node.id)
+        // Story 439: answered, what a staged change found is the base no longer.
+        await new WorkspaceRepository(tx).clearStagedBases(workspace, node.key)
         await tx.q
           .updateTable('workspace_document')
           .set({ base_event_id: head?.id ?? null })

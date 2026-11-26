@@ -395,15 +395,33 @@ describe('media goes through its own operations', () => {
     expect(refused.status).toBe(400)
   })
 
-  test('saves and deletes raise the webhooks they always have', () => {
+  test('saves and deletes raise the webhooks they always have, and the rest a page does', () => {
     expect(mediaWebhookFor({ type: 'saved', key: 'k' })).toEqual({
-      alias: 'Umbraco.MediaSave',
+      alias: 'Crombolo.MediaSave',
       key: 'k',
     })
     expect(mediaWebhookFor({ type: 'deleted', key: 'k', name: null })?.alias).toBe(
-      'Umbraco.MediaDelete',
+      'Crombolo.MediaDelete',
     )
-    expect(mediaWebhookFor({ type: 'moved', key: 'k' })).toBeUndefined()
+    // Story 440: moved, binned, restored, sorted and the bin emptied, as a page's are.
+    expect(mediaWebhookFor({ type: 'moved', key: 'k' })?.alias).toBe('Crombolo.MediaMoved')
+    expect(mediaWebhookFor({ type: 'restored', key: 'k' })?.alias).toBe('Crombolo.MediaMoved')
+    expect(mediaWebhookFor({ type: 'trashed', key: 'k' })?.alias).toBe(
+      'Crombolo.MediaMovedToRecycleBin',
+    )
+    expect(mediaWebhookFor({ type: 'sorted', parentKey: 'p' })).toEqual({
+      alias: 'Crombolo.MediaSorted',
+      key: 'p',
+    })
+    expect(mediaWebhookFor({ type: 'binEmptied', keys: ['a', 'b'] })).toEqual({
+      alias: 'Crombolo.MediaEmptiedRecycleBin',
+      key: '',
+      keys: ['a', 'b'],
+    })
+    // Deleted by emptying the bin, it is said once, for the bin.
+    expect(
+      mediaWebhookFor({ type: 'deleted', key: 'k', name: null, fromBin: true }),
+    ).toBeUndefined()
     expect(mediaAuditFor({ type: 'trashed', key: 'k' }).action).toBe('Trash')
   })
 })

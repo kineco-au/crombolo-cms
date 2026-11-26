@@ -27,6 +27,7 @@ import {
   setPageAccess,
   showMember,
 } from './member-admin.ts'
+import type { createMemberResetLinks } from './member-reset.ts'
 
 interface Problem {
   code: string
@@ -43,6 +44,8 @@ export interface MemberRouteOptions {
   problem(status: number, body: Problem): Response
   /** A refusal when the site's remote access level takes no changes. */
   levelRefusal(): Response | undefined
+  /** Story 282: a member's reset link, sent or handed back; absent, not offered. */
+  resetLinks?: ReturnType<typeof createMemberResetLinks>
 }
 
 const KEY = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
@@ -237,6 +240,46 @@ export function createMemberRoutes(options: MemberRouteOptions) {
       principal: Principal,
       what: string,
     ): Promise<Response | undefined> {
+      const reset = /^members\/([^/]+)\/reset-link$/.exec(what)
+      if (reset && options.resetLinks) {
+        if (principal.ci)
+          return problem(403, {
+            code: 'ci-cannot-change-people',
+            title: 'Members need a person',
+            detail: 'Sign in as yourself: CI cannot do this.',
+          })
+        if (!hasSection(principal, 'members')) return noSection('look after members')
+        if (request.method !== 'POST') return new Response(null, { status: 405 })
+        const level = options.levelRefusal()
+        if (level) return level
+        try {
+          const found = await showMember(
+            await options.ports(),
+            principal,
+            decodeURIComponent(reset[1] as string),
+          )
+          const outcome = await options.resetLinks.sendResetLink(
+            { key: found.key, name: found.name, email: found.email, username: found.login },
+            { origin: url.origin },
+          )
+          if ('refused' in outcome)
+            return problem(outcome.refused === 'provider' ? 403 : 503, {
+              code: outcome.refused === 'provider' ? 'signs-in-through-provider' : 'unavailable',
+              title:
+                outcome.refused === 'provider'
+                  ? 'They sign in through an identity provider, so have no password to reset'
+                  : 'This site has no page for setting a password: set members.resetPasswordPage',
+            })
+          await audited(principal, request, 'SendPasswordReset', 'Member', found.key)
+          // A link is handed back only when it could not be sent.
+          return Response.json({
+            sent: outcome.sent,
+            ...(outcome.sent ? {} : { link: outcome.link }),
+          })
+        } catch (error) {
+          return refused(error)
+        }
+      }
       const member = /^members(?:\/([^/]+))?$/.exec(what)
       const group = /^member-groups(?:\/([^/]+))?$/.exec(what)
       const page = options.operations ? new RegExp(`^content/(${KEY})/access$`).exec(what) : null

@@ -206,7 +206,7 @@ export interface SiteContent {
 
 /** A content event as the config's `events` handlers receive it (story 298). */
 export interface SiteContentEvent {
-  /** As webhooks name it: `Umbraco.ContentPublish`. */
+  /** As webhooks name it: `Crombolo.ContentPublish`. */
   alias: string
   /** The page it is about. */
   key: string

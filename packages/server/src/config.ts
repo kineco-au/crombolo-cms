@@ -202,6 +202,29 @@ export const workspacesOn = (config: Pick<CromboloConfig, 'workspaces' | 'conten
   config.workspaces || config.contentEditing === 'locked'
 
 /** Who looks after the site's back-office people (story 389). */
+/** An e-mail to a member: its subject, and text, HTML or both. */
+export interface MemberEmail {
+  subject: string
+  text?: string
+  html?: string
+}
+
+/** Story 282: how often members may ask for a link, reset and sign in. */
+export interface MemberRateLimits {
+  /** Links asked for one address in an hour. */
+  forgotPerAddressPerHour: number
+  /** Links asked for from one IP in an hour; high, for an office behind one address. */
+  forgotPerIpPerHour: number
+  /** Sign-ins and resets from one IP in a minute. */
+  signInPerIpPerMinute: number
+}
+
+export const DEFAULT_MEMBER_RATE_LIMITS: MemberRateLimits = {
+  forgotPerAddressPerHour: 3,
+  forgotPerIpPerHour: 100,
+  signInPerIpPerMinute: 60,
+}
+
 export interface UsersSetting {
   /** The API clients a directory signs in as; none leaves users to the site. */
   managedBy: readonly string[]
@@ -807,6 +830,19 @@ export interface CromboloConfig {
   members?: {
     actAs?: string
     groups?: { selfService?: readonly string[]; managed?: readonly string[] }
+    /**
+     * Story 282: the site's page that sets a new password, a path such as
+     * `/account/reset-password`. The e-mailed link is it, with `?token=`. Without it a
+     * member cannot reset their password, and `forgot-password` says so.
+     */
+    resetPasswordPage?: string
+    /** Story 282: the site's own e-mail with the link, in place of crombolo's words. */
+    resetPasswordEmail?: (
+      member: { name: string; email: string; username: string },
+      link: string,
+    ) => MemberEmail | Promise<MemberEmail>
+    /** Story 282: how often members may ask, reset and sign in; each limit by itself. */
+    rateLimits?: Partial<MemberRateLimits>
   }
   /**
    * Handlers for content events, by the names webhooks use (story 298), each run
@@ -1375,6 +1411,14 @@ export function loadConfig(
     merged.groups.managedBy.some((id) => typeof id !== 'string' || !id.trim())
   )
     throw new Error('groups.managedBy in crombolo.config.ts is a list of API client ids.')
+  const resetPage = merged.members?.resetPasswordPage
+  if (resetPage !== undefined && (typeof resetPage !== 'string' || !/^\/(?!\/)/.test(resetPage)))
+    throw new Error(
+      `members.resetPasswordPage is "${resetPage}": it is a path on this site, starting with /.`,
+    )
+  for (const [name, value] of Object.entries(merged.members?.rateLimits ?? {}))
+    if (!Number.isInteger(value) || (value as number) < 1)
+      throw new Error(`members.rateLimits.${name} is ${value}: it is a whole number, at least 1.`)
   if (merged.groups.managedAt !== undefined && !/^https?:\/\//.test(merged.groups.managedAt))
     throw new Error(
       `groups.managedAt is "${merged.groups.managedAt}": it is an http or https address, with {alias} or {key}.`,
@@ -1539,7 +1583,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.81.0'
+export const VERSION = '0.82.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

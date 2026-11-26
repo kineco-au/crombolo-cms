@@ -234,7 +234,7 @@ describe('a node backed by a store', () => {
       url: 'https://search.example/hook',
       contentTypeKeys: [],
       headers: {},
-      events: ['Umbraco.ContentPublish'],
+      events: ['Crombolo.ContentPublish'],
     })
     expect(created.status).toBe(201)
     const key = created.headers.get('umb-generated-resource') as string

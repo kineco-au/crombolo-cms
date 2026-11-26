@@ -6,7 +6,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type RaisedWebhookEvent, WEBHOOK_EVENT_ALIASES } from '@crombolo/api-management/domain'
+import { eventNameProblem, type RaisedWebhookEvent } from '@crombolo/api-management/domain'
 import {
   ContentTypeRepository,
   type Db,
@@ -17,6 +17,7 @@ import {
   type WebhookRow,
 } from '@crombolo/data'
 import type { SiteContentEvent } from '@crombolo/render'
+import type { ApprovalWebhookFacts } from './approvals.ts'
 import { retryAfter, type WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
 import {
@@ -125,6 +126,12 @@ export type BundleEventHandler = (
 export type BundleEvents = Readonly<Record<string, BundleEventHandler>>
 
 const BUNDLE = 'bundle:'
+/** Story 440: events no content type narrows. */
+const UNNARROWED = /^Crombolo\.(Element|\w+EmptiedRecycleBin$)/
+/** Story 440: a later part of one event, kept apart in the queue and joined again in its header. */
+const PART = '#part'
+/** Story 440: the most keys one delivery of an emptied bin carries. */
+export const KEYS_PER_DELIVERY = 1000
 /** The site's own `events` handlers (story 298), as a subscriber. */
 const SITE = 'site'
 
@@ -135,10 +142,8 @@ export function bundleEventProblems(
   const problems: string[] = []
   for (const bundle of bundles)
     for (const [alias, handler] of Object.entries(bundle.events ?? {})) {
-      if (!WEBHOOK_EVENT_ALIASES.has(alias))
-        problems.push(
-          `The bundle "${bundle.id}" handles "${alias}", which is not an event this site raises.`,
-        )
+      const problem = eventNameProblem(alias)
+      if (problem) problems.push(`The bundle "${bundle.id}": ${problem}`)
       if (typeof handler !== 'function')
         problems.push(`The bundle "${bundle.id}"'s handler for "${alias}" is not a function.`)
     }
@@ -151,7 +156,7 @@ export function bundleEventProblems(
  * page it was called for. Pure.
  */
 export function subscribersFor(
-  event: RaisedWebhookEvent & { via?: string },
+  event: RaisedWebhookEvent & { via?: string; approval?: { workflow: { alias: string } } },
   contentTypeKey: string | undefined,
   webhooks: readonly WebhookDefinition[],
   bundles: readonly { id: string; events?: BundleEvents }[],
@@ -161,8 +166,17 @@ export function subscribersFor(
   for (const webhook of webhooks) {
     if (!webhook.enabled || !webhook.events.includes(event.alias)) continue
     // A deleted item's type cannot be read back, and a missed delete is worse
-    // than an extra one, so an unknown type is not filtered out.
+    // than an extra one, so an unknown type is not filtered out. Story 440: a Library
+    // event, or a bin's, reaches every webhook that hears it.
+    // Story 441: an approval reaches a webhook naming workflows for one of them only.
     if (
+      event.approval &&
+      webhook.workflows?.length &&
+      !webhook.workflows.includes(event.approval.workflow.alias)
+    )
+      continue
+    if (
+      !UNNARROWED.test(event.alias) &&
       webhook.contentTypeKeys.length > 0 &&
       contentTypeKey !== undefined &&
       !webhook.contentTypeKeys.includes(contentTypeKey)
@@ -240,6 +254,11 @@ export interface WebhookFacts extends RaisedWebhookEvent {
   via?: string
   /** Its ancestors' keys, nearest first, for Crombolo's payload (story 208). */
   ancestors?: string[]
+  /** Story 441: an approval step, facts only. */
+  approval?: ApprovalWebhookFacts
+  /** Story 440: a Library item's published pages, for Crombolo's payload, and how many more. */
+  usedBy?: string[]
+  usedByMore?: number
   /** The change a publish finished (story 388), who made it, and what it needs (story 395). */
   change?: {
     key: string
@@ -347,18 +366,48 @@ const workspaceOf = (facts: WebhookFacts) => {
   }
 }
 
+/** Story 441: an approval step as a payload names it. Pure. */
+const approvalOf = (a: ApprovalWebhookFacts) => ({
+  Request: a.request,
+  Page: { Key: a.page.key, Name: a.page.name },
+  Workflow: { Alias: a.workflow.alias, Name: a.workflow.name },
+  ...(a.stage
+    ? { Stage: { Alias: a.stage.alias, Name: a.stage.name, Groups: a.stage.groups } }
+    : {}),
+  ...(a.by ? { By: { Key: a.by.key, Name: a.by.name } } : {}),
+  At: a.at,
+  Action: a.action,
+  ...(a.schedule
+    ? {
+        Schedule: a.schedule.map((e) => ({
+          Culture: e.culture,
+          PublishTime: e.publishTime,
+          UnpublishTime: e.unpublishTime,
+        })),
+      }
+    : {}),
+  ...(a.outcome ? { Outcome: a.outcome } : {}),
+})
+
 /** What a webhook is posted. Pure. */
 export function webhookPayload(
   facts: WebhookFacts,
   payload: WebhookDefinition['payload'],
 ): Record<string, unknown> {
   if (facts.workspace) return { Id: facts.key, ...workspaceOf(facts) }
+  // Story 440: a bin emptied names every item it deleted.
+  if (facts.keys) return { Keys: facts.keys }
+  // Story 441: an approval step, whichever payload the webhook asks for.
+  if (facts.approval) return { Id: facts.key, Approval: approvalOf(facts.approval) }
   const change = facts.change ? { Change: changeOf(facts.change) } : {}
   if (payload !== 'crombolo') return { Id: facts.key, ...change }
   return {
     Id: facts.key,
     ContentType: facts.contentTypeAlias ?? null,
     Ancestors: facts.ancestors ?? [],
+    ...(facts.usedBy
+      ? { UsedBy: facts.usedBy, ...(facts.usedByMore ? { UsedByMore: facts.usedByMore } : {}) }
+      : {}),
     ...change,
   }
 }
@@ -511,6 +560,7 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
     if (headers && !secret) throw new Error('unreachable: a database write without a key')
     await rows.save({
       ...webhook,
+      workflows: webhook.workflows ?? [],
       sealedHeaders: headers && secret ? sealSecret(JSON.stringify(headers), secret) : null,
     })
   }
@@ -614,7 +664,7 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
       'Webhook-Id': webhook.key,
       'Webhook-Delivery': delivery.id,
       // The change itself, the same for every webhook it reaches (story 171).
-      ...(delivery.eventId ? { 'Webhook-Event-Id': delivery.eventId } : {}),
+      ...(delivery.eventId ? { 'Webhook-Event-Id': delivery.eventId.split(PART)[0] } : {}),
     }
     // The log shows which headers were sent, never what their values were.
     const logged = JSON.stringify({
@@ -802,6 +852,10 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         ...((definition.payload ?? existing.payload)
           ? { payload: definition.payload ?? existing.payload }
           : {}),
+        // Story 441: nor for its workflows, which have a panel of their own.
+        ...((definition.workflows ?? existing.workflows)?.length
+          ? { workflows: definition.workflows ?? existing.workflows }
+          : {}),
       }
       return store(next, existing.store)
     },
@@ -826,6 +880,8 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
       return written
     },
     async factsFor(db, event) {
+      // Story 440: a bin emptied is about no one item.
+      if (!event.key) return { ...event }
       const item = await itemFacts(db, event.key)
       return item ? { ...event, ...item } : { ...event }
     },
@@ -839,17 +895,24 @@ export function createWebhookService(options: WebhookServiceOptions): WebhookSer
         (alias) => options.siteEvents?.handles(alias) ?? false,
       )
       if (subscribers.length === 0) return 0
-      const payloadOf = (subscriber: string) =>
-        subscriber === SITE
-          ? siteEventOf(facts)
-          : webhookPayload(facts, webhooks.find((webhook) => webhook.key === subscriber)?.payload)
+      // Story 440: an emptied bin's keys go 1,000 to a delivery, each a part of the one event.
+      const parts: WebhookFacts[] = []
+      if (facts.keys && facts.keys.length > KEYS_PER_DELIVERY)
+        for (let at = 0; at < facts.keys.length; at += KEYS_PER_DELIVERY)
+          parts.push({ ...facts, keys: facts.keys.slice(at, at + KEYS_PER_DELIVERY) })
+      else parts.push(facts)
       const queued = await new WebhookDeliveryRepository(db).enqueue(
-        subscribers.map((subscriber) => ({
-          subscriber,
-          eventAlias: facts.alias,
-          payload: payloadOf(subscriber),
-          eventId,
-        })),
+        parts.flatMap((part, n) =>
+          subscribers.map((subscriber) => ({
+            subscriber,
+            eventAlias: facts.alias,
+            payload:
+              subscriber === SITE
+                ? siteEventOf(part)
+                : webhookPayload(part, webhooks.find((w) => w.key === subscriber)?.payload),
+            ...(eventId ? { eventId: n === 0 ? eventId : `${eventId}${PART}${n + 1}` } : {}),
+          })),
+        ),
         now(),
       )
       return queued.length

@@ -18,6 +18,7 @@ import {
   type ElementEventSink,
   type EventSink,
   elementAuditEntryFor,
+  elementWebhookFor,
   liveEventsFor,
   type MediaActor,
   type MediaEventSink,
@@ -26,7 +27,7 @@ import {
   notificationFor,
   webhookFor,
 } from '@crombolo/content'
-import { normaliseUuid } from '@crombolo/core'
+import { normaliseUuid, ObjectTypes } from '@crombolo/core'
 import {
   AuditLog,
   ChangeRepository,
@@ -34,6 +35,7 @@ import {
   currentAuditContext,
   type Db,
   DocumentRepository,
+  ReferenceRepository,
 } from '@crombolo/data'
 import type { ContentNotifier } from './content-notifications.ts'
 import { neededBy, servedView } from './served-schema.ts'
@@ -450,9 +452,15 @@ export function createMediaEventSink(options: {
         hook && options.webhooks ? await options.webhooks.factsFor(tx, hook) : undefined
       if (!webhook || !hook) return
       await new ContentEventRepository(tx).record({
-        kind: event.type === 'deleted' ? 'mediaDeleted' : 'mediaSaved',
+        kind:
+          event.type === 'deleted'
+            ? 'mediaDeleted'
+            : event.type === 'created' || event.type === 'saved'
+              ? 'mediaSaved'
+              : `media:${event.type}`,
         entityType: 'Media',
-        entityKey: hook.key,
+        // A bin emptied is about no one item (story 440).
+        entityKey: hook.key || null,
         facts: { v: 1, webhook },
         actor: outboxActor(actor),
       })
@@ -463,22 +471,62 @@ export function createMediaEventSink(options: {
   }
 }
 
+/** Story 440: how many published pages Crombolo's payload names as showing a Library item. */
+export const USED_BY_LIMIT = 1000
+
 /**
  * Where Library operations record what they did (story 361): the audit entry, in
- * the change's own transaction, as the back office has always written it.
+ * the change's own transaction, as the back office has always written it, and the
+ * webhook its event raises (story 440), with the published pages that show it.
  */
-export function createElementEventSink(): ElementEventSink {
+export function createElementEventSink(
+  options: { webhooks?: Pick<WebhookService, 'factsFor'>; nudge?(): void } = {},
+): ElementEventSink {
   return {
     async record(tx: Db, event, actor) {
       const entry = elementAuditEntryFor(event, actor)
       const audit = new AuditLog(tx)
-      const subject = await audit.describe(entry.entityType, entry.entityKey)
+      const subject = entry.entityKey
+        ? await audit.describe(entry.entityType, entry.entityKey)
+        : { entityType: entry.entityType, entityKey: null, entityName: null }
       await audit.record({
         ...entry,
         entityType: subject.entityType,
         entityKey: subject.entityKey,
         entityName: subject.entityName,
       })
+      const hook = elementWebhookFor(event)
+      if (!hook || !options.webhooks) return
+      const facts = await options.webhooks.factsFor(tx, hook)
+      const used =
+        hook.key === ''
+          ? undefined
+          : (await new ReferenceRepository(tx).referencedBy(hook.key, 0, 100_000)).items.filter(
+              (n) => n.objectType === ObjectTypes.Document && n.published === true,
+            )
+      await new ContentEventRepository(tx).record({
+        kind: `element:${event.type}`,
+        entityType: 'Element',
+        entityKey: hook.key || null,
+        facts: {
+          v: 1,
+          webhook: {
+            ...facts,
+            ...(used
+              ? {
+                  usedBy: used.slice(0, USED_BY_LIMIT).map((n) => n.key),
+                  ...(used.length > USED_BY_LIMIT
+                    ? { usedByMore: used.length - USED_BY_LIMIT }
+                    : {}),
+                }
+              : {}),
+          },
+        },
+        actor: outboxActor(actor),
+      })
+    },
+    afterCommit(event) {
+      if (elementWebhookFor(event)) options.nudge?.()
     },
   }
 }

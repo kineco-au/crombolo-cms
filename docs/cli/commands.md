@@ -39,6 +39,25 @@ crombolo init [--empty] [--force] [--name <name>] [--next] [--agents] [--postgre
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
 
+### `crombolo install`
+
+Install the site's packages, and check it will start. Safe to run again: a second run changes nothing more.
+
+```
+crombolo install [--production]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--production` | boolean | Leave the development dependencies out. |
+
+**Output** (single, with `-o json`):
+
+- `version` (string)
+- `extensions` (array of string)
+
+**Fails with:** `usage`, `internal`, `not_found`, `refused`.
+
 ### `crombolo agents link`
 
 Name a profile this site came from, so `agents refresh` fetches its remote's guide. Safe to run again: a second run changes nothing more.
@@ -6382,15 +6401,16 @@ crombolo members reset-2fa <member> [--profile <profile>] [--env <env>]
 
 ### `crombolo members reset-password`
 
-Give a member a new password, and end their sessions. Each run acts again.
+Send a member a link to set a new password, or give them one. Each run acts again.
 
 ```
-crombolo members reset-password <member> [--stdin] [--profile <profile>] [--env <env>]
+crombolo members reset-password <member> [--password] [--stdin] [--profile <profile>] [--env <env>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `member` | string | Their e-mail address, login or key. Required. |
+| `--password` | boolean | Give them a new password instead of a link. |
 | `--stdin` | boolean | Read the new password from stdin. |
 | `--profile` | string | Act on the site this profile names, rather than this one. |
 | `--env` | string | A hosted site's environment. |
@@ -6399,6 +6419,8 @@ crombolo members reset-password <member> [--stdin] [--profile <profile>] [--env 
 
 - `key` (string)
 - `email` (string)
+- `sent` (boolean)
+- `link` (string)
 - `password` (string)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`, `unavailable`.

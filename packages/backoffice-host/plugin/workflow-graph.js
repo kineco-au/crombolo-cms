@@ -73,6 +73,16 @@ const STATE_FILL = {
  * The arrows and boxes as SVG. `states` colours each stage by where a request
  * stands; `selected` outlines one; the callbacks make it a canvas.
  */
+/**
+ * Story 229: the groups a stage names that are not groups here, by alias: a stage from the
+ * site's files, or one whose group was deleted after it was made.
+ *
+ * @param {{ approvers: string[] }} stage
+ * @param {Array<{ alias: string }>} groups the groups that are here
+ */
+export const missingGroups = (stage, groups) =>
+  stage.approvers.filter((alias) => !groups.some((g) => g.alias === alias))
+
 export function drawGraph(stages, options = {}) {
   const positions = layout(stages)
   const at = (alias) => positions.get(alias) ?? { x: 0, y: 0 }
@@ -96,15 +106,16 @@ export function drawGraph(stages, options = {}) {
   const boxes = stages.map((stage) => {
     const p = at(stage.alias)
     const state = options.states?.[stage.alias]
+    const missing = options.groups ? missingGroups(stage, options.groups) : []
     return svg`<g
-      class="stage ${options.selected === stage.alias ? 'selected' : ''}"
+      class="stage ${options.selected === stage.alias ? 'selected' : ''} ${missing.length > 0 ? 'missing' : ''}"
       transform="translate(${p.x}, ${p.y})"
       @pointerdown=${(event) => options.onPointerDown?.(stage.alias, event)}
       @click=${(event) => options.onStage?.(stage.alias, event)}
     >
       <rect width=${BOX.width} height=${BOX.height} rx="6" fill=${STATE_FILL[state] ?? 'var(--uui-color-surface, #fff)'}></rect>
       <text x="10" y="22" class="name">${stage.name || stage.alias}</text>
-      <text x="10" y="42" class="detail">${stage.approvers.join(', ') || 'no approvers'}</text>
+      <text x="10" y="42" class="detail">${missing.length > 0 ? 'A group that is not here' : stage.approvers.join(', ') || 'no approvers'}</text>
     </g>`
   })
   const width = Math.max(...[...positions.values()].map((p) => p.x + BOX.width), 0) + 40
@@ -126,6 +137,7 @@ export const GRAPH_STYLES = `
   .graph .arrow:hover { stroke: var(--uui-color-danger, #d42054); }
   .graph .stage rect { stroke: var(--uui-color-border, #d8d7d9); stroke-width: 1; }
   .graph .stage.selected rect { stroke: var(--uui-color-interactive, #3544b1); stroke-width: 2; }
+  .graph .stage.missing rect { stroke: var(--uui-color-danger, #d42054); stroke-width: 2; }
   .graph .stage { cursor: grab; }
   .graph .name { font-weight: 700; font-size: 13px; }
   .graph .detail { font-size: 11px; opacity: 0.8; }

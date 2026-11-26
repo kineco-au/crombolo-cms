@@ -274,6 +274,8 @@ const fieldOf = (v: {
   segment: string | null
   environment?: string | null
 }) => `${v.alias}|${v.culture ?? ''}|${v.segment ?? ''}|${v.environment ?? ''}`
+/** A field as a staged change names it, as a workspace's merge does: no empty environment. */
+const mergeFieldOf = (field: string) => (field.startsWith('@') ? field : field.replace(/\|$/, ''))
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 const MEDIA_URL = /\/media\/[^"'\s?#\\]+/g
 const UUID = /[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}/gi
@@ -721,7 +723,15 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       await options.schema()?.snapshot(workspace.id)
     }
     const store = new WorkspaceFileRepository(db)
+    /** Story 439: each change's bases, for the fields it brought that this site changed since. */
+    const basesOf = new Map<string, Record<string, Record<string, unknown>>>()
     for (const { change, media } of todo) {
+      const bases: Record<string, Record<string, unknown>> = {}
+      basesOf.set(change.key, bases)
+      const held = (pageKey: string, field: string, base: unknown) => {
+        const key = normaliseUuid(pageKey)
+        bases[key] = { ...bases[key], [field]: base ?? null }
+      }
       const missing = change.depends.filter(
         (d) => !known.has(normaliseUuid(d)) && !coming.has(normaliseUuid(d)),
       )
@@ -774,7 +784,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       for (const page of ordered) {
         const step: { at: StagingStep } = { at: 'read' }
         try {
-          await stagePage(workspace, page, conflict, moved, step)
+          await stagePage(workspace, page, conflict, moved, step, held)
         } catch (error) {
           // Story 421: a page that cannot be staged is a conflict naming it, never a 500.
           // Story 434: saying which step failed, "here already" only for making it.
@@ -795,11 +805,13 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       const schedules = change.pages.flatMap((p) =>
         p.after?.schedule ? [{ key: p.key, kind: p.kind, entries: p.after.schedule }] : [],
       )
+      const bases = basesOf.get(change.key) ?? {}
       if (!staged.some((s) => s.key === change.key))
         staged.push({
           key: change.key,
           name: change.name,
           ...(schedules.length > 0 ? { schedules } : {}),
+          ...(Object.keys(bases).length > 0 ? { bases } : {}),
         })
     }
     await workspaces.setStaged(workspace.id, staged)
@@ -905,6 +917,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     conflict: (item: string, says: string) => void,
     moved: (item: string) => boolean,
     step: { at: StagingStep } = { at: 'read' },
+    /** Story 439: a field this site changed since, brought anyway, with what the change found. */
+    held: (pageKey: string, field: string, base: unknown) => void = () => {},
   ) {
     const doing = <T>(at: StagingStep, run: () => Promise<T>): Promise<T> => {
       step.at = at
@@ -996,8 +1010,15 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       if (same(n, a)) continue
       if (same(n, b)) taken.set(field, a)
       else {
+        // Story 439: brought in, its base what the change found, so the merge asks which.
+        // A change this site lacks is named too, as the likely reason it differs.
         moved(label)
-        conflict(label, `${label}: ${field.split('|')[0]} was changed here since.`)
+        taken.set(field, a)
+        held(page.key, mergeFieldOf(field), b)
+        conflict(
+          label,
+          `${label}: ${field.split('|')[0]} was changed here since. Choose which to keep in the workspace's conflicts.`,
+        )
       }
     }
     if (taken.size > 0) {

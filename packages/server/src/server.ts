@@ -110,6 +110,7 @@ import {
   readLedger,
   readReport,
   readUrlOptions,
+  readWorkflows,
   SingleUseTokens,
   searchProvidersOf,
   TransferRunRepository,
@@ -1153,6 +1154,7 @@ export async function createServer(
   const remote = createRemote({
     db,
     config,
+    email: () => email,
     authenticate,
     people,
     bundles: bundleAdmin,
@@ -1195,6 +1197,7 @@ export async function createServer(
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
     log: (message) => log.warning('Member sign-in: {message}', { message }),
+    email: () => email,
   })
   const caching = resolveCacheSettings(config.cache)
   // Story 259: `check` with checks answered by rendering costs a render a floor, where `published` costs none.
@@ -2316,7 +2319,11 @@ export async function createServer(
     }
 
     if (pathname.startsWith(`${MEMBER_ROUTE_PREFIX}/`)) {
-      const response = await members.handle(request, pathname)
+      const response = await members.handle(
+        request,
+        pathname,
+        callerAddress(peers.get(request), request.headers.get('x-forwarded-for')),
+      )
       if (response) return response
     }
 
@@ -3868,6 +3875,40 @@ export async function createServer(
      * files are the truth, the backoffice may have just rewritten one, and a
      * picker that disagreed with what a render uses would be worse than slow.
      */
+    // Story 441: the "Workflows" panel on a webhook's screen: the workflows whose approvals it hears.
+    const heard = new RegExp(
+      `^${paths.pluginPath}/api/webhooks/([0-9a-fA-F-]{36})/workflows$`,
+    ).exec(pathname)
+    if (heard) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'settings')) return new Response('Forbidden', { status: 403 })
+      const webhook = await webhooks.get((heard[1] as string).toLowerCase())
+      if (!webhook) return new Response('Not Found', { status: 404 })
+      const available = (await readWorkflows(db)).map((s) => ({
+        alias: s.workflow.alias,
+        name: s.workflow.name,
+      }))
+      if (request.method === 'PUT') {
+        const body = (await request.json().catch(() => ({}))) as { workflows?: unknown }
+        const asked = Array.isArray(body.workflows)
+          ? body.workflows.filter((w): w is string => typeof w === 'string')
+          : []
+        const unknown = asked.filter((w) => !available.some((a) => a.alias === w))
+        if (unknown.length > 0)
+          return Response.json(
+            { reason: `There is no workflow "${unknown[0]}" here.` },
+            { status: 400 },
+          )
+        const { store: _, ...definition } = webhook
+        const saved = await webhooks.update(webhook.key, { ...definition, workflows: asked })
+        if (!saved.ok) return Response.json({ reason: saved.reason }, { status: saved.status })
+        return Response.json({ chosen: asked, available })
+      }
+      if (request.method !== 'GET') return new Response('Method Not Allowed', { status: 405 })
+      return Response.json({ chosen: webhook.workflows ?? [], available })
+    }
+
     // Non-contract, Settings: the "Where it's kept" panel on a webhook's screen.
     const kept = new RegExp(`^${paths.pluginPath}/api/webhooks/([0-9a-fA-F-]{36})/store$`).exec(
       pathname,

@@ -104,7 +104,7 @@ describe('the commands', () => {
     expect(events).toContain('content-published')
     expect(JSON.parse(ok('webhooks', 'events', '-o', 'json').out).items).toContainEqual({
       name: 'media-deleted',
-      alias: 'Umbraco.MediaDelete',
+      alias: 'Crombolo.MediaDelete',
       says: 'Media Deleted',
       kind: 'Media',
     })
@@ -163,8 +163,8 @@ describe('the commands', () => {
       '--event',
       'content-published',
     )
-    expect(read('schema/webhooks/search.toml')).toContain('"Umbraco.ContentPublish"')
-    ok('webhooks', 'update', 'search', '--event', 'Umbraco.MediaDelete')
+    expect(read('schema/webhooks/search.toml')).toContain('"Crombolo.ContentPublish"')
+    ok('webhooks', 'update', 'search', '--event', 'Crombolo.MediaDelete')
     expect(ok('webhooks', 'show', 'search').out).toContain('content-published, media-deleted')
     const unknown = cli('webhooks', 'update', 'search', '--event', 'page-eaten')
     expect(unknown.code).toBe(ERROR_KINDS.refused.exitCode)

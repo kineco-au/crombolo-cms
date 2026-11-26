@@ -1,14 +1,14 @@
 ---
 name: release
-description: Cut a crombolo release, push main, run the full Postgres suite locally beside main's CI, tag once both pass, and watch the Release pipeline until it publishes, bumping the patch version and re-releasing each time a fix is needed. Use when asked to cut, ship or publish a release, or to get a failing release pipeline green.
+description: Cut a crombolo release, push main, tag once main's CI passes (SQLite and Postgres both), and watch the Release pipeline until it publishes, bumping the patch version and re-releasing each time a fix is needed. Use when asked to cut, ship or publish a release, or to get a failing release pipeline green.
 ---
 
 # Releasing crombolo
 
 **"Cut a new release" means the whole job, not just the tag.** Push it, then
-watch three things, fixing and re-releasing as below, until all are green and
-the packages are on npm: CI on `main`, the full Postgres suite run locally
-beside it, and the Release pipeline the tag starts. Stop to ask only when a blocker needs
+watch two things, fixing and re-releasing as below, until both are green and
+the packages are on npm: CI on `main`, which runs the unit suite on SQLite and
+Postgres (story 085), and the Release pipeline the tag starts. Stop to ask only when a blocker needs
 the maintainer's input: a credential, a decision, or a failure with no safe fix.
 
 Pushing a `v*` tag publishes to npm (`.github/workflows/release.yml`). A tag is
@@ -38,8 +38,9 @@ pushed. A failed release is fixed by a **new** patch version.
    - the browser tests a change touches, or a failing one, alone:
      `docker compose run --rm cms-test-browser bun run test:browser <file>`
 
-   The full Postgres suite runs locally in step 5, beside `main`'s CI, not
-   here; CI runs the full browser suite. Change nothing in the tree while a
+   The integration suite on Postgres as well, when a migration was added or the
+   data layer changed: `bun run docker:test:integration:postgres`. CI runs the full
+   Postgres suite and the full browser suite. Change nothing in the tree while a
    suite runs: docker reads it live, and an edit mid-run fails tests that
    pass alone.
 2. **Release notes.** In `docs/release-notes.md`, rename `## Unreleased` to
@@ -54,13 +55,11 @@ pushed. A failed release is fixed by a **new** patch version.
    with the browser switch in the message:
    `git commit -am "<what changed>; bump version->v<version> --browser-tests"`.
    CI on `main` runs the browser suite only when the **last** commit's message
-   says so. Postgres is not run in CI for a release.
+   says so. Postgres runs in CI on every push to `main`.
 5. **Push `main` alone first:** `git push --no-verify origin main` (the code
-   was tested in step 1), and start the full
-   Postgres suite locally beside that CI run, in the background:
-   `bun run docker:test:postgres`. Watch both, as below, and fix anything they
-   find with a new commit.
-6. **Only once both have passed,** `git tag v<version>` and
+   was tested in step 1). Watch its CI, as below, and fix anything it finds with
+   a new commit.
+6. **Only once it has passed,** `git tag v<version>` and
    `git push --no-verify origin v<version>`. The Release pipeline does not run CI again: it
    runs the load test and benchmarks, then publishes. A failure there costs a
    version number, which this step is there to save. **Only when the maintainer asks**
@@ -70,9 +69,8 @@ pushed. A failed release is fixed by a **new** patch version.
 ## Watch it
 
 **CI** starts from the push of `main`, and **Release** from the push of the tag,
-which runs the load test and benchmarks, then publishes. The **local Postgres
-suite** runs in the background beside CI; read its output for `(fail)` lines
-once it ends. Check progress once a minute, not continuously.
+which runs the load test and benchmarks, then publishes. Check progress once a
+minute, not continuously.
 
 ```bash
 gh run list --limit 4 --json databaseId,workflowName,headSha,status,conclusion
@@ -90,15 +88,15 @@ A browser failure leaves `browser-report` as an artifact. Each failure's
    what changed since the last green release before choosing which to fix. A
    test that fails in a full run but passes alone, timing out under load, is
    rerun alone before anything is changed.
-2. **Before the tag** (CI on `main` or the local Postgres suite): fix it with a
-   new commit, verify it locally, push `main` again with `--browser-tests`, and
-   rerun the Postgres suite. The version is not spent, so it does not change.
+2. **Before the tag** (CI on `main`): fix it with a new commit, verify it
+   locally (a Postgres failure with `bun run docker:test:postgres <file>`), and
+   push `main` again with `--browser-tests`. The version is not spent, so it does not change.
 3. **After the tag** (the Release pipeline): bump the **patch** version (0.14.1
    → 0.14.2), add its section to `docs/release-notes.md` (the fix, in a line),
    and cut it again as in "Cut it". Never reuse a pushed tag. If publish failed
    part-way, rerun its job only once npm's index shows what it already
    published.
-4. Watch again. Repeat until all three are green.
+4. Watch again. Repeat until both are green.
 
 ## Finish
 

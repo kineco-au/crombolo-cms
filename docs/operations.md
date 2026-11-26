@@ -3,6 +3,49 @@
 What a deployed site needs beyond the code: where uploads live, how a URL that
 moved keeps working, how schema travels, and what the security model is.
 
+## The container image
+
+Story 087. Each release publishes `ghcr.io/kineco-au/crombolo:<version>`, with
+`:<major>.<minor>` and `:latest`, for `linux/amd64` and `linux/arm64`, built from that
+release's npm packages (`docker/image/Dockerfile`). It runs as a user other than root, and
+keeps everything it writes under the volume `/data`:
+
+| Path | What |
+| --- | --- |
+| `/data/site` | the site, made on the first start finding `/data` empty |
+| `/data/crombolo.sqlite` | the database, unless `CROMBOLO_DB=postgres` |
+| `/data/media` | uploads |
+| `/data/logs` | the server's logs |
+
+**From a cloud console:** mount a volume at `/data`, publish port `8080`, and set
+`CROMBOLO_SETUP_CODE` (below, "First boot"); the first visit opens **Set up your new site**.
+`CROMBOLO_TEMPLATE` chooses what the first start makes: `empty` by default, or any template
+`crombolo init --template list` names. For Postgres, set `CROMBOLO_DB=postgres` and
+`CROMBOLO_POSTGRES_URL`. Its files stay writable, so types and templates made in the back
+office survive restarts and new images. `/health` is the image's health check.
+
+**From a pipeline,** build the site into an image of your own:
+
+```dockerfile
+FROM ghcr.io/kineco-au/crombolo:0.82.0
+COPY --chown=crombolo . /site
+RUN crombolo install --production
+```
+
+A site at `/site` is run in place of one in `/data`, its files changed only by building
+another image (`CROMBOLO_SCHEMA_WRITABLE=false`); the database, media and logs stay in
+`/data`. `crombolo install` refuses a site whose `@crombolo/crombolo` is not the image's own
+version, naming the tag that is, and refuses an extension the site would not run, so a
+site that would not start fails the build.
+
+**`crombolo install [--production]`** works outside the image too: it installs the site's
+packages with Bun's installer, checks its crombolo version and its extensions, and builds
+its views and back-office screens once, as `crombolo start` would.
+
+**Building it here:** `bun run image:build` packs this checkout's packages into
+`docker/image/local` (`scripts/image-context.ts`) and builds `crombolo:local` from them;
+`bun run image:check` starts it with a setup code, then on Postgres. CI does both on `main`.
+
 ## First boot
 
 A site self-hosted on your own cloud starts one of two ways, and neither uses
@@ -280,11 +323,44 @@ Umbraco has no fixed URLs for this (a site writes a surface controller):
 | `POST /umbraco/members/logout`   |                                                     |
 | `POST /umbraco/members/register` | off unless `allowMemberRegistration`                |
 | `GET /umbraco/members/current`   | the signed-in member, or `401`                      |
+| `POST /umbraco/members/forgot-password` | `email`, `returnUrl?`: a link to set a password (story 282) |
+| `POST /umbraco/members/reset-password`  | `token`, `password`, `returnUrl?`                    |
 
 A form post is answered with a redirect, a JSON post with JSON, so the same
 endpoint serves a plain `<form>` in a template and a `fetch` from the page. A
 `returnUrl` must be a local path, which closes the open redirect a login form
 would otherwise be.
+
+### A member resets their password
+
+Story 282. A member asks with their e-mail address and is sent a link to the site's own
+page for setting a password, named in the config:
+
+```ts
+members: {
+  resetPasswordPage: '/account/reset-password',
+  // Optional: the site's own words in place of crombolo's.
+  resetPasswordEmail: (member, link) => ({ subject: 'Set your password', text: `…${link}` }),
+  // Optional: each limit alone; these are the defaults.
+  rateLimits: { forgotPerAddressPerHour: 3, forgotPerIpPerHour: 100, signInPerIpPerMinute: 60 },
+}
+```
+
+- **The answer is the same for any address,** known or not; the e-mail goes after it.
+  The page the form returns to carries `memberResetSent=1`.
+- **The link works once, for 24 hours.** Setting the password unlocks the account, ends
+  every session and spends every other link sent to the member. Two-factor stays on, and
+  they sign in afterwards with the new password. Each reset is audited.
+- **A member with no password yet** sets one the same way. **One linked to an identity
+  provider** is sent no link: their e-mail says they sign in with that provider.
+- **Without a reset page, or with no way to send mail,** both endpoints answer `503` (a
+  form comes back with `memberResetUnavailable=1`). Development's log counts as a way.
+- **Limits** are counted in the database (`rate_limit_hit`), so every server shares them:
+  past an address's limit the answer is the same and nothing more is sent; past an IP's,
+  `429` with `Retry-After` (a form comes back with `memberTooMany=1`). Signing in and
+  resetting share the per-minute limit, high enough for an office behind one address.
+- **The command line:** `crombolo members reset-password <member>` sends the link, or prints
+  it where the site cannot send mail; `--password` sets one directly.
 
 A session is a signed ticket in a cookie — no server-side session table, so a
 load-balanced set needs only the shared signing key (generated once into
@@ -1093,7 +1169,7 @@ back office's.
 | `crombolo members new <email> --type <alias> [--login] [--name] [--group]... [--set]... [--set-file]... [--stdin]` | a member, approved; a password from `--stdin`, or none |
 | `crombolo members update <member> [--email] [--login] [--name] [--set]... [--unset]... [--group]... [--remove-group]...` | changes what is named, and keeps the rest |
 | `crombolo members approve\|lock\|unlock <member>` | each saying "no change" when it was so already; unlocking clears the failed sign-ins |
-| `crombolo members reset-password <member> [--stdin]` | a new password, made and printed once or read from `--stdin`; their sessions end |
+| `crombolo members reset-password <member> [--password [--stdin]]` | a link to set a new password, sent, or printed where the site cannot send mail (story 282); with `--password`, a new password made and printed once or read from `--stdin`, their sessions ended |
 | `crombolo members reset-2fa <member>` | removes their second factor, for one who lost their device |
 | `crombolo members remove <member> [--yes]` | removes them for good, with their groups and sign-ins; asks first |
 | `crombolo members groups list\|new <name>\|remove <name> [--yes]` | the groups, with how many members each has and the pages that name it |
@@ -1112,10 +1188,10 @@ back office's.
   sees and changes every value: whoever runs it holds the database anyway. A save by
   someone outside Sensitive data keeps the values withheld from them, in the back
   office too.
-- **A password is given, not linked.** `members reset-password` sets one, as the
-  Members section does, and prints it once for you to pass on; a member who signs in
-  only through a provider is refused unless `--stdin` gives them one deliberately.
-  A reset link the member follows themselves waits for story 282.
+- **A link, or a password.** `members reset-password` sends the member the link to the
+  site's reset page (story 282), or prints it where the site cannot send mail, and refuses
+  a member who signs in through a provider. `--password` sets one, as the Members section
+  does, printed once for you to pass on, or from `--stdin`.
 - **Member groups** change the database until story 162 decides where they live.
   A page's rule names a group by its name, so removing a group drops it from every
   rule that names it, and a page whose rule named only that group is then open to no
@@ -1567,13 +1643,13 @@ and only signed-out visitors share copies. `/crombolo/deferred` is always
 Not needed when the CDN checks back as above. A purge cuts the time a stale
 copy can be served to nothing, at the cost of a hook.
 
-A webhook for `Umbraco.ContentPublish` and `Umbraco.ContentUnpublish` tells the
+A webhook for `Crombolo.ContentPublish` and `Crombolo.ContentUnpublish` tells the
 CDN ([`webhooks.md`](webhooks.md)). Its payload is the page's key; with tags,
 purge it and its ancestors, which is every list that could hold it:
 
 ```ts
 // a bundle's webhook handler, or any receiver
-'Umbraco.ContentPublish': async ({ payload, fetch }) => {
+'Crombolo.ContentPublish': async ({ payload, fetch }) => {
   const site = 'https://cms.example.com/crombolo/delivery/api/v2'
   const above = await (await fetch(`${site}/content?fetch=ancestors:${payload.Id}&take=100`)).json()
   await fetch('https://api.cdn.example/purge', {

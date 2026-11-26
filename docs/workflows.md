@@ -122,6 +122,32 @@ any publish is. A page that cannot be published at that point — a mandatory
 value since emptied, an unpublished parent — goes back to its editor with the
 reason, rather than sitting approved and unpublished.
 
+## A stage nobody can approve (story 229)
+
+Who could approve a stage is the enabled people in its groups: not a service account, not
+a disabled or locked account, and not the sender where `self-approval = "refused"`. The
+same count sets what `required = "majority"` and `"all"` need, so a disabled member holds
+nothing up.
+
+- **Sending is refused** while any stage of the workflow has nobody who could approve it,
+  naming the stage and its groups ("Nobody can approve "Legal review": Legal has nobody
+  who can approve"), a group that is not there included, and who to ask.
+- **A page already waiting** at such a stage, its approver disabled or gone from the
+  group since, says so on its request, and administrators are e-mailed once, by the
+  schedules job, noted on the request (`stalled`). Nothing moves by itself: someone is
+  added to the group, or the request is withdrawn.
+- **The Content status check**, "Approval workflows", names each such stage and how many
+  pages wait at it.
+- **The designer** marks a stage naming a group that is not here, from the site's files or
+  deleted since, and offers to remove it.
+
+## Webhooks for approvals (story 441)
+
+Each step a request takes raises a webhook another system can hear: `Crombolo.ApprovalSent`,
+`ApprovalStageReached`, `ApprovalApproved`, `ApprovalSentBack`, `ApprovalWithdrawn`,
+`ApprovalStalled` and `ApprovalFinished`, carrying the facts and never a comment
+([`webhooks.md`](webhooks.md)). A webhook may be narrowed to some workflows.
+
 ## A time on a request
 
 When the workflow has `scheduling`, a request can say when the page should go
