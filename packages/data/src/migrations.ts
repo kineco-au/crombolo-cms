@@ -32,6 +32,11 @@ export interface Migration {
   contracts?: string
   /** Recorded in the ledger, and compared when the plan verifies what ran. Defaults to `name`. */
   checksum?: string
+  /**
+   * SQLite: the step runs with foreign keys off, as rebuilding a table others refer to
+   * needs, and is refused if any reference is left broken (story 436).
+   */
+  foreignKeysOff?: boolean
   up(db: Db): Promise<void>
   /**
    * Writes data once `up` has run, in the same transaction. `planUpgrade` cannot
@@ -507,8 +512,10 @@ export async function migrate(
       const started = performance.now()
       // The state and the ledger row commit with the step, so an interrupted
       // run resumes at the first step that did not land and never repeats one.
-      await db
-        .transaction(async (tx) => {
+      const run = <T>(fn: () => Promise<T>): Promise<T> =>
+        next.foreignKeysOff && db.withoutForeignKeys ? db.withoutForeignKeys(fn) : fn()
+      await run(() =>
+        db.transaction(async (tx) => {
           const step = async (db: Db) => {
             await next.up(db)
             await next.backfill?.(db)
@@ -526,10 +533,10 @@ export async function migrate(
             note: next.release ? `release ${next.release}` : null,
             bundle: plan.bundle ?? null,
           })
-        })
-        .catch((error: unknown) => {
-          throw new MigrationStepError(next.name, applied, plan.bundle, error)
-        })
+        }),
+      ).catch((error: unknown) => {
+        throw new MigrationStepError(next.name, applied, plan.bundle, error)
+      })
       state = next.to
       applied.push(next.name)
     }

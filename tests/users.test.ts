@@ -525,6 +525,33 @@ describe('users', () => {
     expect(await h.json<unknown>(`${V1}/user/${robot}/client-credentials`)).toEqual<unknown>([])
   })
 
+  test('only an administrator gives an API user a secret', async () => {
+    const { h, user, group } = await site()
+    const managers = (
+      await group({
+        name: 'Managers',
+        alias: 'managers',
+        sections: ['Umb.Section.Users', 'Umb.Section.Settings'],
+      })
+    ).headers.get('umb-generated-resource') as string
+    const manager = await user('manager@example.com', [managers])
+    const created = await h.post(`${V1}/user`, {
+      kind: 'Api',
+      email: 'robot@example.com',
+      userName: 'robot@example.com',
+      name: 'Robot',
+      userGroupIds: [{ id: GROUPS.editor }],
+    })
+    const robot = created.headers.get('umb-generated-resource') as string
+    const refused = await manager.client.post(`${V1}/user/${robot}/client-credentials`, {
+      clientId: 'crombolo-back-office-robot',
+      clientSecret: 'a-long-client-secret',
+    })
+    // Story 433: anyone but an administrator is refused an API user before its secret is asked.
+    expect(refused.status).toBe(403)
+    expect(await h.json<unknown>(`${V1}/user/${robot}/client-credentials`)).toEqual<unknown>([])
+  })
+
   test('invitations: without a way to send them, nobody can be invited', async () => {
     const { h } = await site({ sendUserLink: null })
     expect(

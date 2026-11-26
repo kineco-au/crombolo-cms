@@ -32,6 +32,17 @@ export interface Db {
   confine?(role: string, schema: string): Db
   /** Postgres only: calls `onNotify` for each `NOTIFY` on `channel`; resolves to the way to stop. */
   listen?(channel: string, onNotify: (payload: string) => void): Promise<() => Promise<void>>
+  /**
+   * SQLite only: runs `fn` with foreign keys off on the connection, as SQLite's own table
+   * rebuild needs (story 436). Refused inside a transaction, where SQLite ignores it.
+   */
+  withoutForeignKeys?<T>(fn: () => Promise<T>): Promise<T>
+  /**
+   * SQLite only, inside a transaction with foreign keys off: `table` rebuilt from its
+   * definition as `rewrite` makes it, keeping its rows and indexes, as SQLite's guide to
+   * changing a column's constraints does; refused if a reference is left broken.
+   */
+  rebuildTable?(table: string, rewrite: (definition: string) => string): Promise<void>
 }
 
 export interface ConnectOptions {
@@ -94,6 +105,46 @@ class SqliteDb implements Db {
 
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     return this.#db.query(this.dialect.render(sql)).all(...(params as never[])) as T[]
+  }
+
+  async rebuildTable(table: string, rewrite: (definition: string) => string): Promise<void> {
+    if (!/^[a-z_]+$/.test(table)) throw new Error(`"${table}" is not a table name.`)
+    const [found] = await this.query<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [table],
+    )
+    if (!found) throw new Error(`There is no ${table} table to rebuild.`)
+    const indexes = await this.query<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+      [table],
+    )
+    const definition = rewrite(found.sql)
+    if (definition === found.sql) throw new Error(`The ${table} table is not as expected.`)
+    const rebuilt = `${table}_rebuilt`
+    await this.exec(
+      definition.replace(
+        new RegExp(`^CREATE TABLE\\s+"?${table}"?`, 'i'),
+        `CREATE TABLE ${rebuilt}`,
+      ),
+    )
+    await this.exec(`INSERT INTO ${rebuilt} SELECT * FROM ${table}`)
+    await this.exec(`DROP TABLE ${table}`)
+    await this.exec(`ALTER TABLE ${rebuilt} RENAME TO ${table}`)
+    for (const index of indexes) await this.exec(index.sql)
+    const broken = await this.query('PRAGMA foreign_key_check')
+    if (broken.length > 0)
+      throw new Error(`Rebuilding ${table} left ${broken.length} reference(s) broken.`)
+  }
+
+  async withoutForeignKeys<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.#inTransaction)
+      throw new Error('Foreign keys are turned off only outside a transaction.')
+    this.#db.exec('PRAGMA foreign_keys = OFF')
+    try {
+      return await fn()
+    } finally {
+      this.#db.exec('PRAGMA foreign_keys = ON')
+    }
   }
 
   async exec(sql: string, params: unknown[] = []): Promise<void> {

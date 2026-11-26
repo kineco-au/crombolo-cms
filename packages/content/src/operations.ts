@@ -209,7 +209,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
   const repo = new DocumentRepository(db, options.repository)
   /** Set for a workspace's operations (story 375): nothing they write reaches Shared. */
   const workspace = options.repository?.workspace
-  const nodes = new NodeRepository(db)
+  // Story 436: a key the workspace holds its own of answers its own.
+  const nodes = new NodeRepository(db, { workspace })
   const types = new ContentTypeRepository(db, {
     kind: repo.kind === 'media' ? 'media' : 'document',
   })

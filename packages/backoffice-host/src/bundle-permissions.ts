@@ -3,9 +3,9 @@
  * permission, and the sentence an administrator reads before granting it.
  *
  * From schema 4 each is asked for with a reason, which the install shows beside
- * the sentence; `http.outbound` also names its origins. Schema 5 (story 320)
- * adds `backoffice.code`, the one that runs unconfined: `BACKOFFICE_CODE_WARNING`,
- * and `data.tables` (story 321) for an extension that keeps tables.
+ * the sentence; `http.outbound` also names its origins, and `data.tables`
+ * (story 321) is for an extension that keeps tables. `backoffice.code` (story
+ * 320) is retired (story 431): an extension describes its screens.
  * docs/bundles.md, "Permissions".
  */
 
@@ -48,8 +48,6 @@ export const BUNDLE_PERMISSIONS = {
   templates: "Render its own components into the site's pages",
   // Story 321: so a host knows before installing which extensions need a role and schema.
   'data.tables': "Keep its own data in the site's database",
-  // Story 320: the one permission that is not confined. Its words are the install's warning.
-  'backoffice.code': 'Runs in your back office as each person using it',
 } as const
 
 export type BundlePermission = keyof typeof BUNDLE_PERMISSIONS
@@ -66,15 +64,12 @@ export const SCHEMA_3_PERMISSIONS = {
   'member.delegate': BUNDLE_PERMISSIONS['member.delegate'],
 } as const
 
-/** The permission an extension's back-office code needs (story 320). */
+/** The permission an extension's back-office code needed (story 320), retired (story 431). */
 export const BACKOFFICE_CODE = 'backoffice.code'
 
-/**
- * What the install says beside `backoffice.code`, before the publisher's name and
- * what its signature shows.
- */
-export const BACKOFFICE_CODE_WARNING =
-  "Runs its own code inside your back office, with the same access as the site's own code. Nothing it does there can be watched or limited. Only install this from a publisher you trust as you trust your own developers."
+/** Why an extension's own back-office code is refused (story 431), wherever it is met. */
+export const BACKOFFICE_CODE_RETIRED =
+  'extensions no longer run their own code in the back office: describe its screens, which its server half answers (docs/extensions.md, "Screens")'
 
 /** The permission to act for the person using it (story 325). */
 export const USER_DELEGATE = 'user.delegate'
@@ -107,19 +102,18 @@ const NEVER_OFFERED_WHY: Readonly<Record<string, string>> = {
 
 /**
  * How far an extension reaches, computed from what it asks for and never
- * declared (story 324): `backoffice.code` runs unconfined in the back office,
- * `user.delegate` acts as the person using it, and anything else is limited.
+ * declared (story 324): `user.delegate` acts as the person using it, and
+ * anything else is limited. Unrestricted went with back-office code (story 431).
  */
-export type AccessLevel = 'limited' | 'acts-as-you' | 'unrestricted'
+export type AccessLevel = 'limited' | 'acts-as-you'
 
 /** The level a list of permissions adds up to: the highest thing in it. Pure. */
 export function levelOf(permissions: readonly string[]): AccessLevel {
-  if (permissions.includes(BACKOFFICE_CODE)) return 'unrestricted'
   if (permissions.includes(USER_DELEGATE)) return 'acts-as-you'
   return 'limited'
 }
 
-/** Whether a level is one of the two only an administrator grants. */
+/** Whether a level is the one only an administrator grants. */
 export const isUpperLevel = (level: AccessLevel) => level !== 'limited'
 
 /** The badge and the sentence under it, per level (the maintainer's words). */
@@ -133,11 +127,6 @@ export const LEVEL_WORDS: Readonly<Record<AccessLevel, { label: string; sentence
     label: 'Acts as you',
     sentence:
       'Can do anything on this site that the person using it can do. Everything it does is recorded against them.',
-  },
-  unrestricted: {
-    label: 'Unrestricted',
-    sentence:
-      "Runs its own code inside your back office, with the same access as the site's own code. Nothing it does there can be watched or limited. Only install this from a publisher you trust as you trust your own developers.",
   },
 }
 
@@ -163,7 +152,6 @@ const ADDS_WORDS: Readonly<Record<string, string>> = {
   'events.content': 'something that runs when pages change',
   'data.tables': 'its own data',
   templates: 'page templates',
-  [BACKOFFICE_CODE]: 'its own code in your back office',
 }
 
 /** The four groups the install panel shows, and who it acts as when it asks to. */
@@ -245,6 +233,10 @@ export function readPermissions(
   const declared: DeclaredPermission[] = []
   const problems: string[] = []
   for (const [permission, given] of Object.entries(value as Record<string, unknown>)) {
+    if (permission === BACKOFFICE_CODE) {
+      problems.push(`"${BACKOFFICE_CODE}" is retired: ${BACKOFFICE_CODE_RETIRED}`)
+      continue
+    }
     if (permission === 'actAs') {
       problems.push(
         `"actAs" is retired: ask for "${USER_DELEGATE}", which acts for the person using it across every area (\`crombolo extension migrate\` rewrites it)`,
@@ -295,7 +287,7 @@ export function describePermissions(permissions: readonly (string | DeclaredPerm
   allows: string
   reason: string | null
   origins?: string[]
-  /** What the install says before it is granted: `backoffice.code` (story 320) and `user.delegate` (325). */
+  /** What the install says before it is granted: `user.delegate` (story 325). */
   warning?: string
 }[] {
   return permissions.map((entry) => {
@@ -305,7 +297,6 @@ export function describePermissions(permissions: readonly (string | DeclaredPerm
       allows: SENTENCES[declared.permission] ?? declared.permission,
       reason: declared.reason,
       ...(declared.origins ? { origins: declared.origins } : {}),
-      ...(declared.permission === BACKOFFICE_CODE ? { warning: BACKOFFICE_CODE_WARNING } : {}),
       ...(declared.permission === USER_DELEGATE ? { warning: USER_DELEGATE_DETAIL } : {}),
     }
   })

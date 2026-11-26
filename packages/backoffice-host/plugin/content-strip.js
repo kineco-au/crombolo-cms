@@ -3,11 +3,14 @@
  * Translation, Structure and Code, for whoever may open them: what a workspace holds
  * (story 419), in the open workspace's colour. A row of its own under the header, shown
  * wherever one of them is open, and it keeps Content's tab marked while it shows.
+ * A section a site or an extension declares (story 431) has its places here too.
  */
 import { UMB_CURRENT_USER_CONTEXT } from '@umbraco-cms/backoffice/current-user'
+import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { activeItem, stripItems, WORKSPACES } from './content-strip-items.js'
+import { declaredSection, locate, screenPath } from './site-section-model.js'
 import { workspacesApi } from './workspace-client.js'
 import './workspace-switch.js'
 
@@ -26,21 +29,26 @@ export default class CromboloContentStripElement extends UmbLitElement {
   static properties = {
     _items: { state: true },
     _active: { state: true },
+    _declared: { state: true },
   }
 
   #user
+  /** The sections a site or an extension declares, with places. */
+  #sections = []
   /** Story 384: with workspaces on, the row shows for the switch whatever else it holds. */
   #workspaces = false
 
   #follow = () => {
     this._active = activeItem(pathHere())
+    const at = locate(pathHere(), this.#sections)
+    this._declared = at && at.section.places.length > 1 ? at : undefined
     this.#sync()
   }
 
   /** The header marks Content, and the back office makes room, only while the row shows. */
   #sync() {
     const shown = this.#shown()
-    mark(shown ? CONTENT : undefined)
+    mark(shown && !this._declared ? CONTENT : undefined)
     if (shown) document.documentElement.style.setProperty(ROW_HEIGHT, '41px')
     else document.documentElement.style.removeProperty(ROW_HEIGHT)
   }
@@ -51,6 +59,7 @@ export default class CromboloContentStripElement extends UmbLitElement {
   }
 
   #shown() {
+    if (this._declared) return true
     return (this._items.length > 0 || this.#workspaces) && this._active !== undefined
   }
 
@@ -62,6 +71,10 @@ export default class CromboloContentStripElement extends UmbLitElement {
         this.#user = current
         this.#offer()
       })
+    })
+    this.observe(umbExtensionsRegistry.byType('section'), (manifests) => {
+      this.#sections = manifests.map(declaredSection).filter(Boolean)
+      this.#follow()
     })
   }
 
@@ -92,6 +105,18 @@ export default class CromboloContentStripElement extends UmbLitElement {
 
   render() {
     if (!this.#shown()) return nothing
+    const at = this._declared
+    if (at)
+      return html`<nav aria-label=${at.section.label}>
+        ${at.section.places.map(
+          (place) =>
+            html`<a
+              href=${new URL(screenPath(at.section, place), document.baseURI).pathname}
+              aria-current=${place.alias === at.place.alias ? 'page' : 'false'}
+              >${place.label}</a
+            >`,
+        )}
+      </nav>`
     return html`<nav aria-label="Content">
       ${this._items.map(
         (item) =>

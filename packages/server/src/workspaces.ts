@@ -211,6 +211,21 @@ export function createWorkspaceScope(db: Db, settings: WorkspaceScopeOptions | (
   }
 }
 
+/** Story 434: why a workspace cannot be discarded while its content types are used outside it. */
+export function usedElsewhereWords(
+  workspace: { name: string },
+  uses: ReadonlyArray<{ name: string; type: string; workspace: string | null }>,
+): string {
+  const shown = uses
+    .slice(0, 5)
+    .map(
+      (use) =>
+        `"${use.name}" (${use.type}) ${use.workspace === null ? 'in Shared' : `in the workspace "${use.workspace}"`}`,
+    )
+  const more = uses.length > 5 ? `, and ${uses.length - 5} more` : ''
+  return `"${workspace.name}" cannot be discarded: content types it made are used by ${shown.join(', ')}${more}. Change or remove those first.`
+}
+
 const DONE_WORDS: Record<OnlyKind, string> = {
   publish: 'Published',
   unpublish: 'Unpublished',
@@ -236,7 +251,7 @@ async function mergeOwnPage<T>(
   let keys: string[]
   if (what.kind === 'reorder') {
     const parentId = what.parentKey
-      ? (await new NodeRepository(db).byKey(what.parentKey))?.id
+      ? (await new NodeRepository(db, { workspace: workspace.id }).byKey(what.parentKey))?.id
       : SystemNodes.Root
     keys = plan.pending
       .filter((p) => p.pending.kind === 'sort' && p.pending.baseParentId === parentId)
@@ -958,6 +973,8 @@ export function createWorkspacesApi(
             if (new Date(one.lastActivity).getTime() >= before) continue
             const found = await workspaces.byKey(one.key)
             if (found?.state !== 'open') continue
+            // Story 434: one whose types are in use elsewhere is left, as a discard of it is refused.
+            if ((await workspaces.typesUsedElsewhere(found.id)).length > 0) continue
             const files = await filesNamedBy(db, found.id)
             await workspaces.discard(found.id, principal.id)
             options.onClosed?.(found.key)
@@ -1045,6 +1062,8 @@ export function createWorkspacesApi(
         if (request.method === 'DELETE') {
           if (!owner && !principal.isAdmin)
             return refused('Only its owner discards a workspace.', 403)
+          const inUse = await workspaces.typesUsedElsewhere(found.id)
+          if (inUse.length > 0) return refused(usedElsewhereWords(found, inUse), 409)
           const files = await filesNamedBy(db, found.id)
           await workspaces.discard(found.id, principal.id)
           options.onClosed?.(found.key)
@@ -1063,11 +1082,8 @@ export function createWorkspacesApi(
       // Story 384: "Drop this change": the page goes back to Shared's, here.
       if (sub === 'changes' && member && UUID.test(member) && request.method === 'DELETE') {
         if (!usable) return refused('Only its members change a workspace.', 403)
-        const node = await db.q
-          .selectFrom('node')
-          .select('id')
-          .where('unique_id', '=', normaliseUuid(member))
-          .executeTakeFirst()
+        // Story 436: this workspace's own under the key, else Shared's.
+        const node = await new NodeRepository(db, { workspace: found.id }).byKey(member)
         if (!node) return refused('There is no such page.', 404)
         await workspaces.dropPage(found.id, Number(node.id))
         return new Response(null, { status: 204 })

@@ -136,6 +136,33 @@ describe('the first boot of a self-hosted site', () => {
     const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
     const sqlite = new Database(join(site(), file))
     // 098 (story 419), 097 (story 414), 096 (story 408), 095 (story 405), 094 (story 399), 093 (story 400), 092 (story 396), 091 (story 395), 090 (story 384), 089 (story 387), 088 (story 383), 087 (story 379), 086 (story 381), 085 (story 376), then 084.
+    // 102 (story 433): columns on a table that stays.
+    for (const column of ['last_used_at', 'old_secret_hash', 'old_secret_until'])
+      sqlite.exec(`ALTER TABLE user_client_credential DROP COLUMN ${column}`)
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'AddServiceAccountSecrets'")
+    // 101 (story 436): the site-wide UNIQUE back, rebuilding node with foreign keys off.
+    for (const index of ['ux_node_key_shared', 'ux_node_key_workspace', 'ix_node_unique_id'])
+      sqlite.exec(`DROP INDEX ${index}`)
+    sqlite.exec('PRAGMA foreign_keys = OFF')
+    const node = sqlite
+      .query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'node'")
+      .get() as { sql: string }
+    const indexes = sqlite
+      .query(
+        "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'node' AND sql IS NOT NULL",
+      )
+      .all() as Array<{ sql: string }>
+    sqlite.exec(
+      node.sql
+        .replace(/(unique_id\s+\S+\s+NOT NULL)/i, '$1 UNIQUE')
+        .replace(/^CREATE TABLE\s+"?node"?/i, 'CREATE TABLE node_rebuilt'),
+    )
+    sqlite.exec('INSERT INTO node_rebuilt SELECT * FROM node')
+    sqlite.exec('DROP TABLE node')
+    sqlite.exec('ALTER TABLE node_rebuilt RENAME TO node')
+    for (const index of indexes) sqlite.exec(index.sql)
+    sqlite.exec('PRAGMA foreign_keys = ON')
+    sqlite.exec("DELETE FROM migration_history WHERE name = 'KeysPerWorkspace'")
     sqlite.exec("DELETE FROM migration_history WHERE name = 'PutUsersInSettings'")
     sqlite.exec('ALTER TABLE workspace DROP COLUMN description')
     sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceDescription'")

@@ -267,6 +267,8 @@ export interface RequestMember {
   username: string
   email: string
   roles: string[]
+  /** What their member type lets them see of themselves (story 207). */
+  properties?: Readonly<Record<string, unknown>>
 }
 
 /** The query string, as Next.js hands it to a page: repeated names become arrays. */

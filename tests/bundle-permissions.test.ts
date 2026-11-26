@@ -84,11 +84,10 @@ describe('capabilities against permissions', () => {
     )
   })
 
-  test('http.outbound is for its screens and its event handlers too; backoffice.code is its screens’ (story 320)', () => {
+  test('http.outbound is for its screens and its event handlers too (story 320)', () => {
     expect(permissionProblems('notes', [], ['http.outbound'])).toHaveLength(1)
     expect(permissionProblems('notes', [], ['http.outbound'], true)).toEqual([])
     expect(permissionProblems('notes', [], ['http.outbound'], false, { events: true })).toEqual([])
-    expect(permissionProblems('notes', [], ['backoffice.code'], true)).toEqual([])
   })
 
   test('a capability serves only the methods its permissions allow', async () => {

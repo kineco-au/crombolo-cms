@@ -109,6 +109,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'userProfileApp:Crombolo.UserProfileApp.SignedInDevices',
       'userProfileApp:Crombolo.UserProfileApp.CliTokens',
       'mfaLoginProvider:Crombolo.MfaLoginProvider.Authenticator',
+      'dashboard:Crombolo.Dashboard.ServiceAccounts',
+      'workspaceContext:Crombolo.WorkspaceContext.User.ServiceAccountRedirect',
       'dashboard:Crombolo.Dashboard.CiAccess',
       'dashboard:Crombolo.Dashboard.Email',
       // Settings → Schema, in place of Umbraco's Models Builder (story 342).
@@ -188,6 +190,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       // Setting workflows up is a node in Structure, or beside forms; deciding is Approvals'.
       'sectionView:Crombolo.SectionView.Workflows',
       // A page's history, a View button whose panel lists and compares its versions.
+      'workspaceInfoApp:Crombolo.WorkspaceInfoApp.Member.SignIns',
       'workspaceInfoApp:Crombolo.WorkspaceInfoApp.Document.History',
       'modal:Crombolo.Modal.PageHistory',
       // Sending for approval is in the bottom bar, beside Save and publish.

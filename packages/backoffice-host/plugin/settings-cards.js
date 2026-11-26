@@ -53,6 +53,11 @@ export const CARDS = {
     title: 'Users and groups',
     description: 'The people who use the back office, and what each group may do',
   },
+  'Crombolo.Dashboard.ServiceAccounts': {
+    group: 'People',
+    title: 'Service accounts',
+    description: "Accounts that other systems and the site's own code use",
+  },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
     title: 'Service status',

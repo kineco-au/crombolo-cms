@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { hashPassword } from '@crombolo/auth'
 import { UserRepository } from '@crombolo/data'
-import { bootstrapDatabase } from '@crombolo/server'
+import { bootstrapDatabase, OLD_SECRET_STOPS, type OldSecretStops } from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { siteConfig } from '../../support/site.ts'
@@ -10,11 +10,16 @@ import { siteConfig } from '../../support/site.ts'
 export default class ApiClientRotate extends BaseCommand {
   static override summary = 'issue a new secret for the API client, and print it once'
   static override description =
-    'The old secret stops working at once. Put the new one in CROMBOLO_API_CLIENT_SECRET: a start keeps the client it finds, so it never sets the secret back.'
+    'The old secret stops working at once, or after --old-stops. Put the new one in CROMBOLO_API_CLIENT_SECRET: a start keeps the client it finds, so it never sets the secret back.'
   static override flags = {
     client: Flags.string({
       summary: 'the client id; CROMBOLO_API_CLIENT_ID when not given',
       helpValue: '<id>',
+    }),
+    'old-stops': Flags.string({
+      summary: 'when the old secret stops working, so whatever uses it can move with no gap',
+      options: ['now', 'day', 'week'],
+      default: 'now',
     }),
   }
   static override audit = {
@@ -48,8 +53,12 @@ export default class ApiClientRotate extends BaseCommand {
       if (!owner) this.fail('not_found', `There is no API client "${client}".`)
       this.auditKey = client
       const secret = randomBytes(32).toString('base64url')
-      await users.removeClientCredential(owner.userId, client)
-      await users.addClientCredential(owner.userId, client, await hashPassword(secret))
+      const after = OLD_SECRET_STOPS[flags['old-stops'] as OldSecretStops]
+      await users.replaceClientSecret(
+        client,
+        await hashPassword(secret),
+        after > 0 ? new Date(Date.now() + after) : undefined,
+      )
       this.say(`  rotated  ${client}; put this in CROMBOLO_API_CLIENT_SECRET:`)
       this.say(secret)
       return { client, secret }

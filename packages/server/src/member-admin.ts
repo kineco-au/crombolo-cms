@@ -28,6 +28,8 @@ import {
   ContentTypeRepository,
   currentSchemaState,
   type Db,
+  ExternalLoginRepository,
+  externalLoginProvider,
   looksLikeKey,
   MemberRepository,
   NodeRepository,
@@ -117,6 +119,11 @@ export interface MemberDetail extends MemberSummary {
   created: string | null
   updated: string | null
   values: ShownValue[]
+  /**
+   * Story 432: the identity providers they sign in with, by the provider's id here; the
+   * provider's id for them only to the Sensitive data group.
+   */
+  signsInWith: Array<{ provider: string; subject?: string }>
 }
 
 const SIGNS_IN: Record<string, SignsIn> = {
@@ -156,7 +163,19 @@ function summaryOf(
   }
 }
 
-async function detailOf(ports: MemberPorts, member: MemberResponse): Promise<MemberDetail> {
+async function detailOf(
+  ports: MemberPorts,
+  member: MemberResponse,
+  viewer?: Principal,
+): Promise<MemberDetail> {
+  const memberLogins = externalLoginProvider('member', '')
+  const sensitive = viewer ? hasAccessToSensitiveData(viewer.groups ?? []) : false
+  const signsInWith = (await new ExternalLoginRepository(ports.db).forOwner(member.id))
+    .filter((login) => login.loginProvider.startsWith(memberLogins))
+    .map((login) => ({
+      provider: login.loginProvider.slice(memberLogins.length),
+      ...(sensitive ? { subject: login.providerKey } : {}),
+    }))
   const type = await ports.lookup.typeByKey('member', member.memberType.id)
   const editors = type ? await ports.lookup.editorsOf('member', type) : new Map()
   const reader = pageReader(ports.db, ports.lookup)
@@ -179,6 +198,7 @@ async function detailOf(ports: MemberPorts, member: MemberResponse): Promise<Mem
     created: variant?.createDate ?? null,
     updated: variant?.updateDate ?? null,
     values,
+    signsInWith,
   }
 }
 
@@ -218,7 +238,7 @@ export async function showMember(
   viewer: Principal,
   ref: string,
 ): Promise<MemberDetail> {
-  return detailOf(ports, await stored(ports, await findMember(ports, ref), viewer))
+  return detailOf(ports, await stored(ports, await findMember(ports, ref), viewer), viewer)
 }
 
 export interface MemberQuery {

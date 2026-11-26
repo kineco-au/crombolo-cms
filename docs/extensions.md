@@ -15,7 +15,7 @@ ask for is [`bundles.md`](bundles.md), "Permissions".
 | An extension the site's `crombolo.config.ts` still imports | The Bun process: importing a module runs it, so it is the site's own code, unconfined. The boot warns, and says to list it under `extensions` instead |
 | An extension's components (story 312) | Its Deno process: each is a `render` call, and its HTML goes in the page |
 | An extension's described screens (story 323) | Its Deno process answers each as data; the back office draws it with its own element. Nothing of the extension's runs in the page |
-| An extension's back-office code | The back office, in the browser, as whoever is signed in (story 313). Built from `src/backoffice/` and served only from that build, once `backoffice.code` is granted (story 320) |
+| An extension's back-office code | Nowhere: refused since story 431. Its screens are described |
 
 ## Starting one
 
@@ -34,16 +34,18 @@ dependency of the site is named and not started):
 
    | Flag | What it allows |
    |---|---|
-   | `--allow-read` | its package directory, its build, and its data folder |
-   | `--allow-write` | its data folder, `.crombolo/extensions/<id>/data`, and nothing else |
+   | `--allow-read` | its server half's folder and its build, nothing else |
+   | no `--allow-write` | it writes nowhere: it keeps its files through the host (story 435) |
    | `--allow-net` | the hosts of the origins its grant gives `http.outbound`; nothing when it asks for none |
-   | `--v8-flags=--max-old-space-size=256` | a 256 MB heap |
+   | `--v8-flags=--max-old-space-size=256,--disallow-code-generation-from-strings` | a 256 MB heap, and no code run from text: `eval` and `new Function` throw (story 435) |
    | `--no-prompt --no-remote --cached-only --no-config --no-npm --no-lock --node-modules-dir=none` | it loads only what it was built with, and asks for nothing at run time |
 
    Everything else is Deno's default, which is no: no environment (`Deno.env`
    is refused, and the process is started with none of the site's), no other
    files (`.env`, the SQLite file, `crombolo.config.ts`), no programs, no native
-   code, no other hosts.
+   code, no other hosts. So what it runs is what was installed: it can neither run
+   text it fetched nor save a module to load later, and its build refuses an
+   `import()` of a module named at run time in its own code.
 3. **It describes itself:** the SDK's runner calls the factory `crombolo.server`
    names with the extension's settings, and sends back its id, section,
    capabilities, routes, tables, events, jobs, schedules, media folders and form
@@ -190,9 +192,31 @@ export function redirects() {
   only to `http`, `https`, a path on this site or `section/…`, and a `secret`
   field's value is never sent to the browser. The element then sets every string
   as text, and never uses `unsafeHTML`; a test says so.
-- **Back-office code stays** for what a description cannot express, under
-  `backoffice.code` (story 320). An extension may describe most of its screens
-  and ship code for one.
+- **A section of its own** (story 431): `crombolo.sections` in its package declares
+  each by its manifest alias, its address and its places, each place a menu of
+  screens it describes. The section is a grant of its own, offered in each user
+  group's Access; its places show in the row under the header, as Content's do, and
+  each menu beside the screen it opens:
+
+  ```json
+  "sections": [{
+    "alias": "Acme.Section.Reviews", "path": "reviews", "label": "Reviews",
+    "places": [{ "alias": "queue", "label": "Queue",
+      "menu": [{ "alias": "waiting", "label": "Waiting", "screen": "waiting" }] }]
+  }]
+  ```
+
+  Its server half gates its routes on that alias. A section whose alias or address
+  another extension or the site claims refuses the start, naming both.
+- **No back-office code** (story 431). An extension's screens are described, and
+  nothing of the extension's runs in the back office: `backoffice.code` (story 320)
+  and the Unrestricted level are retired. A manifest naming a module, a
+  `src/backoffice/` folder, or `backoffice.code` is refused at `extension check`,
+  discovery and every install, saying to describe its screens; one installed before
+  is left off at start, saying so. Code a site's developers choose to run in the back
+  office is the site's own, in its site package (`docs/rendering.md`, "Staff screens"):
+  an author's library for that is published as an ordinary npm package the site's
+  back-office code imports.
 
 ## Watching one
 
@@ -232,6 +256,23 @@ filterable by kind and by person, with an export as CSV.
   - It needs the Settings section, as the screen does. On this site it reads the
     database, so while the site runs the last second may not be there yet; with
     `--profile` it reads a hosted site through `extension-activity`.
+
+## Its own files
+
+Story 435. `context.bundle.files`, with `files` among its capabilities and no permission,
+keeps what an extension saves in its data folder, `.crombolo/extensions/<id>/data`, where
+only the host writes:
+
+```ts
+await bundle.files.write('cache/feed.json', JSON.stringify(feed))
+const saved = await bundle.files.read('cache/feed.json') // Uint8Array, or undefined
+await bundle.files.list() // ['cache/feed.json']
+await bundle.files.remove('cache/feed.json')
+```
+
+A name is letters, digits, dots, hyphens and slashes, inside its folder; a file is at most
+10 MB, and all of them 200 MB. Its process cannot read the folder itself, so nothing it
+saved is ever loaded as code.
 
 ## Its own tables
 

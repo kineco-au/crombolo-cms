@@ -265,6 +265,9 @@ a reviewer wants, and a partly-applied change is not a state that can happen.
 
 ## Members and public access
 
+The site's own code reads and changes members with `site().members` (story 207), within
+what `members` in `crombolo.config.ts` allows: [`rendering.md`](rendering.md#members).
+
 Members are content nodes with a sign-in facet: `node` + `content` +
 `content_version` + a `member` row, so member types, properties and versioning
 are machinery that already exists. The backoffice manages them through the
@@ -391,6 +394,83 @@ group object ids, which is what the `map` keys are.
 
 For a site's own login form, `externalSignInUrl('<id>', returnUrl)` from
 `@crombolo/crombolo` is the link.
+
+**Flows, properties and signing out** (story 191). A member provider also takes:
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `properties` | none | member property aliases and the claim each takes its value from, at creation and at every sign-in. A claim the token leaves out leaves its property as it is; a list's first value is used; a property the member type lacks stops the boot. The member's name and e-mail are not changed |
+| `subjectClaim` | `sub` | the claim the member is linked by. It must never change for a person |
+| `cancelUrl`, `failedUrl` | where they came from | pages on this site for a cancelled sign-in (`access_denied`) and any other failure |
+| `signOut` | `false`; `true` for `b2c()` | signing out of the site then goes to the provider's `end_session_endpoint` and back. A JSON caller is given the address as `signOutUrl` |
+| `flows` (`oidc()`) | none | other flows by name, each an issuer on the same address |
+
+`externalSignInUrl('<id>', returnUrl, { flow: 'signUp' })` starts a flow by name;
+an unknown one is a 404. Properties and `signOut` are refused on a back-office
+provider. A provider with flows takes no change of issuer from the back office;
+a changed client id or secret reaches all of its flows.
+
+### Azure AD B2C
+
+```ts
+memberIdentityProviders: [
+  b2c({
+    tenant: 'contoso', // contoso.onmicrosoft.com; or the tenant's id, with `domain`
+    clientId: process.env.B2C_CLIENT_ID!,
+    clientSecret: process.env.B2C_CLIENT_SECRET!,
+    flows: {
+      signIn: 'B2C_1_signupsignin',
+      signUp: 'B2C_1_signup',
+      resetPassword: 'B2C_1_reset',
+      editProfile: 'B2C_1_edit',
+    },
+    properties: { title: 'extension_Title' },
+    cancelUrl: '/',
+    failedUrl: '/sign-in-problem',
+  }),
+],
+```
+
+- **In B2C:** a web app registration with a client secret, the redirect URL above
+  (`…/external/b2c/callback`), and as redirect URLs too the pages members come
+  back to after signing out, which B2C checks. Each user flow returns Email
+  Addresses, Display Name, User's Object ID and the attributes `properties` maps.
+- **Linked by** `sub`, which is the object id in a user flow; set
+  `subjectClaim: 'oid'` for a policy that sends it there. Never by e-mail unless
+  `linkByEmail` is set and B2C's addresses are trusted (`emailsVerified`).
+- **Forgotten passwords** (`AADB2C90118`) start `resetPassword` and end signed in
+  where the member was going.
+- **Signing out** sends no ID token, so leave "Require ID Token in logout
+  requests" off in the sign-in flow.
+- **Moving to Entra External ID** is a change of provider: keep `id: 'b2c'` so
+  existing links are found, if its subject is the same object id; otherwise its
+  accounts are linked anew.
+
+**Members brought from another site keep their sign-in** (story 432). A member signs in
+through a provider by the link between them, the provider's id for them, and never by an
+e-mail that matches, so an imported member must arrive linked:
+
+- **Between Crombolo sites:** `site export --with-members` carries each member's links in
+  the sealed people section, and the import makes them. A member the file carries ends
+  with exactly its links; a file from before carries none and removes none. A link another
+  member here holds is left out, naming both; one to a provider this site does not declare
+  is kept, said in the report, and used once the provider is declared.
+- **From a property they hold,** such as the B2C object id an Umbraco site kept in
+  `aDObjectID`, after any import:
+
+  ```bash
+  crombolo members link --provider b2c --property aDObjectID --dry-run
+  crombolo members link --provider b2c --property aDObjectID
+  ```
+
+  It links each member whose property holds an id and who has no link to that provider,
+  a page of members at a time, and may be run again: a member linked already is left, an
+  id another member holds is refused, naming both. Run it where the site's database is,
+  before members sign in.
+- **Seen in the back office:** a member's Info says which providers they sign in with,
+  and their id there to the Sensitive data group; `crombolo members show` says the same.
+- **Audited:** each link made or removed, naming the member and the provider, never the
+  provider's id for them.
 
 **Changing an Entra sign-in without a deploy.** Install `@crombolo/entra` and
 add `entraSettings()` to `bundles`. Settings → Advanced → Microsoft Entra then
@@ -890,7 +970,7 @@ own, and is refused `users groups new|update|remove`, which are an administrator
 | `crombolo users reset-password <who> [--stdin]` | a generated password, printed, or one piped in; their sessions end |
 | `crombolo users reset-2fa <who>` | removes their second factors, for a lost authenticator |
 | `crombolo users invite <email> --group <alias>` | creates the user and prints the link they set a password with, for a site with no e-mail |
-| `crombolo api-client rotate [--client <id>]` | a new secret for the seeded API client, printed once; put it in `CROMBOLO_API_CLIENT_SECRET` |
+| `crombolo api-client rotate [--client <id>] [--old-stops now\|day\|week]` | a new secret for the seeded API client, printed once; put it in `CROMBOLO_API_CLIENT_SECRET`. With `day` or `week` the old one works until then (story 433) |
 
 `<who>` is an e-mail address, a username or a key, in any case.
 

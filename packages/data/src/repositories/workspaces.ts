@@ -282,6 +282,29 @@ export class WorkspaceRepository {
   }
 
   /** Removes the workspace and everything carrying it; Shared is as it was. `by` discarded it. */
+  /**
+   * Story 434: what outside this workspace is of a content type it made, by name, with the
+   * workspace that holds it, null for Shared. While any is, it cannot be discarded.
+   */
+  async typesUsedElsewhere(
+    id: number,
+  ): Promise<Array<{ name: string; type: string; workspace: string | null }>> {
+    const rows = await this.#db.q
+      .selectFrom('content as c')
+      .innerJoin('content_type as t', 't.node_id', 'c.content_type_id')
+      .innerJoin('node as n', 'n.id', 'c.node_id')
+      .leftJoin('workspace as w', 'w.id', 'n.workspace_id')
+      .select(['n.text', 't.alias', 'w.name'])
+      .where('t.workspace_id', '=', id)
+      .where((eb) => eb.or([eb('n.workspace_id', 'is', null), eb('n.workspace_id', '!=', id)]))
+      .execute()
+    return rows.map((row) => ({
+      name: String(row.text ?? ''),
+      type: String(row.alias),
+      workspace: row.name === null || row.name === undefined ? null : String(row.name),
+    }))
+  }
+
   async discard(id: number, by?: string | null, options: { quiet?: boolean } = {}): Promise<void> {
     await this.#db.locks.withLock(Locks.ContentTree, () =>
       this.#db.transaction(async (tx) => {
@@ -290,8 +313,19 @@ export class WorkspaceRepository {
           await recordWorkspaceEvent(tx, WORKSPACE_DISCARDED, factsOf(gone), { by })
         const versions = () =>
           tx.q.selectFrom('content_version').select('id').where('workspace_id', '=', id)
+        // Story 434: its pages first; its types and data types go with its schema, after them.
         const made = (
-          await tx.q.selectFrom('node').select('id').where('workspace_id', '=', id).execute()
+          await tx.q
+            .selectFrom('node')
+            .select('id')
+            .where('workspace_id', '=', id)
+            .where('id', 'not in', (eb) =>
+              eb.selectFrom('content_type').select('node_id').where('workspace_id', '=', id),
+            )
+            .where('id', 'not in', (eb) =>
+              eb.selectFrom('data_type').select('node_id').where('workspace_id', '=', id),
+            )
+            .execute()
         ).map((row) => Number(row.id))
         await tx.q.deleteFrom('property_value').where('workspace_id', '=', id).execute()
         await tx.q
@@ -532,6 +566,21 @@ export class WorkspaceRepository {
    * when. Called inside the merge's transaction, holding the tree's lock.
    */
   async closeMerged(id: number, by: string): Promise<void> {
+    // Story 436: its own copies of items Shared had already went in as changes to Shared's.
+    const copies = (
+      await this.#db.q
+        .selectFrom('node')
+        .select('id')
+        .where('workspace_id', '=', id)
+        .where('id', 'not in', (eb) =>
+          eb.selectFrom('content_type').select('node_id').where('workspace_id', '=', id),
+        )
+        .where('id', 'not in', (eb) =>
+          eb.selectFrom('data_type').select('node_id').where('workspace_id', '=', id),
+        )
+        .execute()
+    ).map((row) => Number(row.id))
+    if (copies.length > 0) await deleteNodeRows(this.#db, { ids: copies })
     const versions = () =>
       this.#db.q.selectFrom('content_version').select('id').where('workspace_id', '=', id)
     await this.#db.q.deleteFrom('property_value').where('workspace_id', '=', id).execute()

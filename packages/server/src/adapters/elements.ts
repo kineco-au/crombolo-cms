@@ -82,7 +82,8 @@ export function createElementPort(
   } = {},
 ): ElementPort {
   const repo = new DocumentRepository(db, { ...options, kind: 'element' })
-  const nodes = new NodeRepository(db)
+  // Story 436: a key the workspace holds its own of answers its own.
+  const nodes = new NodeRepository(db, { workspace: options.workspace })
   const folders = new FolderRepository(db, ObjectTypes.ElementContainer, ObjectTypes.Element)
 
   const changed = async () => {

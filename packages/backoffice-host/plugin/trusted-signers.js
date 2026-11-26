@@ -156,7 +156,7 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
       color: 'danger',
       headline: `Stop trusting ${item.name}?`,
       content:
-        'Site bundles it signed are refused from now on, including ones already made. An extension it vouched for that acts as you or runs unrestricted is switched off now. You can add it again later.',
+        'Site bundles it signed are refused from now on, including ones already made. An extension it vouched for that acts as you is switched off now. You can add it again later.',
       confirmLabel: 'Remove',
     })
     this._notice = ''

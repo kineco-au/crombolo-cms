@@ -15,7 +15,7 @@ import {
   VERSION,
 } from '@crombolo/server'
 import { linkedDependencies, moveIntoRoot, toCurrentLayout } from './support/bundles.ts'
-import { BACKOFFICE, type Harness, ORIGIN, signedInServer } from './support/harness.ts'
+import { BACKOFFICE, type Harness, signedInServer, V1 } from './support/harness.ts'
 
 const open: Harness[] = []
 const dirs: string[] = []
@@ -51,7 +51,6 @@ function install(
 ) {
   const dir = join(root, 'node_modules', name)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'd.js'), 'export default class {}\n')
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({
@@ -61,7 +60,7 @@ function install(
       crombolo: {
         bundleType: 'extension',
         id: name.replace(/[^a-z0-9]+/g, '-').replace(/^-+/, ''),
-        extensions: [{ type: 'dashboard', alias: `${name}.d`, name, element: 'd.js' }],
+        extensions: [{ type: 'headerApp', alias: `${name}.d`, name, meta: { label: name } }],
         ...field,
       },
     }),
@@ -123,33 +122,36 @@ describe('a running node (story 181)', () => {
       sent.push([target, ...args])
       return 1
     }
-    const file = `${ORIGIN}/bundles/acme-seo/d.js`
-    expect((await h.server.fetch(new Request(file))).status).toBe(404)
+    const listed = async () =>
+      JSON.stringify(await h.json(`${V1}/manifest/manifest`)).includes('"acme-seo.d"')
+    expect(await listed()).toBe(false)
 
-    install(root, 'acme-seo')
+    install(root, 'acme-seo', '1.0.0', {
+      schemaVersion: 6,
+      permissions: { 'content.read': 'Reads pages' },
+    })
     depend(root, { 'acme-seo': '^1.0.0' })
-    // Into a root of its own, as an install puts it (story 326), and linked, as one built here
-    // is, so its back-office code may be granted (story 324).
+    // Into a root of its own, as an install puts it (story 326), and linked, as one built here is.
     moveIntoRoot(root, 'acme-seo')
     linkedDependencies(root)
     // Unseen until it is told: discovery is cached outside development.
     const reload = await h.server.reloadBundles()
     expect(reload.added.map((b) => b.packageName)).toEqual(['acme-seo'])
-    // It runs once granted (story 309).
-    expect((await h.server.fetch(new Request(file))).status).toBe(404)
+    // It shows once granted (story 309).
+    expect(await listed()).toBe(false)
     const granted = await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
       id: 'acme-seo',
-      grant: ['backoffice.code'],
+      grant: ['content.read'],
     })
     expect(granted.status, await granted.clone().text()).toBe(200)
-    expect((await h.server.fetch(new Request(file))).status).toBe(200)
+    expect(await listed()).toBe(true)
     expect(sent).toEqual([['notify', BUNDLES_CHANGED_EVENT]])
 
     // Removed as an uninstall removes one now: its root and its line (story 326).
     rmSync(join(root, 'extensions', 'acme-seo'), { recursive: true, force: true })
     forgetExtension(root, 'acme-seo')
     expect((await h.server.reloadBundles()).removed.map((b) => b.packageName)).toEqual(['acme-seo'])
-    expect((await h.server.fetch(new Request(file))).status).toBe(404)
+    expect(await listed()).toBe(false)
   })
 })
 

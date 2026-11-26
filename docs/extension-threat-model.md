@@ -36,7 +36,7 @@ are listed at the end.
 | **Server half**: `crombolo.server`, a `ServerBundle` with routes, events, jobs, forms, media and tables | A Deno process of its own (story 311); in the CMS when the site's config imports it | Its grant (stories 309, 310) |
 | **Templates**: a `content: true` extension's `components/` | Copied into the site's `components/`, then imported in-process on every render | The Marketplace install itself, with no consent asked |
 | **Described screens** (story 323): data the server half returns | Drawn by the back office's own element; the extension's code stays in its process | Its grant, as its routes |
-| **Back-office code**: `src/backoffice/` files the manifest's `extensions` name, built (story 320) | The back office, in the signed-in user's browser | `backoffice.code` |
+| **Back-office code** | Nowhere: an extension's own is refused (story 431), and its screens are described | — |
 | **Content**: schema, dictionary, content, styles, scripts, public files | Written into the site | The Marketplace install, unless `CROMBOLO_APPLY_BUNDLE_CONTENT` is off |
 
 ## Threats
@@ -52,7 +52,7 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T5 | **Writing the site's files**: config, `package.json`, `.env`, components | **Covered (306, 311, 312).** An extension's payload may not carry `code/`, `components/` or value migrations; its process may write only its data folder | Components an install copied before 312 stay in the site, as its own; `bundle list` names them |
 | T6 | **Running code through templates**: on the server, or as script in the visitor's browser, which shares the back office's origin | **Covered (312, 330, 336).** An extension's components render in its own process, only with `templates` granted, and their HTML is held to the Sanitizer API's safe baseline: no script, event handler or `javascript:` URL reaches the page. A site package's templates are code: installing one needs "Install code on this site" and a site that installs code while it runs | A Settings user may still edit templates in the back office unless `CROMBOLO_CODE=locked` is set (337, 391) |
 | T7 | **Outbound requests and SSRF** from the server | **Covered (311, 312)**: Deno allows only the hosts its grant names, and the host's `fetch` adds the address rule (story 301) | — |
-| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313)** for sending: the back office's content security policy lets its pages reach the site and the origins granted extensions declare, and nothing else. **Asked for (320):** back-office code needs `backoffice.code`, granted under a warning that names the publisher, so none runs that was not granted knowingly | A screen granted `backoffice.code` can still do anything the signed-in user can on the site itself. **A described screen (323)** runs nothing in the page: the back office draws it from data, every string as text, so it holds no session |
+| T8 | **Screens misusing the user's session**: calling the Management API as them, sending data anywhere | **Covered (313, 323, 431).** No extension's code runs in the back office: its screens are described (323), drawn by the back office from data, every string as text, and its own back-office code is refused (431). The back office's content security policy lets its pages reach the site and the host, and nothing else | — |
 | T9 | **Screens of an extension that is off or ungranted** | **Covered (309).** Their manifests are hidden and their files not served | — |
 | T10 | **Acting as a member beyond what was granted** (`member.delegate`), or for a back-office user beyond what they hold (`user.delegate`) | **Covered (309, 325).** Checked on every call; under `user.delegate` the API holds it to the person's own rights, and installing or granting extensions, a remote, and users and groups are refused for anyone | — |
 | T11 | **One extension reading another's data** | **Covered (311).** Separate processes, separate channels, and each one's queries run on its own tables' connection | — |
@@ -61,6 +61,9 @@ Status: **covered**, **partly** (a gap is named), or **open**.
 | T14 | **Denial of service**: a busy loop, unbounded memory, a crash | **Covered (311)**, but for CPU. A crash or a hang ends its process and its calls, which time out; a 256 MB heap | A busy loop uses a core until its call times out and the process is stopped |
 | T15 | **A site package dressed as an extension**, from a registry | **Covered (306).** A site package says what it is, and is never installed from a registry | — |
 | T16 | **A site bundle overwritten** on disk, in an artifact store or in transit, or an older one put back | **Covered (316).** In production a site bundle applies only when a key or CI build the site trusts signed it, and never an older version from the same signer without `--allow-downgrade` | Outside production it applies, with a warning |
+| T17 | **Running code it fetched after install**: saving a module to load, or running text with `eval` or `new Function` | **Covered (435).** No `--allow-write`, and no read of its data folder: it keeps files through the host. V8's `--disallow-code-generation-from-strings`. Its build refuses an `import()` of a module named at run time in its own code | — |
+| T18 | **Script in a file it puts in the site's `public/`**, served from the back office's origin | **Covered (435).** An extension's HTML, SVG or XML in `public/` is refused at check and install, by name; any such file in `public/`, the site's own too, is served with `content-security-policy: sandbox` | — |
+| T19 | **Script in rich text it saves**, which renders unclean on the back office's origin | **Covered (435).** Rich text written through `bundle.api` is held to the safe baseline (330) before it is stored; the answer names what was removed. An editor's own rich text is theirs | — |
 
 ## What process isolation does and does not stop
 
@@ -96,9 +99,8 @@ asks for more, or for different ones, is off until someone grants them again.
 ```json
 "crombolo": {
   "id": "redirects",
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "permissions": {
-    "backoffice.code": "Shows the redirects screen in Settings",
     "redirects.read": "Lists the rules you have added",
     "redirects.write": "Saves the rules you add or change",
     "content.read": "Shows the page each rule sends people to"
@@ -116,22 +118,21 @@ workflows, redirects and sign-in providers, with users read only. Besides the ar
 - `member.delegate`;
 - `user.delegate`, to act for the person using it across every area, from 325;
   without it, an extension acts as itself;
-- `templates`, from 312;
-- `backoffice.code`, from 320.
+- `templates`, from 312.
+
+`backoffice.code`, from 320, is retired (431).
 
 What needs no permission is the extension's own: its log, its own tables, and
-the section it declares. Its back-office screens need `backoffice.code` (story 320),
-the one permission that is not confined: they act as whoever is signed in.
+the section it declares, and its described screens.
 
 Never offered, whatever is asked: the server's settings and secrets, the
 site's files, writing back-office users or groups, installing or granting
 extensions (`extensions.install`, `extensions.grant`, refused by name), and the
 Management API as the CMS.
 
-What they add up to is one of three levels (story 324): Limited, Acts as you
-(`user.delegate`) and Unrestricted (`backoffice.code`). The upper two are an
-administrator's to grant, and only for a package someone vouched for; a host may
-keep Unrestricted to the site's config with `CROMBOLO_UNRESTRICTED_EXTENSIONS=config`.
+What they add up to is one of two levels (story 324): Limited and Acts as you
+(`user.delegate`). Acts as you is an administrator's to grant, and only for a package
+someone vouched for. Unrestricted, for back-office code, went with it (story 431).
 
 ## Stories
 
@@ -149,6 +150,8 @@ keep Unrestricted to the site's config with `CROMBOLO_UNRESTRICTED_EXTENSIONS=co
 | 330 | An extension's rendered components carry no script, by the HTML Sanitizer API's safe baseline (T6) |
 | 325 | `user.delegate`: an extension acts for the person using it, recorded against them, never installing, granting or changing users (T10) |
 | 323 | An extension's screens are described by its server half and drawn by the back office, so none of its code runs in the page (T8) |
+| 431 | An extension's own back-office code is refused and Unrestricted retired; the site's own back-office code is the site's (T8) |
+| 435 | An extension runs only what was installed, and writes no script into the site (T17, T18, T19) |
 | 316 | A site bundle is applied only from a key or CI build the site trusts (T16) |
 
 Story 303 is absorbed by 306 and 312, and 307 was merged into them.
@@ -174,6 +177,9 @@ Story 303 is absorbed by 306 and 312, and 307 was merged into them.
   which locks them. The back office edits the rest.
 
 ## Decisions (2026-11-11): the screens
+
+Story 431 (2026-11-26) took the rest of the way: no extension ships back-office code,
+so D5's only unconfined code is the site's own, and D7 has two levels.
 
 The process confines the server half; a screen granted `backoffice.code` still runs in
 the back-office page with the user's session, so it can call the Management API as an

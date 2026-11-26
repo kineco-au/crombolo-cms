@@ -89,6 +89,23 @@ export const AREAS = [
 ]
 
 /**
+ * The sections a site or an extension declares (story 431), as Access lists them after
+ * the back office's own. Pure.
+ *
+ * @param {Array<{ alias: string, label: string, places: Array<{ label: string }> }>} sections
+ */
+export function declaredAreas(sections) {
+  return sections.map((section) => ({
+    section: section.alias,
+    label: section.label,
+    line:
+      section.places.length > 1
+        ? `${section.places.map((place) => place.label).join(', ')}.`
+        : `Its ${section.places[0]?.label ?? 'screens'}.`,
+  }))
+}
+
+/**
  * What to say of a place the group holds without what it is under, Content or Settings,
  * which can't be saved (stories 385, 429); undefined when nothing needs saying. Pure.
  */

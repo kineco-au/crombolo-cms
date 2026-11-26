@@ -182,6 +182,59 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     expect((await send(h, 'POST', WORKSPACES, { name: '' })).status).toBe(400)
   })
 
+  test('Shared is never discarded: no address names it, and a discard takes only the workspace’s own', async () => {
+    const { h, db, send, page, opened, inside, titleOf, save } = await site()
+    const home = await page('Home', 'Welcome')
+    const sharedNodes = async () =>
+      (
+        await db.q
+          .selectFrom('node')
+          .select('unique_id')
+          .where('workspace_id', 'is', null)
+          .execute()
+      )
+        .map((row) => String(row.unique_id))
+        .sort()
+    const before = await sharedNodes()
+
+    // Nothing at the workspaces' address reaches Shared.
+    for (const path of ['shared', 'Shared', 'null', '00000000-0000-0000-0000-000000000000', ''])
+      expect([path, (await send(h, 'DELETE', `${WORKSPACES}/${path}`)).status]).not.toContainEqual(
+        204,
+      )
+    expect(await sharedNodes()).toEqual(before)
+
+    // A workspace that changed a Shared page and made one of its own takes only its own.
+    const sale = await opened(h, 'Spring sale')
+    expect((await save(h, home, 'Sale', sale.key)).status).toBe(200)
+    const made = await send(
+      h,
+      'POST',
+      `${V1}/document`,
+      {
+        documentType: {
+          id: (await (await send(h, 'GET', `${V1}/document/${home}`)).json()).documentType.id,
+        },
+        parent: null,
+        values: [],
+        variants: [{ culture: null, segment: null, name: 'Offers' }],
+      },
+      inside(sale.key),
+    )
+    expect(made.status, await made.clone().text()).toBe(201)
+    expect((await send(h, 'DELETE', `${WORKSPACES}/${sale.key}`)).status).toBe(204)
+    expect(await sharedNodes()).toEqual(before)
+    expect(await titleOf(h, home)).toBe('Welcome')
+
+    // An administrator clearing every idle workspace clears no Shared page either.
+    const idle = await opened(h, 'Idle')
+    expect((await save(h, home, 'Idle', idle.key)).status).toBe(200)
+    const cleared = await send(h, 'POST', `${WORKSPACES}/pending/discard`, { olderThanDays: 0 })
+    expect(((await cleared.json()) as { discarded: string[] }).discarded).toEqual([idle.key])
+    expect(await sharedNodes()).toEqual(before)
+    expect(await titleOf(h, home)).toBe('Welcome')
+  })
+
   test('an administrator lists and discards another’s, and does not read it', async () => {
     const { h, send, opened } = await site()
     const writer = await signInAsGroup(h, 'writer')

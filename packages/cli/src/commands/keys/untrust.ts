@@ -49,7 +49,7 @@ export default class KeysUntrust extends BaseCommand {
       return { name: found.name, switchedOff: outcome.switchedOff ?? [] }
     })
     this.say(`  removed  ${removed.name}`)
-    // Story 335: what it vouched for that acts as you or runs unrestricted stops now.
+    // Story 335: what it vouched for that acts as you stops now.
     for (const name of removed.switchedOff)
       this.say(`  off      ${name}, which nothing trusted vouches for now`)
     return { removed: removed.name, switchedOff: removed.switchedOff }

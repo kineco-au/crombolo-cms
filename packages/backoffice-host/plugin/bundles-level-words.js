@@ -20,12 +20,6 @@ export const LEVELS = {
       'Can do anything on this site that the person using it can do. Everything it does is recorded against them.',
     color: 'warning',
   },
-  unrestricted: {
-    label: 'Unrestricted',
-    sentence:
-      "Runs its own code inside your back office, with the same access as the site's own code. Nothing it does there can be watched or limited. Only install this from a publisher you trust as you trust your own developers.",
-    color: 'danger',
-  },
 }
 
 export const levelWords = (level) => LEVELS[level] ?? LEVELS.limited
@@ -58,12 +52,11 @@ export const vouchState = (provenance) =>
 
 /**
  * Whether this person may turn it on here, and if not what to show in place of
- * the button: an administrator's sentence, the unvouched sentence, or the
- * config snippet. `may` is the server's `mayGrant`.
+ * the button: an administrator's sentence, or the unvouched sentence. `may` is
+ * the server's `mayGrant`.
  */
 export function grantChoice(level, may, provenanceState) {
   const rule = may?.[level ?? 'limited'] ?? 'administrator'
-  if (rule === 'config') return { snippet: true }
   if (rule !== 'yes') return { sentence: 'An administrator can turn this on.' }
   if (level === 'limited' || !level) return { grant: true }
   if (provenanceState === 'untrusted')
@@ -79,10 +72,3 @@ export function grantChoice(level, may, provenanceState) {
 /** The line that stands in for the build line when a Limited extension is unsigned. */
 export const unvouchedLine = (level, provenanceState) =>
   level === 'limited' && !VOUCHED.has(provenanceState) ? NOBODY_VOUCHED : undefined
-
-/** What a developer adds to `crombolo.config.ts` to grant it there. */
-export function configSnippet(id, permissions, origins = []) {
-  const grant = permissions.map((permission) => `'${permission}'`).join(', ')
-  const reach = origins.length > 0 ? `, origins: [${origins.map((o) => `'${o}'`).join(', ')}]` : ''
-  return `extensions: {\n  '${id}': { grant: [${grant}]${reach} },\n},`
-}

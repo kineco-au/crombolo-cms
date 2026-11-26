@@ -14,6 +14,7 @@ import {
   defineSiteTables,
   JobRepository,
   type TablesDatabase,
+  UserRepository,
 } from '@crombolo/data'
 import type { SiteContentEvent, SiteServices } from '@crombolo/render'
 import { type Harness, ORIGIN, signedInServer, V1 } from './support/harness.ts'
@@ -213,10 +214,8 @@ describe('site().content', () => {
     }
     const home = (await (await create('Home', { title: 'Home' })).json()) as { key: string }
     // The API user is narrowed to Home after the boot; it is read again for each write.
-    const users = await h.json<{ items: Array<{ id: string; userName: string }> }>(
-      `${V1}/user?take=100`,
-    )
-    const apiUser = users.items.find((u) => u.userName === CLIENT.id) as { id: string }
+    // Story 433: a person's Users lists people, so the API user is found by its login.
+    const apiUser = { id: (await new UserRepository(h.server.db).byUserName(CLIENT.id))?.key }
     const detail = await h.json<{ userGroupIds: Array<{ id: string }> }>(`${V1}/user/${apiUser.id}`)
     // Story 339: a user works where their groups do, so a group narrows it.
     const first = await h.json<{ fallbackPermissions: string[]; sections: string[] }>(

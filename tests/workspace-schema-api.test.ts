@@ -241,6 +241,45 @@ describe(`a workspace's types over HTTP (${dialectUnderTest})`, () => {
     )
   })
 
+  test('a type made in the workspace, with a page of it, is discarded with it (story 434)', async () => {
+    const { db, send, opened, readType, typeKey } = await site()
+    const sale = await opened('Spring sale')
+    const own = (await readType(typeKey, sale.key)) as TypeModel
+    const articleKey = crypto.randomUUID()
+    const made = await send(
+      'POST',
+      `${V1}/document-type`,
+      { ...own, id: articleKey, alias: 'article', name: 'Article', properties: [], containers: [] },
+      sale.key,
+    )
+    expect(made.status).toBe(201)
+    const componentKey = (await new ComponentRepository(db).byAlias('page'))?.key as string
+    const news = await send(
+      'POST',
+      `${V1}/document`,
+      {
+        documentType: { id: articleKey },
+        template: { id: componentKey },
+        parent: null,
+        values: [],
+        variants: [{ culture: null, segment: null, name: 'News' }],
+      },
+      sale.key,
+    )
+    expect(news.status).toBe(201)
+    const newsKey = news.headers.get('umb-generated-resource') as string
+
+    const discarded = await send('DELETE', `${WORKSPACES}/${sale.key}`)
+    expect(discarded.status, await discarded.clone().text()).toBe(204)
+    // Nothing of it stays, so the same keys can be made again elsewhere.
+    const left = await db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('unique_id', 'in', [articleKey, newsKey])
+      .execute()
+    expect(left).toEqual([])
+  })
+
   test('the same lines changed in Shared are a conflict, answered in the workspace', async () => {
     const { db, send, opened, readType, typeKey, pageFile } = await site()
     const sale = await opened('Spring sale')

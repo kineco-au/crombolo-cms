@@ -364,12 +364,17 @@ export class AuthService {
     | { ok: false; error: TokenError; description: string }
   > {
     const credential = await this.#store.findClientCredential(clientId)
-    const valid = credential ? await verifyPassword(secret, credential.secretHash) : false
+    const valid = credential
+      ? (await verifyPassword(secret, credential.secretHash)) ||
+        (credential.oldSecretHash !== undefined &&
+          (await verifyPassword(secret, credential.oldSecretHash)))
+      : false
     const user = credential && valid ? await this.#store.findUserById(credential.userId) : undefined
     if (user?.kind !== 'Api' || user.isLockedOut || !user.isApproved)
       return { ok: false, error: 'invalid_client', description: 'Invalid client credentials.' }
     const sessionId = crypto.randomUUID()
     await this.#store.recordLoginSuccess(user.id, sessionId)
+    await this.#store.touchClientCredential(clientId)
     const accessToken = generateToken()
     const now = Date.now()
     await this.#store.createToken({

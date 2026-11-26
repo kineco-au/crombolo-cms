@@ -53,6 +53,9 @@ function isMusl(): boolean {
 }
 
 const SOURCE = /\.[cm]?[jt]sx?$/
+/** `import(…)` of anything but a string or a template with nothing in it. */
+const COMPUTED_IMPORT = /\bimport\s*\(\s*(?!["']|`[^`$]*`)/
+
 const MACRO = /\btype\s*:\s*['"]macro['"]/
 /** A module whose first statement says it runs in the browser, or renders on its own. */
 const BROWSER_CODE = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*['"]use (client|deferred)['"]/
@@ -114,6 +117,11 @@ export async function buildExtension(
             const contents = await Bun.file(args.path).text()
             if (MACRO.test(contents))
               throw new Error(`${args.path} imports a Bun macro, which would run in the CMS.`)
+            // Story 435: its own code loads only what is built with it, never a module named at run time.
+            if (!args.path.includes(`${sep}node_modules${sep}`) && COMPUTED_IMPORT.test(contents))
+              throw new Error(
+                `${args.path} imports a module named at run time, which an extension cannot load: import it by its path.`,
+              )
             if (BROWSER_CODE.test(contents))
               throw new Error(
                 `${args.path} is browser code ('use client' or 'use deferred'), which an extension's components cannot carry yet.`,
@@ -158,11 +166,14 @@ export function netHosts(origins: readonly string[]): string[] {
   ]
 }
 
-/** The arguments Deno is started with: what the extension may read, write and reach, and nothing else. */
+/**
+ * The arguments Deno is started with: what the extension may read and reach, and nothing
+ * else. It writes nowhere, keeping its files through the host (story 435), and runs no code
+ * from text: what it runs is what was installed.
+ */
 export function denoArguments(options: {
   serverFile: string
   reads: readonly string[]
-  dataDir: string
   origins: readonly string[]
   memoryMb: number
 }): string[] {
@@ -176,10 +187,9 @@ export function denoArguments(options: {
     '--no-npm',
     '--no-lock',
     '--node-modules-dir=none',
-    `--allow-read=${[...options.reads, options.dataDir].join(',')}`,
-    `--allow-write=${options.dataDir}`,
+    `--allow-read=${options.reads.join(',')}`,
     ...(hosts.length > 0 ? [`--allow-net=${hosts.join(',')}`] : []),
-    `--v8-flags=--max-old-space-size=${options.memoryMb}`,
+    `--v8-flags=--max-old-space-size=${options.memoryMb},--disallow-code-generation-from-strings`,
     options.serverFile,
   ]
 }
@@ -301,8 +311,6 @@ export class ExtensionProcess {
     }
     const { pkg, home } = this.#options
     const build = join(home, 'build')
-    const data = join(home, 'data')
-    mkdirSync(data, { recursive: true })
     this.#serverFile ??= await buildExtension(pkg, this.#options.siteDir, build)
     const child = Bun.spawn(
       [
@@ -310,13 +318,12 @@ export class ExtensionProcess {
         ...denoArguments({
           serverFile: this.#serverFile,
           reads: processReads(pkg, build, this.#options.reads),
-          dataDir: data,
           origins: this.#options.origins,
           memoryMb: this.#options.memoryMb ?? 256,
         }),
       ],
       {
-        cwd: data,
+        cwd: build,
         env: processEnv(join(home, 'cache')),
         stdin: 'pipe',
         stdout: 'pipe',

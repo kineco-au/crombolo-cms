@@ -12,6 +12,7 @@
  * ```
  */
 import type { OidcClaims, OidcProviderOptions } from '@crombolo/auth'
+import { localReturnUrl } from '@crombolo/core'
 
 /** What every preset takes besides the provider's own settings. */
 export interface IdentityProviderOptions {
@@ -57,6 +58,19 @@ export interface IdentityProviderOptions {
    * history (story 366).
    */
   remoteExchange?: boolean | RemoteExchangeOptions
+  /**
+   * Members only (story 191): member properties, by alias, and the claim each
+   * takes its value from, at creation and at every sign-in.
+   */
+  properties?: Readonly<Record<string, string>>
+  /** The claim the account is linked by; `sub` by default. It must never change for a person. */
+  subjectClaim?: string
+  /** The page a cancelled sign-in goes to: a path on this site. */
+  cancelUrl?: string
+  /** The page a failed sign-in goes to: a path on this site. */
+  failedUrl?: string
+  /** Members only: signing out of the site ends the provider's session too. */
+  signOut?: boolean
 }
 
 /** How a provider's tokens are exchanged at the remote (stories 364 and 366). */
@@ -68,7 +82,7 @@ export interface RemoteExchangeOptions {
 }
 
 /** Which preset made a provider: what the Entra bundle looks for. */
-export type IdentityProviderKind = 'entra' | 'aws' | 'oidc'
+export type IdentityProviderKind = 'entra' | 'aws' | 'b2c' | 'oidc'
 
 /** A provider, ready for the config. */
 export interface IdentityProvider {
@@ -88,6 +102,26 @@ export interface IdentityProvider {
   remoteExchange: RemoteExchangeOptions | undefined
   /** Why it cannot sign anyone in as it stands, such as a new issuer with no secret of its own. */
   unavailable?: string
+  /** Flows besides its sign-in, by name (story 191). */
+  flows: Readonly<Record<string, OidcProviderOptions>>
+  /** The start of the error description that means a forgotten password: `resetPassword` is started. */
+  forgottenPassword?: string
+  properties: Readonly<Record<string, string>>
+  cancelUrl: string | undefined
+  failedUrl: string | undefined
+  signOut: boolean
+}
+
+/** The flow a provider has without naming any. */
+export const SIGN_IN_FLOW = 'signIn'
+
+/** A provider's flow by name; its sign-in for none. Pure. */
+export function flowOf(
+  provider: Pick<IdentityProvider, 'oidc' | 'flows'>,
+  name: string | undefined,
+): OidcProviderOptions | undefined {
+  if (name === undefined || name === SIGN_IN_FLOW) return provider.oidc
+  return Object.hasOwn(provider.flows, name) ? provider.flows[name] : undefined
 }
 
 /** What locks providers from the server's environment: their ids, or all of them. */
@@ -104,6 +138,35 @@ export function lockOf(
 }
 
 const ID = /^[a-z0-9][a-z0-9-]*$/
+const FLOW = /^[A-Za-z][A-Za-z0-9]*$/
+
+const originOfIssuer = (issuer: string, name: string) => {
+  try {
+    return new URL(issuer).origin
+  } catch {
+    throw new Error(`The ${name} identity provider's issuer "${issuer}" is not an address.`)
+  }
+}
+
+/** A provider's other flows. Each is on the issuer's own address, where its secret may go (story 305). */
+function flowsOf(
+  oidc: OidcProviderOptions,
+  issuers: Readonly<Record<string, string>>,
+): Record<string, OidcProviderOptions> {
+  const out: Record<string, OidcProviderOptions> = {}
+  for (const [name, issuer] of Object.entries(issuers)) {
+    if (!FLOW.test(name) || name === SIGN_IN_FLOW)
+      throw new Error(
+        `A flow's name is letters and digits, and not "${SIGN_IN_FLOW}": "${name}" is not.`,
+      )
+    if (originOfIssuer(issuer, oidc.name) !== originOfIssuer(oidc.issuer, oidc.name))
+      throw new Error(
+        `The ${oidc.name} identity provider's "${name}" flow is on another address than its sign-in.`,
+      )
+    out[name] = { ...oidc, issuer }
+  }
+  return out
+}
 
 /** Entra's issuer for a tenant. */
 export const entraIssuer = (tenantId: string) =>
@@ -112,7 +175,13 @@ export const entraIssuer = (tenantId: string) =>
 function preset(
   kind: IdentityProviderKind,
   defaults: { id: string; name: string },
-  provider: { issuer: string; clientId: string; clientSecret?: string; scopes?: readonly string[] },
+  provider: {
+    issuer: string
+    clientId: string
+    clientSecret?: string
+    scopes?: readonly string[]
+    flows?: Readonly<Record<string, string>>
+  },
   claims: OidcClaims,
   options: IdentityProviderOptions,
 ): IdentityProvider {
@@ -122,21 +191,35 @@ function preset(
   if (!provider.issuer) throw new Error(`The ${defaults.name} identity provider needs an issuer.`)
   if (!provider.clientId)
     throw new Error(`The ${defaults.name} identity provider needs a clientId.`)
+  for (const field of ['cancelUrl', 'failedUrl'] as const) {
+    const url = options[field]
+    if (url !== undefined && !localReturnUrl(url))
+      throw new Error(
+        `The ${defaults.name} identity provider's ${field} is a path on this site: "${url}" is not.`,
+      )
+  }
+  const oidc: OidcProviderOptions = {
+    id,
+    name: options.name ?? defaults.name,
+    issuer: provider.issuer,
+    clientId: provider.clientId,
+    clientSecret: provider.clientSecret,
+    scopes: provider.scopes ?? ['openid', 'profile', 'email'],
+    // A group map with no claim named reads the usual `groups` claim.
+    claims: {
+      ...claims,
+      groups: options.groups?.claim ?? claims.groups ?? (options.groups ? 'groups' : undefined),
+    },
+    ...(options.subjectClaim ? { subject: options.subjectClaim } : {}),
+  }
   return {
     kind,
-    oidc: {
-      id,
-      name: options.name ?? defaults.name,
-      issuer: provider.issuer,
-      clientId: provider.clientId,
-      clientSecret: provider.clientSecret,
-      scopes: provider.scopes ?? ['openid', 'profile', 'email'],
-      // A group map with no claim named reads the usual `groups` claim.
-      claims: {
-        ...claims,
-        groups: options.groups?.claim ?? claims.groups ?? (options.groups ? 'groups' : undefined),
-      },
-    },
+    oidc,
+    flows: flowsOf(oidc, provider.flows ?? {}),
+    properties: options.properties ?? {},
+    cancelUrl: options.cancelUrl,
+    failedUrl: options.failedUrl,
+    signOut: options.signOut ?? false,
     autoCreate: options.autoCreate ?? true,
     linkByEmail: options.linkByEmail ?? false,
     emailsVerified: options.emailsVerified ?? false,
@@ -203,6 +286,8 @@ export function oidc(
     clientSecret?: string
     scopes?: readonly string[]
     claims?: Partial<OidcClaims>
+    /** Flows besides its sign-in, by name, each with an issuer of its own (story 191). */
+    flows?: Readonly<Record<string, string>>
   },
 ): IdentityProvider {
   return preset(
@@ -213,10 +298,71 @@ export function oidc(
       clientId: options.clientId,
       clientSecret: options.clientSecret,
       scopes: options.scopes,
+      flows: options.flows,
     },
     { email: 'email', name: 'name', ...options.claims },
     options,
   )
+}
+
+const GUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
+
+/** The user flows of a B2C tenant, by policy name. */
+export interface B2cFlows {
+  signIn: string
+  signUp?: string
+  resetPassword?: string
+  editProfile?: string
+  [name: string]: string | undefined
+}
+
+/**
+ * Azure AD B2C, by its user flows (story 191). `tenant` is `contoso` or
+ * `contoso.onmicrosoft.com`, or the tenant's id with a custom `domain`.
+ * docs/operations.md, "Azure AD B2C".
+ */
+export function b2c(
+  options: IdentityProviderOptions & {
+    tenant: string
+    /** A custom domain; `<tenant>.b2clogin.com` by default. */
+    domain?: string
+    clientId: string
+    clientSecret?: string
+    flows: B2cFlows
+    scopes?: readonly string[]
+    claims?: Partial<OidcClaims>
+  },
+): IdentityProvider {
+  if (!options.tenant) throw new Error('The Azure AD B2C identity provider needs a tenant.')
+  if (!options.flows?.signIn)
+    throw new Error('The Azure AD B2C identity provider needs a signIn flow.')
+  if (GUID.test(options.tenant) && !options.domain)
+    throw new Error('The Azure AD B2C identity provider needs a domain when its tenant is an id.')
+  const path =
+    GUID.test(options.tenant) || options.tenant.includes('.')
+      ? options.tenant
+      : `${options.tenant}.onmicrosoft.com`
+  const domain = options.domain ?? `${options.tenant.split('.')[0]}.b2clogin.com`
+  const issuerOf = (policy: string) => `https://${domain}/${path}/${policy}/v2.0`
+  const { signIn, ...others } = options.flows
+  const provider = preset(
+    'b2c',
+    { id: 'b2c', name: 'Azure AD B2C' },
+    {
+      issuer: issuerOf(signIn),
+      clientId: options.clientId,
+      clientSecret: options.clientSecret,
+      scopes: options.scopes ?? ['openid'],
+      flows: Object.fromEntries(
+        Object.entries(others).flatMap(([name, policy]) =>
+          policy ? [[name, issuerOf(policy)]] : [],
+        ),
+      ),
+    },
+    { email: 'emails', name: 'name', ...options.claims },
+    { ...options, signOut: options.signOut ?? true },
+  )
+  return { ...provider, forgottenPassword: 'AADB2C90118' }
 }
 
 /** Refuses two providers with one id in a list, which would share one set of URLs. */
@@ -229,6 +375,10 @@ export function checkIdentityProviders(
     if (seen.has(provider.oidc.id))
       throw new Error(`Two ${label} identity providers have the id "${provider.oidc.id}".`)
     seen.add(provider.oidc.id)
+    if (label !== 'member' && (Object.keys(provider.properties).length > 0 || provider.signOut))
+      throw new Error(
+        `The ${label} identity provider "${provider.oidc.id}" sets properties or signOut, which are for members only.`,
+      )
   }
   return list
 }

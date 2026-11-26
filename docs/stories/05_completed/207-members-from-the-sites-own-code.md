@@ -40,6 +40,23 @@ What exists to build on:
 - Story 155's member export is command-line only.
 
 
+## Decided (2026-11-25)
+
+Where these differ from the design below, these stand.
+
+1. **Jobs and event handlers act as a named API user,** `members: { actAs: '<client id>' }`,
+   as `content.actAs` does (298): its groups decide what it may do and whether it sees
+   sensitive properties. Without it every call answers `forbidden`. Audited as that API
+   user, naming the job or event. Not the person who set a job up: jobs are declared in
+   code, and a schedule must outlive anyone's account.
+2. **Staff screens wait for 431.** This story builds and tests `site.members` acting as a
+   back-office user; 431 hands it to screens, and settles whether a job started from a
+   screen acts as the person who started it.
+3. **A member may change their name and `member-can-edit` properties, never their e-mail:**
+   that answers `unprocessableContent`. A job or staff may change it.
+4. **A member never deletes themselves.** `delete` as the member answers `forbidden`; a
+   page queues a job, which can first deal with the site's own rows.
+
 ## The design
 
 `site` is the same object wherever the site's own code runs on the server,
@@ -103,29 +120,49 @@ the member's `member-can-view` properties, so a component can show
 
 ## Acceptance criteria
 
-- [ ] `site.members` provides `me`, `get`, `byEmail`, `byUsername`, a
+- [x] `site.members` provides `me`, `get`, `byEmail`, `byUsername`, a
       cursor-paged `list`, `update`, `addToGroups`, `removeFromGroups` and
       `delete`. Each returns a `Result` with exhaustive outcome types.
-- [ ] As a signed-in member, only their own record is reachable:
+- [x] As a signed-in member, only their own record is reachable:
       `member-can-view` properties to read, `member-can-edit` to change, and
       only self-service groups. Anything else answers `forbidden` before the
       database is touched. With no member, every call answers `forbidden`.
-- [ ] As a back-office user, it acts under the user's Members permissions.
+- [x] As a back-office user, it acts under the user's Members permissions.
       Sensitive properties are present only with sensitive-data access.
-- [ ] As the site, in background work, any member is reachable and every change
+- [x] As the site, in background work, any member is reachable and every change
       is audited as the site.
-- [ ] Property writes are validated against the member type as the back office
+- [x] Property writes are validated against the member type as the back office
       validates them. A failure is `unprocessableContent`, with the field and
       the reason.
-- [ ] The groups site code may change are listed in `crombolo.config.ts` as
+- [x] The groups site code may change are listed in `crombolo.config.ts` as
       self-service or managed. A listed group that does not exist refuses the
       boot, and changing an unlisted group is `forbidden`.
-- [ ] Every change is in the audit log, naming the member, user or site that
+- [x] Every change is in the audit log, naming the member, user or site that
       made it and the code path (page, route or job) it came through.
-- [ ] `RequestMember.properties` carries the member's `member-can-view`
+- [x] `RequestMember.properties` carries the member's `member-can-view`
       properties. Reading them makes the page personal, as 206 infers.
-- [ ] Listing 400,000 members pages in constant memory, with the covering index
+- [x] Listing 400,000 members pages in constant memory, with the covering index
       checked on both dialects.
-- [ ] `docs/rendering.md` (the `site` services) and `docs/operations.md`
+- [x] `docs/rendering.md` (the `site` services) and `docs/operations.md`
       ("Members") describe it. Unit tests cover each operation, each caller,
       the refusals, validation and auditing, on SQLite and Postgres.
+
+## What was built (2026-11-25)
+
+`server/src/site-members.ts` behind `site().members`, the types in `render/src/site.ts`,
+the cursor in `MemberRepository.after`, and `member.properties` in `member-auth.ts`;
+tested in `tests/site-members.test.ts`. As decided above, and:
+
+- **Jobs and staff may change `selfService` groups too,** as well as `managed` ones.
+- **A page render only reads,** as `site().content` (298); a bundle's routes do not write.
+- **A save that meets another is `badRequest`,** there being no conflict outcome.
+- **As a back-office user** is built and tested directly; no screen is given it until 431.
+- **Listing** pages on the member's own primary key, sorting nothing on either database
+  (asserted from the plan). Each member's properties are read one at a time; an export of
+  400,000 was not timed.
+- **File uploads** are not taken through `update`.
+- A route reached by a member's bearer token was handed the stored member, password hash
+  included; it is now given what a page is.
+
+SQLite green; Postgres green but for table types, which timed out under the full run and
+passes alone.

@@ -54,7 +54,6 @@ import {
   backOfficePolicy,
   collectManifests,
   type createBackOfficePaths,
-  EXTENSION_PATH,
   isSpaRoute,
   newNonce,
   renderBackOfficeShell,
@@ -64,6 +63,7 @@ import {
   resolveGraphic,
   resolveLoginAsset,
   resolveStaticFile,
+  SITE_CODE_SEGMENT,
   serveStaticFile,
 } from '@crombolo/backoffice-host'
 import { servedContract } from '@crombolo/contracts'
@@ -105,7 +105,6 @@ import {
   latestContentVersionId,
   listLibraryForms,
   MediaAccessRepository,
-  MemberRepository,
   PublicAccessRepository,
   RedirectRepository,
   readLedger,
@@ -189,7 +188,7 @@ import { handleApprovalsApi } from './approvals-api.ts'
 import { BackgroundJobError, listJobs, readJobQuery, retryJob } from './background-jobs.ts'
 import { type BundleActor, createBundleAdmin, settingsIn } from './bundle-admin.ts'
 import { actingPrincipalOf } from './bundle-api.ts'
-import { type BundleGrants, declaredOrigins } from './bundle-grants.ts'
+import type { BundleGrants } from './bundle-grants.ts'
 import { CommandError, installBundleContent } from './bundle-install.ts'
 import { BUNDLES_CHANGED_EVENT, type BundleReload, createBundleReloader } from './bundle-reload.ts'
 import { bundleRouteGroups } from './bundles.ts'
@@ -220,7 +219,6 @@ import { emailAvailability, emailReady } from './email.ts'
 import { noticeAboutEmail } from './email-notice.ts'
 import { createEmailSettings, type EmailSettingsInput } from './email-settings.ts'
 import { activityPath, answerActivity } from './extension-activity.ts'
-import { createBackOfficeBuilds } from './extension-backoffice.ts'
 import { warnAboutAppPlugins } from './extensions-notice.ts'
 import { coerceForm, deleteForm, saveForm } from './form-files.ts'
 import {
@@ -352,8 +350,15 @@ import {
   type HubSocketData,
   type ServerEventHub,
 } from './server-events.ts'
+import { createServiceAccountsApi, serviceAccountUses } from './service-accounts.ts'
 import { AttemptLimiter, createSetupRoutes } from './setup.ts'
 import { createSharedCheck } from './shared-check.ts'
+import {
+  matchSiteBackOfficeRoute,
+  SITE_BACKOFFICE_OWNER,
+  sectionClashes,
+} from './site-backoffice.ts'
+import { createSiteBackOfficeBuild } from './site-backoffice-build.ts'
 import { siteSearchFor } from './site-search.ts'
 import {
   genericStatusPage,
@@ -605,16 +610,26 @@ export async function createServer(
         (!extension.bundle.dependency ||
           config.bundles.some((bundle) => bundle.id === extension.bundle.id)),
     )
-  // Their back-office code, built when first asked for (story 320).
-  const backOfficeBuilds = createBackOfficeBuilds(config.siteDir, (id) => {
-    const named = logger('bundle', id)
-    return {
-      info: (message, properties) => named.info(message, properties),
-      warn: (message, properties) => named.warn(message, properties),
-      error: (message, properties) => named.error(message, properties),
-    }
-  })
-  const readyExtensions = () => backOfficeBuilds.ready(onExtensions())
+  // An extension's screens are described (story 431): none of its code is built for the back office.
+  const readyExtensions = async () => onExtensions()
+  // Story 431: the site's own back-office screens, built when first asked for.
+  {
+    const clashes = sectionClashes(
+      config.backoffice,
+      extensions.list().map((extension) => ({
+        name: `the extension ${extension.packageName}`,
+        sections: extension.bundle.field.sections,
+      })),
+    )
+    if (clashes.length > 0)
+      throw new Error(`The back office's sections cannot be mounted:\n- ${clashes.join('\n- ')}`)
+  }
+  const siteBackOffice = createSiteBackOfficeBuild(
+    config.siteDir,
+    config.backoffice,
+    (message, properties) => logger('site').error(message, properties),
+    config.development,
+  )
   // What this process answers: only `web` serves no back office.
   const servesBackOffice = config.role !== 'web'
   // A host that installs packages itself calls `reloadBundles()` (story 181); the
@@ -641,7 +656,6 @@ export async function createServer(
     contentApplied: async (packageName) =>
       (await new TransferRunRepository(db).appliedForPackage(packageName))?.packageVersion ?? null,
     applyContentOnInstall: config.applyBundleContentOnInstall,
-    unrestrictedFrom: config.unrestrictedExtensions,
     installs: config.runtimeInstalls,
     installsElsewhere: config.installsElsewhere,
     policy: config.bundlePolicy,
@@ -1033,7 +1047,7 @@ export async function createServer(
     marketplace,
     extensions,
     bundleGrants,
-    failed: () => [...core.failedExtensions, ...backOfficeBuilds.failed()],
+    failed: () => core.failedExtensions,
     stopExtension: (id) => core.stopExtension(id),
     changed: (id) => core.extensionChanged(id),
   })
@@ -1180,6 +1194,7 @@ export async function createServer(
   const members = createMemberAuth(db, config, {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
+    log: (message) => log.warning('Member sign-in: {message}', { message }),
   })
   const caching = resolveCacheSettings(config.cache)
   // Story 259: `check` with checks answered by rendering costs a render a floor, where `published` costs none.
@@ -1552,7 +1567,7 @@ export async function createServer(
       ? async (token) => {
           const named = await deliveryMembers.member(token)
           if (!named?.approved || named.lockedOut) return undefined
-          return (await new MemberRepository(db).byKey(named.key)) ?? undefined
+          return members.byKey(named.key)
         }
       : undefined,
     callerAddress: (request) =>
@@ -1618,18 +1633,12 @@ export async function createServer(
   /**
    * A back-office page, with its content security policy (story 313): its
    * inline scripts carry a nonce made for it, and it may reach the site and the
-   * origins the extensions that are on declare in `http.outbound`, and the
    * host's origin, which it vouches its user to (story 318).
    */
   const backOfficePage = (body: string): Response => {
     const nonce = newNonce()
-    const connect = [
-      ...extensions
-        .bundles()
-        .bundles.filter((pkg) => bundleGrants.isOn(pkg.id))
-        .flatMap((pkg) => declaredOrigins(pkg)),
-      ...(config.host ? [config.host.origin] : []),
-    ]
+    // No extension's code runs in the back office (story 431), so only the host is added.
+    const connect = config.host ? [config.host.origin] : []
     return new Response(body.replaceAll('<script', `<script nonce="${nonce}"`), {
       headers: {
         'content-type': 'text/html; charset=utf-8',
@@ -1688,6 +1697,7 @@ export async function createServer(
     // An extension's screens show only while it is on: granted, and not turned off (story 309).
     extensions: { ...extensions, list: onExtensions },
     readyExtensions,
+    siteManifest: () => siteBackOffice.manifest(),
     db,
     webhooks,
     contentEvents,
@@ -1895,6 +1905,12 @@ export async function createServer(
   const contentQueryPath = `${paths.pluginPath}/api/content-query`
   const viewAsPath = `${paths.pluginPath}/api/view-as`
   const cliTokensPath = `${paths.pluginPath}/api/cli-tokens`
+  // Story 433: the API users other systems and the site's code sign in as.
+  const serviceAccountsPath = `${paths.pluginPath}/api/service-accounts`
+  const serviceAccountsApi = createServiceAccountsApi({
+    db,
+    uses: () => serviceAccountUses(config),
+  })
   const usersManagedPath = `${paths.pluginPath}/api/users-managed`
   // Story 409: editing paused and resumed by a request, for the back office's banner too.
   const maintenancePath = `${paths.pluginPath}/api/maintenance`
@@ -2150,6 +2166,7 @@ export async function createServer(
     `${paths.pluginPath}/api/schema-transfer/`,
     viewAsPath,
     cliTokensPath,
+    serviceAccountsPath,
     workspacesPath,
     changesPath,
   ]
@@ -3206,6 +3223,26 @@ export async function createServer(
       if (answered) return answered
     }
 
+    // Story 431: the site's own back-office routes, below its section, as the user.
+    const siteApi = `${paths.pluginPath}/api/site/`
+    if (config.backoffice && pathname.startsWith(siteApi)) {
+      const found = matchSiteBackOfficeRoute(config.backoffice, pathname.slice(siteApi.length))
+      if (found) {
+        const principal = await authenticate(request)
+        if (!principal) return new Response('Unauthorized', { status: 401 })
+        if (found.grant && !hasSection(principal, found.grant))
+          return new Response('Forbidden', { status: 403 })
+        if (!found.route) return new Response('Not Found', { status: 404 })
+        return siteRoutes.invoke(
+          { route: found.route as SiteRoute, owner: SITE_BACKOFFICE_OWNER },
+          request,
+          url,
+          found.params,
+          { checks: false, extra: { principal }, site: siteServicesFor.asUser(principal) },
+        )
+      }
+    }
+
     /**
      * Non-contract: the Packages section's marketplace, installed list and
      * install. There is no operation in the contract for any of it — Umbraco's
@@ -3228,7 +3265,7 @@ export async function createServer(
           url: marketplace.url(),
           keyword: config.packageKeyword,
           appliesContent: config.applyBundleContentOnInstall,
-          mayGrant: mayGrant(principal.isAdmin, config.unrestrictedExtensions),
+          mayGrant: mayGrant(principal.isAdmin),
           installs: config.runtimeInstalls,
           installsElsewhere: config.runtimeInstalls ? null : (config.installsElsewhere ?? null),
           items: await marketplace.search(url.searchParams.get('q') ?? undefined),
@@ -3317,7 +3354,7 @@ export async function createServer(
         )
 
       // What this person may grant at each level here (story 324): the panel shows the button, the sentence or the snippet.
-      const granting = mayGrant(principal.isAdmin, config.unrestrictedExtensions)
+      const granting = mayGrant(principal.isAdmin)
       if (action === 'installed' && request.method === 'GET')
         return Response.json({ ...(await bundleAdmin.installed()), mayGrant: granting })
 
@@ -3506,6 +3543,32 @@ export async function createServer(
       )
     }
 
+    // Story 432: the identity providers a member signs in with, to whoever holds Members; the
+    // provider's id for them only to Sensitive data.
+    const signIns = new RegExp(
+      `^${paths.pluginPath}/api/members/([0-9a-fA-F-]{36})/sign-ins$`,
+    ).exec(pathname)
+    if (signIns && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (!hasSection(principal, 'members')) return new Response('Forbidden', { status: 403 })
+      const sensitive = hasAccessToSensitiveData(principal.groups ?? [])
+      const memberLogins = externalLoginProvider('member', '')
+      const providers = new Map(config.memberIdentityProviders.map((p) => [p.oidc.id, p.oidc.name]))
+      const items = (await new ExternalLoginRepository(db).forOwner(signIns[1] as string))
+        .filter((login) => login.loginProvider.startsWith(memberLogins))
+        .map((login) => {
+          const id = login.loginProvider.slice(memberLogins.length)
+          return {
+            provider: id,
+            name: providers.get(id) ?? id,
+            declared: providers.has(id),
+            ...(sensitive ? { subject: login.providerKey } : {}),
+          }
+        })
+      return Response.json({ items }, { headers: { 'cache-control': 'no-store' } })
+    }
+
     // Whether what `schema/` holds can be changed here, for the views that say so (story 289).
     if (pathname === `${paths.pluginPath}/api/site-files` && request.method === 'GET') {
       if (!(await authenticate(request))) return new Response('Unauthorized', { status: 401 })
@@ -3629,6 +3692,17 @@ export async function createServer(
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
       return userLogins.handle(request, principal, pathname.slice(userLoginsPath.length))
+    }
+
+    if (pathname === serviceAccountsPath || pathname.startsWith(`${serviceAccountsPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return serviceAccountsApi.handle(
+        request,
+        principal,
+        pathname.slice(serviceAccountsPath.length),
+        clientAddress(request),
+      )
     }
 
     // Story 351: a person's command-line tokens, and an administrator's view of anyone's.
@@ -4479,7 +4553,9 @@ export async function createServer(
 
     // Nor are its files served while it is off (story 309).
     const staticMatch = resolveStaticFile(paths, pathname, {
-      extensions: pathname.startsWith(`${EXTENSION_PATH}/`) ? await readyExtensions() : [],
+      site: pathname.startsWith(`${paths.pluginPath}/${SITE_CODE_SEGMENT}/`)
+        ? await siteBackOffice.ready()
+        : undefined,
       immutable: config.immutableAssets ?? !config.development,
     })
     if (staticMatch) {

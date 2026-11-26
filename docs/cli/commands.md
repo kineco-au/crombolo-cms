@@ -4677,19 +4677,17 @@ crombolo extension list [--profile <profile>] [--env <env>]
 Rewrite an extension's package to the layout this release takes. Each run acts again.
 
 ```
-crombolo extension migrate <dir> [--reason <reason>] [--dry-run]
+crombolo extension migrate <dir> [--dry-run]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `dir` | string | The extension's package directory. Required. |
-| `--reason` | string | Why its back-office code is needed, shown when it is installed. |
 | `--dry-run` | boolean | Say what would move, and write nothing. |
 
 **Output** (single, with `-o json`):
 
 - `moves` (array of object)
-- `asksForBackOfficeCode` (boolean)
 - `dropsSignature` (boolean)
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`.
@@ -6200,6 +6198,30 @@ crombolo members groups remove <name> [--yes] [--profile <profile>] [--env <env>
 
 **Fails with:** `usage`, `internal`, `not_found`, `confirmation_required`, `refused`, `unavailable`.
 
+### `crombolo members link`
+
+Link members to an identity provider by an id they hold. Safe to run again: a second run changes nothing more.
+
+```
+crombolo members link --provider <provider> --property <property> [--dry-run]
+```
+
+| Argument | Type | What it is |
+| --- | --- | --- |
+| `--provider` | string | The member identity provider's id in crombolo.config.ts. Required. |
+| `--property` | string | The member property holding their id there. Required. |
+| `--dry-run` | boolean | Say what it would link, and write nothing. |
+
+**Output** (single, with `-o json`):
+
+- `linked` (number)
+- `already` (number)
+- `empty` (number)
+- `held` (array of object)
+- `declared` (boolean)
+
+**Fails with:** `usage`, `internal`, `refused`, `unavailable`.
+
 ### `crombolo members list`
 
 List members: login, e-mail, name and type, and where they can't sign in. Changes nothing.
@@ -6491,12 +6513,13 @@ crombolo admin reset-password [--stdin]
 Issue a new secret for the API client, and print it once. Each run acts again.
 
 ```
-crombolo api-client rotate [--client <client>]
+crombolo api-client rotate [--client <client>] [--old-stops <old-stops>]
 ```
 
 | Argument | Type | What it is |
 | --- | --- | --- |
 | `--client` | string | The client id; CROMBOLO_API_CLIENT_ID when not given. |
+| `--old-stops` | string | When the old secret stops working, so whatever uses it can move with no gap. One of `now`, `day`, `week`. Default `now`. |
 
 **Output** (single, with `-o json`):
 

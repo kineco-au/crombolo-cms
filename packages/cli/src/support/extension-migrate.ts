@@ -19,13 +19,13 @@ import { dirname, join, normalize, relative, sep } from 'node:path'
 import {
   AREA_PERMISSIONS,
   BACKOFFICE_CODE,
+  BACKOFFICE_CODE_RETIRED,
   BACKOFFICE_DIR,
   BUNDLE_SCHEMA_VERSION,
   backOfficeModules,
   exportedEntry,
   LAYOUT_SCHEMA_VERSION,
   type PackageJson,
-  REASON_MAX,
   readPackageJson,
   SERVER_DIR,
   USER_DELEGATE,
@@ -36,8 +36,6 @@ export interface MigrationPlan {
   moves: Array<{ from: string; to: string }>
   /** The package.json it writes. */
   json: PackageJson
-  /** Whether it asks for `backoffice.code`. */
-  asksForBackOfficeCode: boolean
   /** Whether a `provenance.json` is removed, the digest having changed. */
   dropsSignature: boolean
   /** Relative imports in moved files rewritten to where their targets are, by the file's new path. */
@@ -134,12 +132,11 @@ const serverTarget = (path: string) =>
   path.startsWith('src/') ? `${SERVER_DIR}/${path.slice('src/'.length)}` : `${SERVER_DIR}/${path}`
 
 /** What migrating the package at `dir` would do. Reads, never writes. */
-export function planMigration(dir: string, options: { reason?: string } = {}): MigrationPlan {
+export function planMigration(dir: string): MigrationPlan {
   const json = readPackageJson(join(dir, 'package.json'))
   const empty = (problem: string): MigrationPlan => ({
     moves: [],
     json: json ?? {},
-    asksForBackOfficeCode: false,
     dropsSignature: false,
     imports: [],
     problems: [problem],
@@ -147,6 +144,18 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
   if (!json) return empty('it has no package.json')
   const field = json.crombolo as Record<string, unknown> | undefined
   if (field?.bundleType !== 'extension') return empty('it is not an extension')
+  // Story 431: its own back-office code is not run any more, so nothing of it is moved.
+  const own = (Array.isArray(field.extensions) ? field.extensions : [])
+    .filter((entry) => entry && typeof entry === 'object' && 'element' in (entry as object))
+    .map((entry) => String((entry as { alias?: unknown }).alias ?? 'an entry'))
+  const asksForCode =
+    !!field.permissions &&
+    typeof field.permissions === 'object' &&
+    Object.hasOwn(field.permissions as object, BACKOFFICE_CODE)
+  if (backOfficeModules(field).length > 0 || asksForCode)
+    return empty(
+      `it runs its own code in the back office${own.length > 0 ? ` (${own.join(', ')})` : ''}, and ${BACKOFFICE_CODE_RETIRED}. Describe each of its screens in its server half, take its back-office code and "${BACKOFFICE_CODE}" out of its manifest, then migrate it`,
+    )
   const schema = typeof field.schemaVersion === 'number' ? field.schemaVersion : 1
   // Schema 5 has the layout already: 6 is the number, actAs retired, and a note of what could be a screen.
   if (schema >= LAYOUT_SCHEMA_VERSION) {
@@ -166,7 +175,6 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
           ...(retired ? { permissions: retired.permissions } : {}),
         },
       },
-      asksForBackOfficeCode: false,
       dropsSignature: existsSync(join(dir, 'provenance.json')),
       imports: [],
       problems: [],
@@ -214,14 +222,6 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
           ? `its server half imports ${file}, which is back-office code: move what it needs into src/, then migrate it`
           : `${file} is used by both its server half and its back-office code: give each half its own copy, then migrate it`,
       )
-  const asks = modules.length > 0
-  const reason = options.reason?.trim()
-  if (asks && !reason)
-    problems.push(
-      `it runs code in the back office, so it asks for "${BACKOFFICE_CODE}", which needs its reason: give it with --reason`,
-    )
-  else if (reason && reason.length > REASON_MAX)
-    problems.push(`the reason is longer than ${REASON_MAX} characters`)
   if (problems.length > 0) return { ...empty(''), problems }
 
   const moves: MigrationPlan['moves'] = [
@@ -303,7 +303,6 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
           }
         : {}),
       permissions: {
-        ...(asks ? { [BACKOFFICE_CODE]: reason } : {}),
         ...(retired?.permissions ??
           (field.permissions as Record<string, unknown> | undefined) ??
           {}),
@@ -326,7 +325,6 @@ export function planMigration(dir: string, options: { reason?: string } = {}): M
   return {
     moves,
     json: next,
-    asksForBackOfficeCode: asks,
     dropsSignature: existsSync(join(dir, 'provenance.json')),
     imports,
     problems: [],

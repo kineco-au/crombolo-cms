@@ -61,6 +61,7 @@ import { groupStartKeysMigration } from './group-start-keys.ts'
 import { identityMigration } from './identity.ts'
 import { imageAltTextMigration } from './image-alt-text.ts'
 import { jobsMigration } from './jobs.ts'
+import { keysPerWorkspaceMigration } from './keys-per-workspace.ts'
 import { logViewerMigration } from './log-viewer.ts'
 import { mediaAccessMigration } from './media-access.ts'
 import { mediaCacheMigration } from './media-cache.ts'
@@ -83,6 +84,7 @@ import { searchIndexMigration } from './search-index.ts'
 import { searchRemovalsMigration } from './search-removals.ts'
 import { servedChangesMigration } from './served-changes.ts'
 import { serverRoleMigration } from './server-role.ts'
+import { serviceAccountSecretsMigration } from './service-account-secrets.ts'
 import { sessionViewAsMigration } from './session-view-as.ts'
 import { sinceVersionMigration } from './since-version.ts'
 import { singleUseTokenMigration } from './single-use-token.ts'
@@ -215,4 +217,6 @@ export const cromboloPlan = new MigrationPlan([
   workspacePlacesMigration,
   workspaceDescriptionMigration,
   usersInSettingsMigration,
+  keysPerWorkspaceMigration,
+  serviceAccountSecretsMigration,
 ])

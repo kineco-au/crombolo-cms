@@ -12,7 +12,7 @@ export default class BundleSign extends BaseCommand {
     "Signs the package directory or .tgz with Sigstore, using the job's GitHub Actions identity: the job needs `permissions: id-token: write`. Writes provenance.json into the package, with links to the commit, the tag, the run and the public log entry. A .tgz is rewritten with it inside.",
     'Sign after the bundle is built and before it is published or packed: any change to the package afterwards makes the signature fail. Signing again replaces it.',
     "Sigstore's public log keeps, for good, the repository's name, the workflow, the tag or branch and the commit; the bundle and its code are not published. From a private or internal repository it is refused unless --public-log says to go ahead.",
-    "With --key, signs it with one of your keys (`crombolo keys`) instead, anywhere. A site lets such a signature vouch for an extension's Acts as you or Unrestricted level only when it trusts the key (Settings → Trusted signers).",
+    "With --key, signs it with one of your keys (`crombolo keys`) instead, anywhere. A site lets such a signature vouch for an extension's Acts as you level only when it trusts the key (Settings → Trusted signers).",
   ].join('\n\n')
   static override examples = [
     '<%= config.bin %> bundle sign ./dist/acme-bundle',

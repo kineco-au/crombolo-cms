@@ -50,6 +50,7 @@ import {
   ContentTypeRepository,
   type Db,
   ensureKeyValue,
+  type MemberRecord,
   MemberRepository,
   type NodeSchemaState,
   PublicAccessRepository,
@@ -63,6 +64,7 @@ import {
 import type { CromboloConfig } from './config.ts'
 import { createExternalSignIn, type ExternalAccount } from './external-sign-in.ts'
 import { IdentityProviderOverrides } from './identity-provider-overrides.ts'
+import { MemberClaims } from './member-claims.ts'
 import { MEMBER_TWO_FACTOR_PROVIDER, TwoFactorService } from './two-factor.ts'
 
 /** The key member tickets are signed with, generated once and shared by every node. */
@@ -73,10 +75,14 @@ export const MEMBER_ROUTE_PREFIX = '/umbraco/members'
 /** How long a member has to enter their code after their password. */
 const TWO_FACTOR_PENDING_SECONDS = 5 * 60
 
+/** How long which properties a member may see of themselves is held. */
+const VIEWABLE_MS = 5_000
+
 export interface MemberAuthOptions {
   /** The schema state this node runs at; a registration is refused without it. */
   nodeState?: NodeSchemaState
   nodeId?: string
+  log?: (message: string) => void
 }
 
 /** A member signed in by the site's cookie, with that session's anti-forgery token. */
@@ -184,9 +190,43 @@ export function createMemberAuth(
     roles: member.roles,
   })
 
-  const issue = async (key: string, stamp: string | null, persist: boolean) => {
+  // Asked on every request a member makes, so held briefly: a type's own change
+  // reaches it within the time.
+  const viewable = new Map<string, { aliases: ReadonlySet<string>; until: number }>()
+  const viewableOf = async (typeKey: string) => {
+    const held = viewable.get(typeKey)
+    if (held && held.until > Date.now()) return held.aliases
+    const aliases = new Set(
+      (await memberTypes.resolveProperties(typeKey))
+        .filter((p) => p.memberCanView === true)
+        .map((p) => p.alias),
+    )
+    viewable.set(typeKey, { aliases, until: Date.now() + VIEWABLE_MS })
+    return aliases
+  }
+
+  /** With what their member type lets them see of themselves (story 207). */
+  const withProperties = async (member: MemberRecord): Promise<RequestMember> => {
+    const aliases = await viewableOf(member.contentTypeKey)
+    const stored = aliases.size > 0 ? await members.content.byKey(member.key) : undefined
+    return {
+      ...asRequestMember(member),
+      properties: Object.fromEntries(
+        (stored?.values ?? [])
+          .filter((v) => aliases.has(v.alias) && !v.culture && !v.segment && !v.environment)
+          .map((v) => [v.alias, v.value]),
+      ),
+    }
+  }
+
+  const issue = async (key: string, stamp: string | null, persist: boolean, via?: string) => {
     const expires = Math.floor(Date.now() / 1000) + config.memberSessionMinutes * 60
-    const ticket = await signMemberTicket(await secret(), { id: key, stamp: stamp ?? '', expires })
+    const ticket = await signMemberTicket(await secret(), {
+      id: key,
+      stamp: stamp ?? '',
+      expires,
+      ...(via ? { via } : {}),
+    })
     return serializeCookie({
       name: cookie,
       value: ticket,
@@ -217,6 +257,8 @@ export function createMemberAuth(
     email: member.email,
     groups: member.roles,
   })
+
+  const claims = new MemberClaims(db, members, memberTypes, options.log)
 
   const MEMBER_EXTERNAL_PATH = MEMBER_EXTERNAL_SIGN_IN_PATH
   const external =
@@ -252,7 +294,7 @@ export function createMemberAuth(
                   contentTypeKey: type.key,
                   componentKey: null,
                   parentKey: null,
-                  values: [],
+                  values: await claims.valuesFor(type.key, provider, identity),
                   variants: [{ culture: null, segment: null, name: identity.name || email }],
                 },
                 {
@@ -268,12 +310,16 @@ export function createMemberAuth(
             setGroups: async (account, groups) => {
               await members.setGroups(account.key, await groupKeysFor(groups))
             },
-            signIn: async (account) => {
+            setProperties: (account, identity, provider) =>
+              claims.sync(account.key, provider, identity),
+            signIn: async (account, _request, provider) => {
               const member = await members.byKey(account.key)
               if (!member?.isApproved || member.isLockedOut)
                 return { refused: 'This account cannot sign in at the moment.' }
               await members.recordLogin(member.key)
-              return { cookies: [await issue(member.key, member.securityStamp, false)] }
+              return {
+                cookies: [await issue(member.key, member.securityStamp, false, provider.oidc.id)],
+              }
             },
             failed: (returnUrl, reason) =>
               `${returnUrl}${returnUrl.includes('?') ? '&' : '?'}memberLoginFailed=1&memberLoginError=${encodeURIComponent(reason)}`,
@@ -281,6 +327,7 @@ export function createMemberAuth(
           {
             applicationUrl: config.applicationUrl,
             secureCookies: config.secureCookies,
+            log: options.log,
             resolve: (provider) =>
               new IdentityProviderOverrides(
                 db,
@@ -301,7 +348,7 @@ export function createMemberAuth(
     if ((member.securityStamp ?? '') !== ticket.stamp) return undefined
     if (!member.isApproved || member.isLockedOut) return undefined
     return {
-      member: asRequestMember(member),
+      member: await withProperties(member),
       antiforgery: await antiforgeryToken(key, ticket),
       verify: (token) => verifyAntiforgery(key, ticket, token),
     }
@@ -505,11 +552,16 @@ export function createMemberAuth(
 
   const logout = async (request: Request): Promise<Response> => {
     const input = await readInput(request)
+    const returnUrl = safeReturnUrl(input.returnUrl) ?? '/'
+    const ticket = await readMemberTicket(await secret(), readCookie(request, cookie))
+    const signOutUrl = ticket?.via
+      ? await external?.signOutUrl(request, ticket.via, returnUrl)
+      : undefined
     return answer(
       request,
-      { ok: true },
+      { ok: true, ...(signOutUrl ? { body: { ok: true, signOutUrl } } : {}) },
       {
-        returnUrl: safeReturnUrl(input.returnUrl) ?? '/',
+        returnUrl: signOutUrl ?? returnUrl,
         cookies: [expireCookie(cookie, config.secureCookies)],
       },
     )
@@ -594,7 +646,7 @@ export function createMemberAuth(
     decide,
     async byKey(key) {
       const member = await members.byKey(key)
-      return member ? asRequestMember(member) : undefined
+      return member ? withProperties(member) : undefined
     },
     signOutCookie: () => expireCookie(cookie, config.secureCookies),
     externalSignInUrl: (providerId, returnUrl) =>

@@ -111,12 +111,36 @@ the fake issuer in `tests/support/fake-oidc.ts`.
 
 ## Acceptance criteria
 
-- [ ] One B2C sign-in for members with several flows, each started by name from a
+- [x] One B2C sign-in for members with several flows, each started by name from a
       link or a template helper.
-- [ ] The forgot-password error starts the reset flow; cancel and failure return
+- [x] The forgot-password error starts the reset flow; cancel and failure return
       to a page the site names.
-- [ ] Mapped claims update member properties on every sign-in.
-- [ ] A member is linked by the B2C object id, never matched by e-mail unless the
+- [x] Mapped claims update member properties on every sign-in.
+- [x] A member is linked by the B2C object id, never matched by e-mail unless the
       provider is configured to trust it (as `031`'s link-by-verified-email).
-- [ ] Sign-out ends the site session and B2C's.
-- [ ] Tested against a fake B2C issuer serving per-policy metadata.
+- [x] Sign-out ends the site session and B2C's.
+- [x] Tested against a fake B2C issuer serving per-policy metadata.
+
+## What was built (2026-11-25)
+
+As planned, in `auth/src/oidc.ts`, `server/src/identity-providers.ts`,
+`external-sign-in.ts`, `member-auth.ts` and the new `member-claims.ts`, tested in
+`tests/member-user-flows.test.ts` against a fake issuer with keys and endpoints per
+policy. Where it differs from the plan:
+
+- **Signing out at the provider is an option,** `signOut`, on for `b2c()` and off
+  elsewhere. On for everyone, a site whose provider has no such redirect URL
+  registered would have its members left on an error page.
+- **No `p` parameter:** a policy's own metadata names its sign-out address.
+- **A flow is on its provider's own address,** and a provider with flows takes no
+  change of issuer from the back office, so a secret goes only where it was set
+  for (305). A changed client id or secret reaches every flow.
+- **The state is checked before a provider's error is acted on.**
+- **A mapped value that cannot be saved is logged and the sign-in stands:** someone
+  saved the member meanwhile, or the node is behind the database.
+- A `tenant` is a name, its `onmicrosoft.com` domain, or an id with a `domain`.
+- A member's own name and e-mail do not follow the provider.
+
+SQLite and Postgres suites green, with three tests that timed out under the full
+runs (bundle check, table types, roles) passing alone. Not tried against a real
+B2C tenant.

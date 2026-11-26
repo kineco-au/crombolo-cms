@@ -259,7 +259,8 @@ export type MediaOperations = ReturnType<typeof createMediaOperations>
 export function createMediaOperations(options: MediaOperationsOptions) {
   const { db, events } = options
   const repo = new DocumentRepository(db, { ...options.repository, kind: 'media' })
-  const nodes = new NodeRepository(db)
+  // Story 436: a key the workspace holds its own of answers its own.
+  const nodes = new NodeRepository(db, { workspace: options.repository?.workspace })
   const types = new ContentTypeRepository(db, { kind: 'media' })
   const nodeId = options.repository?.nodeId
 

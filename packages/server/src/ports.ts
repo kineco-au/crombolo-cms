@@ -24,6 +24,7 @@ import {
   collectManifests,
   type ExtensionRegistry,
   type InstalledExtension,
+  type PackageManifest,
   toResponseModels,
 } from '@crombolo/backoffice-host'
 import type { EventSink } from '@crombolo/content'
@@ -103,6 +104,7 @@ import { createNodeOperations, type NodeOperations } from './node-operations.ts'
 import { createOEmbedService } from './oembed.ts'
 import { NO_REDIRECT_TRACKING } from './redirects.ts'
 import type { SchemaBoot } from './schema.ts'
+import { serviceAccountUses } from './service-accounts.ts'
 import { TwoFactorService, USER_TWO_FACTOR_PROVIDER } from './two-factor.ts'
 import { createWebhookService, type WebhookService } from './webhooks.ts'
 import { createWorkspaceSchema } from './workspace-schema.ts'
@@ -161,14 +163,17 @@ function createManifestPort(
   paths: BackOfficePaths,
   extensions: () => Promise<readonly InstalledExtension[]>,
   omit: readonly string[],
+  site?: () => Promise<PackageManifest | undefined>,
 ): ManifestPort {
   return {
-    list: async (visibility) =>
-      toResponseModels(
-        collectManifests(paths, await extensions(), { omit }).all,
+    list: async (visibility) => {
+      const own = await site?.()
+      return toResponseModels(
+        collectManifests(paths, await extensions(), { omit, more: own ? [own] : [] }).all,
         paths.cacheBustHash,
         visibility,
-      ),
+      )
+    },
   }
 }
 
@@ -413,6 +418,8 @@ export interface DepsOptions {
   extensions: ExtensionRegistry
   /** Those extensions with their back-office code built (story 320); `extensions.list()` when absent. */
   readyExtensions?: () => Promise<readonly InstalledExtension[]>
+  /** The site's own sections (story 431), once their code is built. */
+  siteManifest?: () => Promise<PackageManifest | undefined>
   /** Omitted only by tests that exercise the contract without a database. */
   db?: Db
   /** Where document operations announce what they did; nothing hears them when absent. */
@@ -481,6 +488,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       options.paths,
       options.readyExtensions ?? (async () => options.extensions.list()),
       options.previewInApp ? [] : [APP_PREVIEW_MANIFEST_ID],
+      options.siteManifest,
     ),
     localization: localizationIn(
       options.db,
@@ -579,6 +587,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
       mediaFiles,
       nodes: createNodeLookup(options.db),
       declaredGroups: () => declaredGroups(options.config),
+      serviceAccountUses: () => serviceAccountUses(options.config),
       endSessions: async (userId) => {
         await store.endAllSessionsForUser(userId)
       },

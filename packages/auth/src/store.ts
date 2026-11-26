@@ -5,7 +5,7 @@
  * usable credential.
  */
 import { normaliseUuid } from '@crombolo/core'
-import { type Db, DbDate, fromDbBool, Locks } from '@crombolo/data'
+import { type Db, DbDate, fromDbBool, Locks, UserRepository } from '@crombolo/data'
 import { DeviceStore } from './device.ts'
 import { hashToken } from './pkce.ts'
 
@@ -173,15 +173,35 @@ export class AuthStore {
   }
 
   /** An API user's client credential: whose it is, and the secret's hash. */
-  async findClientCredential(
-    clientId: string,
-  ): Promise<{ userId: number; secretHash: string } | undefined> {
+  async findClientCredential(clientId: string): Promise<
+    | {
+        userId: number
+        secretHash: string
+        /** Story 433: the secret it replaced, while that still works. */
+        oldSecretHash: string | undefined
+      }
+    | undefined
+  > {
     const row = await this.#db.q
       .selectFrom('user_client_credential')
-      .select(['user_id', 'secret_hash'])
+      .select(['user_id', 'secret_hash', 'old_secret_hash', 'old_secret_until'])
       .where('client_id', '=', clientId)
       .executeTakeFirst()
-    return row ? { userId: Number(row.user_id), secretHash: String(row.secret_hash) } : undefined
+    if (!row) return undefined
+    const until = DbDate.fromDb(row.old_secret_until)
+    return {
+      userId: Number(row.user_id),
+      secretHash: String(row.secret_hash),
+      oldSecretHash:
+        row.old_secret_hash && until && until.getTime() > Date.now()
+          ? String(row.old_secret_hash)
+          : undefined,
+    }
+  }
+
+  /** Story 433: the client id was used now; written at most once an hour. */
+  async touchClientCredential(clientId: string): Promise<void> {
+    await new UserRepository(this.#db).touchClientCredential(clientId)
   }
 
   async recordLoginSuccess(userId: number, sessionId: string, ipAddress?: string): Promise<void> {

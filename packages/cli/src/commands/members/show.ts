@@ -35,6 +35,9 @@ export default class MembersShow extends BaseCommand {
       this.say(`  state      ${state.length > 0 ? state.join(', ') : 'can sign in'}`)
       if (member.twoFactor) this.say('  two-factor on')
       this.say(`  signed in  ${member.lastSignIn ?? 'never'}`)
+      // Story 432: the providers they sign in with, and their id there for Sensitive data.
+      for (const link of member.signsInWith ?? [])
+        this.say(`  links      ${link.provider}${link.subject ? ` (${link.subject})` : ''}`)
       if (member.failedSignIns > 0)
         this.say(`  failed     ${member.failedSignIns} sign-ins since the last that worked`)
       sayValues(this, member.values)

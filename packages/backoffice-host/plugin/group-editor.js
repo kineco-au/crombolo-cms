@@ -7,6 +7,7 @@
 import { UmbDocumentItemRepository } from '@umbraco-cms/backoffice/document'
 import { UmbDocumentTypeDetailRepository } from '@umbraco-cms/backoffice/document-type'
 import { UmbElementItemRepository } from '@umbraco-cms/backoffice/element'
+import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style'
@@ -14,6 +15,7 @@ import { UMB_USER_GROUP_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/user-g
 import {
   ACCESS_OFF,
   AREAS,
+  declaredAreas,
   exceptionSentence,
   exceptionSummary,
   KIND_AREA,
@@ -33,6 +35,7 @@ import {
   withLevel,
   withVerb,
 } from './group-editor-words.js'
+import { declaredSection, panelAreas } from './site-section-model.js'
 
 const DOCUMENT = 'DocumentPermissionPresentationModel'
 const ELEMENT = 'ElementPermissionPresentationModel'
@@ -62,6 +65,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
     _names: { state: true },
     _adding: { state: true },
     _open: { state: true },
+    _declared: { state: true },
   }
 
   #context
@@ -78,6 +82,22 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
     this._names = {}
     this._adding = undefined
     this._open = {}
+    this._declared = []
+    // Story 431: the sections a site or an extension declares, each a grant of its own;
+    // story 437: and the site's panels, each a grant too.
+    let sections = []
+    let panels = []
+    const offer = () => {
+      this._declared = [...declaredAreas(sections), ...panels]
+    }
+    this.observe(umbExtensionsRegistry.byType('section'), (manifests) => {
+      sections = manifests.map(declaredSection).filter(Boolean)
+      offer()
+    })
+    this.observe(umbExtensionsRegistry.byType('sidePanel'), (manifests) => {
+      panels = panelAreas(manifests)
+      offer()
+    })
     this.consumeContext(UMB_USER_GROUP_WORKSPACE_CONTEXT, (context) => {
       this.#context = context
       for (const key of [
@@ -273,7 +293,7 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
   #renderAccess() {
     return html`
       ${this.#renderSystemNote()}
-      ${AREAS.map((area) => {
+      ${[...AREAS, ...this._declared].map((area) => {
         const on = this.#hasArea(area.section)
         const settings = on ? this.#renderAreaSettings(area.section) : nothing
         const without = needsContent(area, this._group.sections ?? [])

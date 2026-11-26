@@ -47,7 +47,7 @@ const admin: Principal = {
 const editor: Principal = { ...admin, isAdmin: false, allowedSections: ['content'] }
 
 /** Enough of a host to see what a handler is given, without a database. */
-const stubHost = (): Omit<BundleHost, 'tables' | 'media' | 'api' | 'fetch'> => ({
+const stubHost = (): Omit<BundleHost, 'tables' | 'media' | 'api' | 'fetch' | 'files'> => ({
   redirects: {
     list: async () => ({ total: 0, items: [] }),
     byKey: async () => undefined,

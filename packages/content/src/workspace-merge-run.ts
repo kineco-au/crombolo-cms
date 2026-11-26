@@ -160,6 +160,9 @@ async function recordChange(
     options.only !== undefined
       ? `${ONLY_NAMES[options.onlyKind ?? 'publish']} "${merged[0]?.name ?? done[0]?.name ?? 'a page'}"`
       : list.map((w) => w.name).join(', ')
+  // Story 436: a change another workspace's merge applied already is held, and not again.
+  const held = await changes.held((options.appliedChanges ?? []).map((c) => c.key))
+  const isHeld = (key: string) => held.has(normaliseUuid(key))
   const id = await changes.begin({
     kind: 'merge',
     name,
@@ -167,10 +170,11 @@ async function recordChange(
     appliedBy: options.userKey,
     workspaceKey: first.key,
     key:
-      options.changeKey ??
+      (options.changeKey && !isHeld(options.changeKey) ? options.changeKey : undefined) ??
       (list.length === 1 && options.only === undefined ? first.key : undefined),
   })
-  for (const applied of options.appliedChanges ?? []) await changes.applied(applied, id)
+  for (const applied of options.appliedChanges ?? [])
+    if (!isHeld(applied.key)) await changes.applied(applied, id)
   for (const item of items) await changes.item(id, item)
   const runs = new TransferRunRepository(tx)
   for (const page of pages)

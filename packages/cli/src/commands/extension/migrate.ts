@@ -13,19 +13,15 @@ import { applyMigration, planMigration } from '../../support/extension-migrate.t
 export default class ExtensionMigrate extends BaseCommand {
   static override summary = "rewrite an extension's package to the layout this release takes"
   static override description =
-    'Moves its server code under src/server/ and its back-office code, plugin/ and whatever its manifest names, under src/backoffice/, and rewrites its manifest, exports and files to match. Back-office code runs as whoever is signed in, so it asks for backoffice.code, whose reason --reason gives. A file both halves use is named, and nothing moves. Its signature no longer matches, so provenance.json is removed: sign it again before publishing.'
+    'Moves its server code under src/server/ and its back-office code, plugin/ and whatever its manifest names, under src/backoffice/, and rewrites its manifest, exports and files to match. An extension that runs its own code in the back office is refused, saying to describe its screens instead. A file both halves use is named, and nothing moves. Its signature no longer matches, so provenance.json is removed: sign it again before publishing.'
   static override examples = [
     '<%= config.bin %> extension migrate ./acme-seo --dry-run',
-    '<%= config.bin %> extension migrate ./acme-seo --reason "Shows the SEO report in Settings"',
+    '<%= config.bin %> extension migrate ./acme-seo',
   ]
   static override args = {
     dir: Args.string({ required: true, description: "the extension's package directory" }),
   }
   static override flags = {
-    reason: Flags.string({
-      summary: 'why its back-office code is needed, shown when it is installed',
-      helpValue: '<text>',
-    }),
     'dry-run': Flags.boolean({ summary: 'say what would move, and write nothing' }),
   }
   static override access = 'none' as const
@@ -34,7 +30,6 @@ export default class ExtensionMigrate extends BaseCommand {
     cardinality: 'single',
     outputFields: [
       { name: 'moves', type: 'array', items: { type: 'object' } },
-      { name: 'asksForBackOfficeCode', type: 'boolean' },
       { name: 'dropsSignature', type: 'boolean' },
     ],
     errors: ['not_found', 'refused'],
@@ -44,7 +39,7 @@ export default class ExtensionMigrate extends BaseCommand {
     const { args, flags } = await this.parse(ExtensionMigrate)
     if (!existsSync(args.dir) || !isDirectory(args.dir))
       this.fail('not_found', `${args.dir} is not a package directory.`)
-    const plan = planMigration(args.dir, { reason: flags.reason })
+    const plan = planMigration(args.dir)
     if (plan.problems.length > 0)
       this.fail(
         'refused',
@@ -55,15 +50,13 @@ export default class ExtensionMigrate extends BaseCommand {
     for (const move of plan.moves) this.say(`  move     ${move.from} → ${move.to}`)
     for (const rewrite of plan.imports)
       this.say(`  import   ${rewrite.file}: ${rewrite.from} → ${rewrite.to}`)
-    if (plan.asksForBackOfficeCode)
-      this.say(`  asks     backoffice.code: "${flags.reason?.trim()}"`)
     if (plan.delegates)
       this.say(
         `  asks     user.delegate in place of actAs: it acts for the person using it${plan.delegates.dropped.length > 0 ? `, which reaches ${plan.delegates.dropped.join(', ')} already` : ''}; an administrator grants it again`,
       )
     for (const alias of plan.couldBeScreens ?? [])
       this.say(
-        `  could be ${alias}: its back-office code could be a screen its server half describes, which needs no backoffice.code (docs/extensions.md, "Screens")`,
+        `  could be ${alias}: a screen its server half describes (docs/extensions.md, "Screens")`,
       )
     if (plan.dropsSignature)
       this.say(
@@ -87,7 +80,6 @@ export default class ExtensionMigrate extends BaseCommand {
     }
     return {
       moves: plan.moves,
-      asksForBackOfficeCode: plan.asksForBackOfficeCode,
       dropsSignature: plan.dropsSignature,
     }
   }

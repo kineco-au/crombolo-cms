@@ -25,6 +25,7 @@ const NOT_SETTINGS: Record<string, string> = {
   CROMBOLO_REVALIDATE_SECRET: "a Next.js front end's webhook secret, named by the webhook file",
   CROMBOLO_WEBHOOK_: "the prefix of a site's variables a webhook header may send (story 301)",
   CROMBOLO_REMOTE_ENABLED: 'retired by CROMBOLO_REMOTE_ACCESS (story 167): read only to refuse it',
+  CROMBOLO_UNRESTRICTED_EXTENSIONS: 'retired with Unrestricted (story 431): read only to say so',
   CROMBOLO_DELIVERY_API_PUBLIC:
     'retired by CROMBOLO_DELIVERY_API_PRIVATE (story 348): read only to refuse it',
   CROMBOLO_CONTENT_FILES_READONLY: 'retired by CROMBOLO_CODE (story 391): read only to refuse it',

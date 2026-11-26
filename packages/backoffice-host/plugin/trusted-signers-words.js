@@ -5,7 +5,7 @@
 
 /**
  * What removing a signer switched off (story 335): the extensions it vouched for,
- * which act as you or run unrestricted, and stop now rather than at the next start.
+ * which act as you, and stop now rather than at the next start.
  *
  * @param {string[] | undefined} names
  * @returns {string}

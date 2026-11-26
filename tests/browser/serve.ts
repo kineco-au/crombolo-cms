@@ -13,7 +13,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { packageInRoot, prepareRoot, recordExtension } from '@crombolo/backoffice-host'
-import { DEFAULT_DATA_TYPES } from '@crombolo/data'
+import { DEFAULT_DATA_TYPES, UserGroupRepository } from '@crombolo/data'
 import { createServer, loadConfig, VERSION } from '@crombolo/server'
 import { BLOCK_ONLY_ELEMENT_TYPE, BROWSER_ADMIN } from './fixtures.ts'
 
@@ -180,19 +180,22 @@ writeFileSync(
     },
   }),
 )
+mkdirSync(join(sidePanel, 'src', 'server'), { recursive: true })
 writeFileSync(
   join(sidePanel, 'package.json'),
   JSON.stringify({
     name: 'test-side-panel',
     version: '1.0.0',
+    type: 'module',
+    exports: './src/server/index.js',
     peerDependencies: { '@crombolo/crombolo': `^${VERSION}` },
     crombolo: {
       bundleType: 'extension',
       id: 'test-side-panel',
+      server: 'testSidePanel',
       schemaVersion: 6,
-      // Its screens may reach this origin, and only this one (story 313).
+      // Its server half may reach this origin; the back office may not (stories 313, 431).
       permissions: {
-        'backoffice.code': 'Shows its notes beside the page',
         'http.outbound': { reason: 'Reads its notes', origins: ['https://notes.crombolo.test'] },
       },
       extensions: [
@@ -200,32 +203,35 @@ writeFileSync(
           type: 'sidePanel',
           alias: 'Test.SidePanel.Notes',
           name: 'Notes',
-          element: 'src/backoffice/panel.js',
+          screen: 'notes',
           meta: { label: 'Notes', icon: 'icon-notepad', defaultWidth: 360, toggle: true },
         },
       ],
     },
   }),
 )
-mkdirSync(join(sidePanel, 'src', 'backoffice'), { recursive: true })
+// A screen it describes (story 431): a button that counts its clicks in the screen's state.
 writeFileSync(
-  join(sidePanel, 'src', 'backoffice', 'panel.js'),
-  `class TestNotesPanel extends HTMLElement {
-  count = 0
-  connectedCallback() {
-    if (this.button) return
-    this.button = document.createElement('button')
-    this.button.id = 'count'
-    this.button.textContent = 'Clicked 0'
-    this.button.addEventListener('click', () => {
-      this.count += 1
-      this.button.textContent = 'Clicked ' + this.count
-    })
-    this.append(this.button)
+  join(sidePanel, 'src', 'server', 'index.js'),
+  `import { button, screen } from '@crombolo/extension'
+
+const draw = (count) => screen('Notes', [button('Clicked ' + count, 'count', { input: { count } })])
+
+export function testSidePanel() {
+  return {
+    id: 'test-side-panel',
+    section: 'content',
+    capabilities: [],
+    screens: {
+      notes: {
+        view: ({ state }) => ({ screen: draw(state.count ?? 0), state: { count: state.count ?? 0 } }),
+        actions: {
+          count: ({ state }) => ({ screen: draw(state.count + 1), state: { count: state.count + 1 } }),
+        },
+      },
+    },
   }
 }
-customElements.define('test-notes-panel', TestNotesPanel)
-export default TestNotesPanel
 `,
 )
 
@@ -305,6 +311,61 @@ export function testScreens() {
 `,
 )
 
+// A section of the site's own (story 431): two places, the first with two screens its
+// back-office code draws, one counting clicks so a test can tell its state is kept.
+mkdirSync(join(root, 'backoffice'), { recursive: true })
+writeFileSync(
+  join(root, 'backoffice', 'review.ts'),
+  `const words: string = 'Awaiting review'
+class Review extends HTMLElement {
+  count = 0
+  connectedCallback() {
+    if (this.button) return
+    const heading = document.createElement('h1')
+    heading.textContent = words
+    this.button = document.createElement('button')
+    this.button.textContent = 'Reviewed 0'
+    this.button.addEventListener('click', () => {
+      this.count += 1
+      this.button.textContent = 'Reviewed ' + this.count
+    })
+    this.append(heading, this.button)
+  }
+  button?: HTMLButtonElement
+}
+customElements.define('site-review', Review)
+export default Review
+`,
+)
+// Code of the site's own as the back office starts (story 438): it says it ran.
+writeFileSync(
+  join(root, 'backoffice', 'start.ts'),
+  "export const onInit = () => {\n  document.documentElement.dataset.siteStarted = 'yes'\n}\n",
+)
+// A panel of the site's own (story 437), beside every section for whoever holds its grant.
+writeFileSync(
+  join(root, 'backoffice', 'help.ts'),
+  `class Help extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = '<h2>Help for staff</h2>'
+  }
+}
+customElements.define('site-help', Help)
+export default Help
+`,
+)
+writeFileSync(
+  join(root, 'backoffice', 'list.ts'),
+  `class List extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = '<h1>Every record</h1>'
+  }
+}
+customElements.define('site-list', List)
+export default List
+`,
+)
+
 // Links the site "e-mails", for the invitation and password-reset tests to follow
 const LINKS = join(repo, 'output', 'browser-links.jsonl')
 writeFileSync(LINKS, '')
@@ -334,11 +395,37 @@ const server = await createServer(
       workspaces: true,
       // Seals the site's own signing key, which Trusted signers lists (story 316).
       secretKey: 'browser-suite-secret-key-that-is-long-enough-0123',
-      // The site's code grants what it asks for, its back-office code included, so it runs
-      // (stories 310, 320).
+      backoffice: {
+        panels: [
+          { alias: 'help', label: 'Help', icon: 'icon-help', module: './backoffice/help.ts' },
+        ],
+        entryPoints: ['./backoffice/start.ts'],
+        sections: [
+          {
+            alias: 'observations',
+            label: 'Observations',
+            places: [
+              {
+                alias: 'records',
+                label: 'Records',
+                menu: [
+                  { alias: 'review', label: 'Awaiting review', module: './backoffice/review.ts' },
+                  { alias: 'all', label: 'All records', module: './backoffice/list.ts' },
+                ],
+              },
+              {
+                alias: 'species',
+                label: 'Species',
+                menu: [{ alias: 'list', label: 'Species', module: './backoffice/list.ts' }],
+              },
+            ],
+          },
+        ],
+      },
+      // The site's code grants what each asks for, so it runs (story 310).
       extensions: {
         'test-side-panel': {
-          grant: ['backoffice.code', 'http.outbound'],
+          grant: ['http.outbound'],
           origins: ['https://notes.crombolo.test'],
         },
         'test-screens': { grant: [] },
@@ -354,6 +441,16 @@ const server = await createServer(
     root,
   ),
 )
+// Administrators are given the site's section, as a group is in Users (story 431).
+{
+  const groups = new UserGroupRepository(server.db)
+  const admin = await groups.byAlias('admin')
+  if (admin)
+    await groups.save({
+      ...admin,
+      sections: [...new Set([...admin.sections, 'Site.Section.observations', 'Site.Panel.help'])],
+    })
+}
 Bun.serve(server.serveOptions)
 console.log(`browser suite server on http://localhost:${port} (site ${root})`)
 

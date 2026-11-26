@@ -137,23 +137,17 @@ describe(`on means granted (${dialectUnderTest})`, () => {
 })
 
 describe(`an extension's screens (${dialectUnderTest})`, () => {
-  test('are not shown nor served until it is granted, and then are', async () => {
+  test('are not shown until it is granted, and then are', async () => {
     const dir = siteDeclaring('extension-grants', {
       '@acme/seo': {
         json: {
           crombolo: {
             id: 'acme-seo',
-            extensions: [
-              {
-                type: 'dashboard',
-                alias: 'Acme.Dashboard.Seo',
-                name: 'SEO',
-                element: 'dist/seo.js',
-              },
-            ],
+            schemaVersion: 6,
+            permissions: { 'content.read': 'Reads pages' },
+            extensions: [{ type: 'dashboard', alias: 'Acme.Dashboard.Seo', name: 'SEO', meta: {} }],
           },
         },
-        files: { 'dist/seo.js': 'export default class {}\n' },
       },
     })
     linkedDependencies(dir)
@@ -165,16 +159,13 @@ describe(`an extension's screens (${dialectUnderTest})`, () => {
       JSON.stringify(await (await h.call(`${V1}/manifest/manifest`)).json()).includes(
         'Acme.Dashboard.Seo',
       )
-    const file = () => h.call(`/bundles/@acme/seo/dist/seo.js`)
     expect(await shown()).toBe(false)
-    expect((await file()).status).toBe(404)
 
     const granted = await h.post(`${BACKOFFICE}/crombolo/api/bundles/grant`, {
       id: 'acme-seo',
-      grant: ['backoffice.code'],
+      grant: ['content.read'],
     })
     expect(granted.status, await granted.clone().text()).toBe(200)
     expect(await shown()).toBe(true)
-    expect((await file()).status).toBe(200)
   })
 })

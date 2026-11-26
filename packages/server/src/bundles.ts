@@ -84,6 +84,7 @@ import {
 } from '@crombolo/render'
 import { anonymiseProblems } from './anonymise-rules.ts'
 import type { BundleApi } from './bundle-api.ts'
+import type { BundleFiles } from './bundle-files.ts'
 import {
   declaredPermissions,
   delegatedPermissions,
@@ -195,6 +196,8 @@ export interface BundleHost {
   api: BundleApi
   /** Requests out, only to the origins its `http.outbound` names, by the address rule (story 301). */
   fetch: BundleFetch
+  /** Its own files, kept by the host, as its process writes none (story 435). */
+  files: BundleFiles
 }
 
 /** `fetch`, held to the origins an extension was granted. */
@@ -241,6 +244,7 @@ export const BUNDLE_CAPABILITIES: readonly BundleCapability[] = [
   'media',
   'api',
   'fetch',
+  'files',
 ]
 
 /**
@@ -780,7 +784,9 @@ export interface ServerBundlesOptions {
   coreVersion: string
   /** `<backoffice>/crombolo/api`, from `createBackOfficePaths`. */
   pluginApiPath: string
-  host: Omit<BundleHost, 'media' | 'api' | 'fetch'> & { media?: BundleMedia }
+  host: Omit<BundleHost, 'media' | 'api' | 'fetch' | 'files'> & { media?: BundleMedia }
+  /** An extension's own files, kept by the host (story 435). */
+  files?(bundleId: string): BundleFiles
   /** Capabilities built per request from the caller, in place of the ones in `host`. */
   callerHost?: CallerCapabilities
   /** Named per bundle, so a log line says which one wrote it. */
@@ -933,7 +939,9 @@ export function createServerBundles(options: ServerBundlesOptions): ServerBundle
         ? forCaller(caller, bundle)
         : capability === 'log'
           ? (logs.get(bundle.id) as BundleLog)
-          : (options.host as Partial<BundleHost>)[capability]
+          : capability === 'files'
+            ? options.files?.(bundle.id)
+            : (options.host as Partial<BundleHost>)[capability]
       // Only what its declared permissions allow (story 222).
       host[capability] = given
         ? gated(

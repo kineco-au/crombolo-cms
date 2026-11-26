@@ -41,7 +41,7 @@ export function probe() {
   return {
     id: 'probe',
     section: 'settings',
-    capabilities: ['fetch', 'log'],
+    capabilities: ['fetch', 'log', 'files'],
     tables: defineBundleTables('probe', [
       {
         name: 'notes',
@@ -64,6 +64,17 @@ export function probe() {
       route('run', { GET: answer(() => new Deno.Command('/bin/sh', { args: ['-c', 'true'] }).outputSync().code) }, { audience: 'backoffice' }),
       route('ffi', { GET: answer(() => Deno.dlopen('libc.so.6', {})) }, { audience: 'backoffice' }),
       route('pid', { GET: () => Response.json({ pid: Deno.pid }) }, { audience: 'backoffice' }),
+      route('eval', { GET: answer(() => globalThis['ev' + 'al']('1 + 1')) }, { audience: 'backoffice' }),
+      route('function', { GET: answer(() => new Function('return 2')()) }, { audience: 'backoffice' }),
+      route('write', { GET: answer((_r, { url }) => Deno.writeTextFileSync(url.searchParams.get('path'), 'export default 1')) }, { audience: 'backoffice' }),
+      route('files', {
+        GET: answer(async (_r, { bundle }) => {
+          await bundle.files.write('notes/today.json', JSON.stringify({ seen: 1 }))
+          const read = new TextDecoder().decode(await bundle.files.read('notes/today.json'))
+          const outside = await bundle.files.write('../escape.js', 'x').then(() => 'written', () => 'refused')
+          return { read, list: await bundle.files.list(), outside }
+        }),
+      }, { audience: 'backoffice' }),
       route('throw', { GET: () => { throw new Error('boom') } }, { audience: 'backoffice' }),
       route('hang', { GET: () => { for (;;) {} } }, { audience: 'backoffice' }),
       route('exit', { GET: () => Deno.exit(1) }, { audience: 'backoffice' }),
@@ -161,6 +172,21 @@ describe('an extension in its own process', () => {
         .ok,
     ).toBe(false)
     expect(((await get('connect')).body as Attempt).error).toBe('NotCapable')
+  }, 60_000)
+
+  test('story 435: runs no code from text, writes nowhere, and keeps its files through the host', async () => {
+    const { dir, get } = await probeSite()
+    expect(((await get('eval')).body as Attempt).ok).toBe(false)
+    expect(((await get('function')).body as Attempt).ok).toBe(false)
+    const data = join(dir, '.crombolo', 'extensions', 'probe', 'data', 'fetched.js')
+    expect(((await get(`write?path=${encodeURIComponent(data)}`)).body as Attempt).error).toBe(
+      'NotCapable',
+    )
+    expect(((await get('files')).body as Attempt).value).toEqual({
+      read: '{"seen":1}',
+      list: ['notes/today.json'],
+      outside: 'refused',
+    })
   }, 60_000)
 
   test('cannot run a program or load native code', async () => {

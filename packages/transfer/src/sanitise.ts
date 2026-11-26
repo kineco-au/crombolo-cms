@@ -111,8 +111,10 @@ export function sanitise(input: SanitiseInput): SanitiseResult {
     const n = index + 1
     standIns.set(m.email.toLowerCase(), `member-${n}@${ANONYMISED_DOMAIN}`)
     usernames.set(m.username.toLowerCase(), `member-${n}`)
+    const { externalLogins: _links, ...rest } = m
+    // Story 432: who they are at a provider travels with who they are, never anonymised.
     return {
-      ...m,
+      ...rest,
       name: `Member ${n}`,
       username: `member-${n}`,
       email: `member-${n}@${ANONYMISED_DOMAIN}`,

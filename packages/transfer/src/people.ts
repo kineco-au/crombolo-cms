@@ -25,6 +25,17 @@ export interface BundleMember {
   passwordConfig: string | null
   groupKeys: string[]
   values: BundleValue[]
+  /**
+   * Story 432: the identity providers the member signs in with, by the provider's id
+   * here and its id for them. Absent in a file from before, which then changes none.
+   */
+  externalLogins?: BundleExternalLogin[]
+}
+
+/** One of a member's links to an identity provider. */
+export interface BundleExternalLogin {
+  provider: string
+  subject: string
 }
 
 export interface BundleUserGroup {

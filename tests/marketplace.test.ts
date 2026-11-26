@@ -624,7 +624,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
     expect(recorded).toEqual([{ id: 'acme-tasks', by: 'admin@example.com' }])
   })
 
-  test('back-office code is asked for first, with its warning, and installs only once granted (story 320)', async () => {
+  test('one with its own back-office code is refused, saying to describe its screens (story 431)', async () => {
     const calls: Call[] = []
     const { market } = marketplace({
       calls,
@@ -641,19 +641,12 @@ describe('a bundle that runs code on the server (story 194)', () => {
         },
       },
     })
-    const asked = await market.install('@acme/tasks', undefined)
-    expect(asked.needsGrant).toBe(true)
-    expect(asked.permissions?.[0]).toMatchObject({
-      permission: 'backoffice.code',
-      allows: 'Runs in your back office as each person using it',
-      reason: 'Shows its dashboard',
-      warning: expect.stringContaining('Only install this from a publisher you trust'),
-    })
-    const without = await market.install('@acme/tasks', undefined, {
+    const outcome = await market.install('@acme/tasks', undefined, {
       isAdmin: true,
       grant: ['redirects.read'],
     })
-    expect(without.needsGrant).toBe(true)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.message).toContain('describe its screens')
     expect(calls).toEqual([])
   })
 
@@ -694,7 +687,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
     expect(outcome.message).toContain(SCREENS_NOTICE)
   })
 
-  test('back-office code that uses the browser’s confirm is removed again (AGENTS.md)', async () => {
+  test('one that lands with its own back-office code is removed again (story 431)', async () => {
     const root = site()
     const landing = leaves(root, false)
     const { market } = marketplace({
@@ -710,7 +703,7 @@ describe('a bundle that runs code on the server (story 194)', () => {
     const outcome = await market.install('@acme/tasks', undefined)
     expect(outcome.ok).toBe(false)
     expect(outcome.message).toContain('was removed again')
-    expect(outcome.message).toContain('src/backoffice/d.js uses confirm')
+    expect(outcome.message).toContain('describe its screens')
   })
 
   test('never runs install scripts', () => {

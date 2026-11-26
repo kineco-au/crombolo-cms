@@ -3,6 +3,8 @@
  * whoever is asking. Media the visitor may not read answers `notFound`, never
  * `forbidden`, as `/media/` answers 404. docs/rendering.md, "Server code".
  */
+
+import type { Principal } from '@crombolo/api-management'
 import {
   type MediaMember,
   type MediaRule,
@@ -18,6 +20,7 @@ import {
   markPersonal,
   type PublishedCache,
   type PublishedMedia,
+  type QueryUser,
   type RequestMember,
   type SiteContent,
   type SiteJobs,
@@ -26,6 +29,7 @@ import {
   type SiteServices,
   unavailableServices,
 } from '@crombolo/render'
+import type { MembersCaller } from './site-members.ts'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -37,13 +41,47 @@ export interface SiteServicesDeps {
   /** `site().queries` for a member or a visitor (story 189). */
   queries?: (
     member: RequestMember | undefined | (() => Promise<RequestMember | undefined>),
+    user?: QueryUser,
   ) => SiteQueries
   /** `site().content` (story 298): one for every caller, acting as the configured API user. */
   content?: SiteContent
+  /** `site().content` acting as a signed-in user, on a staff screen's route (story 431). */
+  contentAs?: (principal: Principal) => SiteContent
+  /** `site().members` (story 207), for whoever is asking. */
+  members?: (asking: () => Promise<MembersCaller | undefined>) => SiteMembers
 }
 
-/** Builds `site()`'s services for one request; undefined `member` is a visitor or a previewing editor. */
+/**
+ * Builds `site()`'s services for one request; undefined `member` is a visitor or a
+ * previewing editor. `asUser` is a signed-in user's, on a staff screen's route
+ * (story 431): media as a visitor reads it, everything else as them.
+ */
 export function createSiteServices(deps: SiteServicesDeps) {
+  const forMember = memberServices(deps)
+  const asUser = (principal: Principal): (() => SiteServices) => {
+    const user: QueryUser = {
+      key: principal.id,
+      name: principal.name,
+      email: principal.email,
+      groups: principal.groups.map((group) => group.alias),
+    }
+    const visitor = forMember(undefined)()
+    const services: SiteServices = {
+      media: visitor.media,
+      queries: deps.queries?.(undefined, user) ?? ({} as SiteQueries),
+      jobs:
+        deps.jobs?.(async () => `user ${principal.email}`) ?? unavailableServices<SiteJobs>('jobs'),
+      members:
+        deps.members?.(async () => ({ kind: 'user', principal })) ??
+        unavailableServices<SiteMembers>('members'),
+      content: deps.contentAs?.(principal) ?? unavailableServices<SiteContent>('content'),
+    }
+    return () => services
+  }
+  return Object.assign(forMember, { asUser })
+}
+
+function memberServices(deps: SiteServicesDeps) {
   const { db, cache } = deps
   const access = new MediaAccessRepository(db)
 
@@ -112,7 +150,11 @@ export function createSiteServices(deps: SiteServicesDeps) {
           const who = await (typeof member === 'function' ? member() : Promise.resolve(member))
           return who ? `member ${who.username}` : 'a visitor'
         }) ?? unavailableServices<SiteJobs>('jobs'),
-      members: unavailableServices<SiteMembers>('members'),
+      members:
+        deps.members?.(async () => {
+          const who = await (typeof member === 'function' ? member() : Promise.resolve(member))
+          return who ? { kind: 'member', ...who } : undefined
+        }) ?? unavailableServices<SiteMembers>('members'),
       content: deps.content ?? unavailableServices<SiteContent>('content'),
     }
     return () => services

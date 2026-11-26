@@ -249,7 +249,11 @@ export class MediaAccessRepository {
 
   /** The rule set on this folder or item itself, if any. */
   async byNodeKey(nodeKey: string): Promise<MediaAccessEntry | undefined> {
-    const rows = await entries(this.#db).where('n.unique_id', '=', normaliseUuid(nodeKey)).execute()
+    // Story 436: Shared's item under the key first.
+    const rows = await entries(this.#db)
+      .where('n.unique_id', '=', normaliseUuid(nodeKey))
+      .orderBy((eb) => eb.case().when('n.workspace_id', 'is', null).then(0).else(1).end())
+      .execute()
     return (await this.#hydrate(rows))[0]
   }
 

@@ -82,6 +82,18 @@ export interface MemberFilter {
   take: number
 }
 
+export interface MemberPageCriteria {
+  group?: string
+  type?: string
+  approved?: boolean
+  text?: string
+  /** Made or saved since. */
+  since?: Date
+  /** The node id to start after; 0 for the first page. */
+  after: number
+  take: number
+}
+
 /** Umbraco's `MemberFilterRepository` order columns; anything else is username. */
 const ORDER_COLUMNS = {
   email: 'm.email',
@@ -467,6 +479,71 @@ export class MemberRepository {
     const items = []
     for (const row of rows) items.push(await this.#hydrate(row))
     return { total: Number(counted?.total ?? 0), items }
+  }
+
+  /** Members by a cursor, in the order they were made: each page costs the same however far in (story 207). */
+  afterQuery(criteria: MemberPageCriteria) {
+    const db = this.#db
+    let query = memberColumns(joined(db)).where('m.node_id', '>', criteria.after)
+    if (criteria.type) query = query.where('ct.alias', '=', criteria.type)
+    if (criteria.approved !== undefined)
+      query = query.where(
+        'm.is_approved',
+        '=',
+        db.dialect.boolValue(criteria.approved) as boolean | number,
+      )
+    if (criteria.group) {
+      const name = criteria.group
+      query = query.where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('member_group_member as mg')
+            .innerJoin('node as g', 'g.id', 'mg.member_group_id')
+            .select(sql<number>`1`.as('one'))
+            .whereRef('mg.member_id', '=', 'm.node_id')
+            .where('g.text', '=', name),
+        ),
+      )
+    }
+    if (criteria.since) {
+      const since = DbDate.toDb(criteria.since)
+      query = query.where((eb) =>
+        eb.exists(
+          eb
+            .selectFrom('content_version as v')
+            .select(sql<number>`1`.as('one'))
+            .whereRef('v.node_id', '=', 'm.node_id')
+            .where('v.current', '=', db.dialect.boolValue(true) as boolean)
+            .where('v.version_date', '>=', since),
+        ),
+      )
+    }
+    const text = criteria.text?.trim().toLowerCase()
+    if (text) {
+      const like = `%${text}%`
+      query = query.where((eb) =>
+        eb.or([
+          eb(eb.fn('lower', ['m.email']), 'like', like),
+          eb(eb.fn('lower', ['m.login_name']), 'like', like),
+          eb(eb.fn('lower', ['n.text']), 'like', like),
+        ]),
+      )
+    }
+    return query.orderBy('m.node_id').limit(criteria.take + 1)
+  }
+
+  /** A page of members, and where the next starts when there is one. */
+  async after(
+    criteria: MemberPageCriteria,
+  ): Promise<{ items: MemberCredentials[]; next: number | undefined }> {
+    const rows = await this.afterQuery(criteria).execute()
+    const page = rows.slice(0, criteria.take)
+    const items: MemberCredentials[] = []
+    for (const row of page) items.push(await this.#hydrate(row))
+    return {
+      items,
+      next: rows.length > criteria.take ? Number(page.at(-1)?.node_id) : undefined,
+    }
   }
 
   /** The member picker's search: name, username or e-mail, within the types allowed. */

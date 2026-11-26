@@ -68,6 +68,8 @@ export function createNodeLookup(db: Db): NodeLookup {
         .selectFrom('node')
         .select('path')
         .where('unique_id', '=', normaliseUuid(key))
+        // Story 436: Shared's item under the key first.
+        .orderBy((eb) => eb.case().when('workspace_id', 'is', null).then(0).else(1).end())
         .executeTakeFirst()
       if (!node) return []
       return [

@@ -672,8 +672,7 @@ with `unwrap()` (the value, or the outcome thrown) or `unwrapOr(fallback)`.
   `notFound`, never `forbidden`, so code cannot learn a protected file exists.
 - `site().queries.<module>.<name>(…)` runs one of the site's named queries
   (below).
-- `site().members` (story 207) is a slot. Until it is filled each call answers
-  `notFound`, saying so.
+- `site().members` reads and changes members ("Members", below).
 - In preview the visitor is the previewing editor, with no member. Templates
   are trusted code; the scoping keeps one member's page from reaching another
   member's data by mistake, not a sandbox.
@@ -728,7 +727,8 @@ export default defineConfig({
   with nobody signed in, and `job`: its `id`, `attempt`, who queued it, a
   `signal` that aborts when the node is stopping, `progress(done, total, note)`
   and `enqueue`. Nothing acts as the site: a job reaches no more than a page
-  for a visitor does. Who queued it is recorded, shown to administrators, and
+  for a visitor does, but for `site.content` and `site.members`, which act as the API
+  users the config names. Who queued it is recorded, shown to administrators, and
   grants nothing.
 - **Run** on a node that owns writes (`all` or `api`), one job at a time per
   node, claimed so two nodes never run the same one. A job that throws is
@@ -786,6 +786,54 @@ if (made.isOk()) await site().content.publish(made.value.key)
   `Through action listings.publish`, `Through job imports.nightly`,
   `Through event Umbraco.ContentPublish`. Notifications say the same.
 - **Refused at boot:** an `actAs` that is no API user's client id.
+
+### Members
+
+`site().members` (story 207) acts as whoever is asking:
+
+| Where the code runs | Acts as | Reaches |
+| --- | --- | --- |
+| A page, or a member's request to a route or an action | the signed-in member | their own record only: `member-can-view` properties to read, `member-can-edit` to change |
+| The same, nobody signed in | the visitor | nothing: every call answers `forbidden` |
+| A job or an event handler | the API user `members.actAs` names | any member, if its groups hold Members; sensitive properties only with Sensitive data. Without `actAs`, `forbidden`, whoever queued the job |
+
+```ts
+export default defineConfig({
+  members: {
+    actAs: 'crombolo-back-office-site-code',
+    groups: { selfService: ['Members'], managed: ['Moderators'] },
+  },
+})
+
+const me = (await site().members.me()).unwrap()
+const saved = await site().members.update(me.key, { properties: { address } })
+if (saved.isOk()) await site().members.addToGroups(me.key, ['Members'])
+```
+
+- **Reading:** `me()`, `get(key)`, `byEmail(email)`, `byUsername(username)`, and
+  `list({ group, type, approved, text, since, after, take })`, a page at a time: pass
+  each page's `next` as `after`. A member listing, or asking for anyone else, is
+  `forbidden` before the database is read.
+- **Changing:** `update(key, { name, email, properties })`, checked as the back office
+  checks it: `unprocessableContent` with the fields. A property set to null is
+  cleared, the rest are kept, and one the caller may not change is `forbidden`. A save
+  that meets another is `badRequest`, to try again.
+- **A member never changes their own e-mail or deletes themselves.** A site that offers
+  either verifies it and queues a job.
+- **Groups:** `addToGroups(key, names)` and `removeFromGroups`. A member may change
+  `selfService` groups; jobs and staff those and `managed` ones; nobody's code any
+  other. A listed group that does not exist stops the boot: on a new site make it
+  first (`crombolo members groups new`).
+- **`delete(key)`** is for good: members have no recycle bin. There is no `create`.
+- **Where it writes:** a route, an action, a job or an event handler. A page render
+  only reads, and a bundle's routes do not write as the site.
+- **Audited** as the member or the API user, naming the fields and the route, action,
+  job or event.
+- **`member.properties`** holds the signed-in member's `member-can-view` properties,
+  without a call. A change to which those are reaches it within five seconds.
+
+On a staff screen's route `site().members` acts as the signed-in user, with their
+Members permissions ("Staff screens" below).
 
 ### Content events
 
@@ -857,8 +905,10 @@ const sightings = (await site().queries.observations.forSpecies(id)).unwrap()
 
 - **The handle and the caller are supplied.** `db` reaches the site's tables
   and nothing else. `caller.member()` is the signed-in member, if any, and
-  asking makes the page personal; `caller.locale` is the page's language, or
-  null outside a page.
+  asking makes the page personal; `caller.user()` is the back-office user on a
+  staff screen's route (story 431), with their key, name, e-mail and groups by
+  alias, and undefined anywhere else; `caller.locale` is the page's language, or
+  null outside a page. One query serves pages and staff, and refuses either.
 - **Typed from the config** through the `Register` declaration: the call takes
   the query's arguments after `db` and `caller`, and answers its `Result`.
   Without it, `site().queries` is untyped.
@@ -871,6 +921,128 @@ const sightings = (await site().queries.observations.forSpecies(id)).unwrap()
   them.
 - **Islands** do not call queries: they reach the server through a route or an
   action.
+
+### Staff screens
+
+Story 431. Staff moderate, correct and export what members record through screens of
+the site's own, which read and change the same tables its pages do. A section in the
+config is a grant of its own, with places in the row under the header, as Content's,
+each a menu of screens beside the one it opens:
+
+```ts
+// crombolo.config.ts
+export default defineConfig({
+  backoffice: {
+    sections: [
+      {
+        alias: 'observations',
+        label: 'Observations',
+        places: [
+          {
+            alias: 'records',
+            label: 'Records',
+            menu: [
+              { alias: 'review', label: 'Awaiting review', module: './backoffice/review.ts' },
+              { alias: 'all', label: 'All records', module: './backoffice/all.ts' },
+            ],
+          },
+        ],
+        routes: [
+          route('records/:id', {
+            async PATCH(request, { params, site, principal }) {
+              const { note } = await request.json()
+              return site().queries.observations.correct(Number(params.id), note)
+            },
+          }),
+        ],
+      },
+    ],
+  },
+})
+```
+
+```ts
+// queries/observations.ts: the page and the screen call the same query
+export async function correct(db: Db, caller: QueryCaller, id: number, note: string) {
+  const user = await caller.user()
+  if (!user?.groups.includes('moderators')) return Outcome.forbidden()
+  await db.updateTable('observation').set({ note, corrected_by: user.email }).where('id', '=', id).execute()
+  return ok({ id })
+}
+```
+
+```ts
+// backoffice/review.ts: the screen, the site's own code
+import { LitElement, html } from '@umbraco-cms/backoffice/external/lit'
+
+export default class Review extends LitElement {
+  async correct(id: number, note: string) {
+    const base = document.querySelector('base')?.getAttribute('href') ?? '/umbraco/'
+    await fetch(`${base}crombolo/api/site/observations/records/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note }),
+    })
+  }
+  render() {
+    return html`<uui-box headline="Awaiting review">…</uui-box>`
+  }
+}
+customElements.define('observations-review', Review)
+```
+
+- **The section is a grant:** `Site.Section.<alias>`, offered in each user group's
+  Access beside the back office's own areas. Its address is `section/<alias>`, and a
+  screen's `section/<alias>/<place>/<screen>`, which reloads to it.
+- **A screen is the site's own code:** a module whose default export is a custom
+  element, which it defines. Each module and what it imports is built for the browser
+  when first asked for (again as files change in development), with
+  `@umbraco-cms/backoffice/*` left to the back office, into `.crombolo/site/backoffice/`,
+  and only that build is served, at `<back office>/crombolo/site/<path>`. It is trusted
+  as the site's pages are: no grant, no panel. Code that calls the browser's `confirm`,
+  `alert` or `prompt`, or makes a dialog on the page, is not built: the sections are
+  left out, and the log says why.
+- **Routes** answer `<back office>/crombolo/api/site/<section>/<path>`, a path relative
+  to the section's, and only to someone signed in to the back office who holds the
+  section: 401 and 403 before any of the site's code runs. A `web` node serves none of
+  it. A handler is given what a site route is, `principal`, and `site()` acting as the
+  user: `queries` with `caller.user()`, `members` with their Members permissions,
+  `content` as them, `jobs` queued by them. A throw answers a problem with a reference,
+  logged under it; a write is audited through `back-office route <method> <path>`.
+- **Packed** in the site package with the rest of the site's code, by the globs in
+  `crombolo.code`; an extension carries none.
+- **Refused at boot:** an alias that is not lowercase letters, digits and hyphens, one
+  that takes a back office section's address, a place or screen named twice, a module
+  that is not in the site, and a section an extension claims too, naming both.
+- **Panels of the site's own** (story 437): `backoffice.panels`, each an alias, a label,
+  an icon and a module, is a side panel beside every section, opened from its toggle in the
+  header and kept open as one moves about (story 182). Each is a grant of its own,
+  `Site.Panel.<alias>`, offered in Access, and may have routes below
+  `<back office>/crombolo/api/site/<alias>/`, behind it, as a section's are:
+
+  ```ts
+  backoffice: {
+    panels: [{ alias: 'help', label: 'Help', icon: 'icon-help', module: '@acme/host/backoffice/help.ts' }],
+  }
+  ```
+- **Code as the back office starts** (story 438): `backoffice.entryPoints`, modules of the
+  site's own each exporting `onInit(host, extensionRegistry)`, run for everyone signed in to
+  the back office, and register what they need: a context that watches the open workspace,
+  a card in the user's profile, a header app. A panel with `everyone: true` needs no grant,
+  is in nobody's Access, and its routes answer anyone signed in.
+
+  ```ts
+  backoffice: { entryPoints: ['@acme/host/backoffice/start.ts'] }
+  ```
+- **A module from a package** (story 437): a screen's or panel's module is a path in the
+  site, `./backoffice/review.ts`, or a package specifier the site resolves as its imports
+  do, `@acme/host/backoffice/help.ts`, so a config composed in a wrapper package brings its
+  own. Only a package the site depends on provides one; an absolute path, or one climbing
+  out of the site, is refused, and one that does not resolve stops the boot, naming it.
+- **What a screen draws** is its own: a map, a chart, a table it pages. An extension's
+  screens are described instead ([`extensions.md`](extensions.md), "Screens"), and an
+  extension declares a section in the same shape, its screens by id.
 
 ### Status pages
 

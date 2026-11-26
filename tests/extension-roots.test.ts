@@ -44,10 +44,9 @@ const SEO = {
   json: {
     crombolo: {
       id: 'acme-seo',
-      extensions: [{ type: 'dashboard', alias: 'Acme.Seo', name: 'SEO', element: 'dist/seo.js' }],
+      extensions: [{ type: 'dashboard', alias: 'Acme.Seo', name: 'SEO', meta: {} }],
     },
   },
-  files: { 'dist/seo.js': 'export default class {}\n' },
 }
 
 describe('the record', () => {

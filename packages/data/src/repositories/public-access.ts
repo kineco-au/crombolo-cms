@@ -125,6 +125,8 @@ export class PublicAccessRepository {
   async byNodeKey(nodeKey: string): Promise<PublicAccessEntry | undefined> {
     const row = await entries(this.#db)
       .where('n.unique_id', '=', normaliseUuid(nodeKey))
+      // Story 436: Shared's item under the key first.
+      .orderBy((eb) => eb.case().when('n.workspace_id', 'is', null).then(0).else(1).end())
       .executeTakeFirst()
     return row ? this.#hydrate(row) : undefined
   }

@@ -2,15 +2,15 @@
  * Side panels (story 182): a bundle's panel docks beside the view, keeps its
  * element and state while the editor moves between sections, is still open
  * after a reload, and becomes a sheet over the view on a narrow window. The
- * browser site carries a bundle with one panel, `Test.SidePanel.Notes`, that
- * counts clicks (`serve.ts`).
+ * browser site carries a bundle with one panel, `Test.SidePanel.Notes`, a screen it
+ * describes that counts clicks (`serve.ts`).
  */
 import type { Page } from '@playwright/test'
 import { expect, goToSection, settle, signIn, test } from './fixtures.ts'
 
-const toggle = (page: Page) => page.locator('crombolo-side-panel-toggle uui-button')
+const toggle = (page: Page) => page.locator('crombolo-side-panel-toggle uui-button[label="Notes"]')
 const panel = (page: Page) => page.locator('crombolo-side-panel-host #panel')
-const count = (page: Page) => page.locator('test-notes-panel #count')
+const count = (page: Page) => panel(page).getByRole('button', { name: /^Clicked/ })
 
 test('a panel stays open across sections and a reload, and is a sheet on a narrow window', async ({
   page,
@@ -65,4 +65,17 @@ test('a panel stays open across sections and a reload, and is a sheet on a narro
     // Leave it closed for the tests after this one.
     if ((await toggle(page).getAttribute('aria-expanded')) === 'true') await toggle(page).click()
   }
+})
+
+test('a site’s panel opens beside any section from its toggle (story 437)', async ({ page }) => {
+  await signIn(page)
+  const toggle = page.locator('crombolo-side-panel-toggle uui-button[label="Help"]')
+  await toggle.click()
+  const panel = page.locator('crombolo-side-panel-host #panel')
+  await expect(panel.getByRole('heading', { name: 'Help for staff' })).toBeVisible()
+  await page.goto('/crombolo/section/observations')
+  await settle(page)
+  await expect(panel.getByRole('heading', { name: 'Help for staff' })).toBeVisible()
+  await toggle.click()
+  await expect(panel).toBeHidden()
 })

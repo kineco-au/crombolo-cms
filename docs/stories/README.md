@@ -122,6 +122,7 @@ not cover.
 | `277` | The back office on Umbraco 19 | should | L | ready | 235 |
 | `345` | The Single Block | should | L | done | — |
 | `429` | Users are in Settings | should | M | done | 234, 385 |
+| `433` | Service accounts in Settings | should | M | done | 026, 207, 298, 389, 405, 429 |
 | `288` | The overview is the home of the back office | should | M | done | — |
 | `289` | A second-level menu under Content | should | L | done | 288 |
 | `291` | A session ending asks you to sign in, on every screen | should | S | done | — |
@@ -153,7 +154,8 @@ not cover.
 | `203` | Media member permission defaults | must | M | done | 196 |
 | `204` | Public, Private and Custom media access | should | M | done | 203 |
 | `205` | Media Public Access with inherited permissions | should | M | done | 204 |
-| `191` | Azure AD B2C user flows for members | should | M | ready | 031 |
+| `191` | Azure AD B2C user flows for members | should | M | done | 031 |
+| `432` | Imported members keep their provider sign-in | must | M | done | 031 |
 | `282` | A member resets their password | should | M | ready | — |
 | `305` | An identity provider the config declares can be locked | should | S | done | — |
 | `314` | An administrator sees the back office as a group does | should | M | done | — |
@@ -288,6 +290,7 @@ requests, only server-side and build-time front ends can call it.
 | `332` | A host installs extensions into their roots | should | M | done | 326 |
 | `336` | A bundle's components are installed as code | must | M | done | — |
 | `337` | The back office writes templates only where the site allows | should | S | done | — |
+| `435` | An extension runs only what was installed, and writes no script into the site | must | L | done | 311, 312, 330 |
 
 ### Epic J — Forms
 
@@ -358,7 +361,10 @@ requests, only server-side and build-time front ends can call it.
 | `184` | Blocks render their own components | should | M | done | — |
 | `199` | Crop URLs with Umbraco's options | should | S | done | 197 |
 | `206` | Pages with the site's own logic | should | L | done | — |
-| `207` | Members from the site's own code | should | M | ready | 206 |
+| `207` | Members from the site's own code | should | M | done | 206 |
+| `431` | Staff screens reach the site's own tables | must | L | done | 189, 211, 289, 320, 323, 324 |
+| `437` | The site's own side panels, and modules from its packages | must | M | done | 182, 431 |
+| `438` | The site's own code as the back office starts, and panels for everyone | must | S | done | 431, 437 |
 | `208` | A Next.js front end | should | L | done | — |
 | `209` | Interactive islands | should | M | done | — |
 | `210` | Middleware | should | M | done | — |
@@ -581,4 +587,6 @@ it.
 | `425` | A page that arrives by a change takes its place in the order | must | M | done | 411 |
 | `428` | Workspace controls beside the Content menu | should | S | done | 384, 419 |
 | `430` | A promoted delete goes to the recycle bin | must | M | done | 383, 411 |
+| `434` | A change staged after another that made the same page builds on it | should | S | done | 383, 394, 421 |
+| `436` | Each workspace makes its own new pages | must | L | done | 375, 376, 383, 434 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |

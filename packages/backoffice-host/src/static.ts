@@ -7,18 +7,18 @@
  */
 import { join, normalize } from 'node:path'
 import { rehomeClientModule } from '@crombolo/core'
-import { type InstalledExtension, resolveExtensionFile } from './extensions.ts'
 import { brandedAsset } from './graphics.ts'
 import type { BackOfficePaths } from './paths.ts'
 import { VENDORED_ASSETS_PATH } from './paths.ts'
+import { SITE_CODE_SEGMENT } from './sections.ts'
 
 const IMMUTABLE = 'public, max-age=31536000, immutable'
 
 export interface StaticOptions {
-  /** The installed npm extensions, which serve their own assets at /packages/. */
-  extensions?: readonly InstalledExtension[]
   /** Serve the hashed prefix with immutable caching. Off in development. */
   immutable?: boolean
+  /** Where the site's back-office code was built (story 431), served below the plugin's path. */
+  site?: string
 }
 
 /** Rejects any path that escapes the root once normalised. */
@@ -83,19 +83,19 @@ export function resolveStaticFile(
     return { file, cacheControl: 'no-cache', ...rehomeFor(paths, file) }
   }
 
+  const sitePrefix = `${paths.pluginPath}/${SITE_CODE_SEGMENT}/`
+  if (pathname.startsWith(sitePrefix)) {
+    const file = options.site
+      ? safeJoin(options.site, pathname.slice(sitePrefix.length))
+      : undefined
+    return file ? { file, cacheControl: 'no-cache' } : undefined
+  }
+
   const pluginPrefix = `${paths.pluginPath}/`
   if (pathname.startsWith(pluginPrefix)) {
     const file = safeJoin(paths.pluginDir, pathname.slice(pluginPrefix.length))
     if (!file) return undefined
     return { file, cacheControl: 'no-cache' }
-  }
-
-  // An installed extension's own files, resolved inside the package it names
-  // and nowhere else. `no-cache` for the same reason the framework plugin uses
-  // it: a version bump moves the file behind an unchanged path.
-  if (options.extensions && options.extensions.length > 0) {
-    const file = resolveExtensionFile(options.extensions, pathname)
-    if (file) return { file, cacheControl: 'no-cache' }
   }
 
   return undefined

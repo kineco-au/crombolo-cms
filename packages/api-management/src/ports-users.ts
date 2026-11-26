@@ -38,6 +38,7 @@ export type UserStatus =
   | 'InvalidUserType'
   | 'DuplicateClientId'
   | 'InvalidClientId'
+  | 'AdministratorsOnly'
   | 'InvalidResetCode'
   /** Crombolo: a group added or removed is not one the caller owns (story 302). */
   | 'NotGroupOwner'
@@ -47,6 +48,8 @@ export type UserStatus =
   | 'CannotDelete'
   /** Crombolo: the site's people come from a directory outside it (story 389). */
   | 'ManagedOutside'
+  /** Crombolo: the config names the service account, so taking it away stops something (story 433). */
+  | 'ServiceAccountInUse'
 
 export type UserOrder =
   | 'UserName'

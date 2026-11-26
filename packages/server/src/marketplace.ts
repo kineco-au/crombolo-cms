@@ -21,12 +21,12 @@ import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   type AccessLevel,
+  BACKOFFICE_CODE_RETIRED,
   type BundlePackage,
   type DeclaredPermission,
   describePermissions,
   EXTENSION_KEYWORD,
   type ExtensionRegistry,
-  extensionDialogProblems,
   forgetExtension,
   groupsOf,
   LEGACY_EXTENSION_KEYWORD,
@@ -66,7 +66,7 @@ import {
   signatureRefusal,
   sitePackageRefused,
 } from './extension-install.ts'
-import { grantRefusal, type UnrestrictedFrom } from './grant-policy.ts'
+import { grantRefusal } from './grant-policy.ts'
 import { logger } from './logging.ts'
 import {
   type ProvenancePolicy,
@@ -164,8 +164,6 @@ export interface MarketplaceOptions {
   applyContent?: (packageName: string) => Promise<ContentOutcome>
   /** The site's `applyBundleContentOnInstall`. */
   applyContentOnInstall?: boolean
-  /** Where an Unrestricted extension may be granted from (story 324). */
-  unrestrictedFrom?: UnrestrictedFrom
   /**
    * False refuses installing and removing here: the dependency belongs in
    * `package.json` and a deploy, so every node has it and it outlives a restart.
@@ -371,7 +369,6 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       grants: asked.length > 0,
       isAdmin: request.isAdmin === true,
       provenance,
-      from: options.unrestrictedFrom ?? 'backoffice',
     })
     return why
       ? { ok: false, level, message: `${name} was not installed: ${why}`, provenance }
@@ -730,6 +727,16 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       options.extensions.invalidate()
       return sitePackageRefused(name)
     }
+    // Story 431: one that landed with its own back-office code is never kept.
+    const ownCode = discovered.problems
+      .filter((problem) => problem.packageName === name)
+      .flatMap((problem) => problem.problems)
+      .filter((problem) => problem.includes(BACKOFFICE_CODE_RETIRED))
+    if (ownCode.length > 0) {
+      undo()
+      options.extensions.invalidate()
+      return { ok: false, message: `${name} was removed again: ${ownCode.join('; ')}.` }
+    }
     if (!found)
       return {
         ok: true,
@@ -752,16 +759,6 @@ export function createMarketplace(options: MarketplaceOptions): Marketplace {
       undo()
       options.extensions.invalidate()
       return schema3Refused(name, `${name}@${found.version} turned out to`)
-    }
-    // Its back-office code asks and tells in the back office's own dialogs (AGENTS.md).
-    const dialogs = extensionDialogProblems(found.directory)
-    if (dialogs.length > 0) {
-      undo()
-      options.extensions.invalidate()
-      return {
-        ok: false,
-        message: `${name}@${found.version} was removed again: ${dialogs.join('; ')}.`,
-      }
     }
     if (!consented(request, declaredEntries(found))) {
       undo()

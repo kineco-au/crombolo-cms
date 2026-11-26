@@ -135,6 +135,12 @@ into `people/`, whose manifest block counts them and names nobody.
   Findings name people by key only.
 - **Groups**: a member group is matched by key, then by name; a user group by
   key, then by alias, and one that exists here keeps its permissions.
+- **A member's sign-in links** (story 432), `externalLogins: [{ provider, subject }]`,
+  travel with them, and a member the file carries ends with exactly those. One another
+  member here holds is left out (`login-held`, naming both); one to a provider this site
+  does not declare is kept (`login-provider-undeclared`); `login-links` counts what
+  arrives. A file from before carries none and removes none, and an anonymised export
+  carries none. `docs/operations.md`, "Signing in through an identity provider".
 - **A user group the site does not have arrives as it was** (story 393): its
   sections, its verbs, the languages it may edit (`languages`, unless
   `hasAccessToAllLanguages`) and its verbs on single items (`granular`):

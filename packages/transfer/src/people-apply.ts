@@ -16,9 +16,13 @@ import {
   withoutPrunedPermissions,
 } from '@crombolo/core'
 import {
+  AuditLog,
+  type AuditSource,
   ContentTypeRepository,
   currentSchemaState,
   type Db,
+  ExternalLoginRepository,
+  externalLoginProvider,
   type Finding,
   type GranularPermission,
   LanguageRepository,
@@ -31,6 +35,7 @@ import {
 } from '@crombolo/data'
 import type { NodeResolutions, Resolution } from './check.ts'
 import type {
+  BundleExternalLogin,
   BundleGranular,
   BundleMember,
   BundlePeople,
@@ -118,6 +123,8 @@ export async function planPeople(
     adoptUsers?: boolean
     /** The pages and Library items the same bundle brings, which exist by the time people do. */
     carried?: ReadonlyMap<string, 'document' | 'element'>
+    /** Story 432: the member identity providers this site declares, by id. */
+    memberProviders?: readonly string[]
   } = {},
 ): Promise<PeoplePlan> {
   const resolutions = options.resolutions ?? {}
@@ -207,6 +214,7 @@ export async function planPeople(
     const decided = decide('member', member.key, clash)
     if (decided) plan.push(decided)
   }
+  findings.push(...(await linkFindings(db, people.members, plan, options.memberProviders)))
   for (const alias of missingTypes)
     findings.push(
       finding(
@@ -403,6 +411,123 @@ async function memberKeyWhere(
   return rows[0] ? normaliseUuid(String(rows[0].unique_id)) : undefined
 }
 
+/** Who a planned member is here: the person the bundle's is taken onto, or the bundle's own key. */
+const memberTarget = (plan: readonly PersonPlan[], key: string): string | undefined => {
+  const p = plan.find((entry) => entry.kind === 'member' && entry.key === key)
+  if (!p || p.action === 'skip') return undefined
+  return normaliseUuid(p.localKey ?? key)
+}
+
+/**
+ * Story 432: what the members' links to identity providers will do. One another member
+ * holds is left out, naming both; one to a provider this site does not declare is kept,
+ * and said.
+ */
+async function linkFindings(
+  db: Db,
+  members: readonly BundleMember[],
+  plan: readonly PersonPlan[],
+  declared: readonly string[] | undefined,
+): Promise<Finding[]> {
+  const logins = new ExternalLoginRepository(db)
+  const out: Finding[] = []
+  const undeclared = new Map<string, number>()
+  let arriving = 0
+  for (const member of members) {
+    const target = memberTarget(plan, member.key)
+    if (!target || !member.externalLogins) continue
+    for (const link of member.externalLogins) {
+      const held = await logins.find(externalLoginProvider('member', link.provider), link.subject)
+      if (held && held.ownerKey !== target) {
+        out.push(
+          finding(
+            'auto',
+            'login-held',
+            'member',
+            member.key,
+            `the ${link.provider} sign-in of member ${member.key} is linked to member ${held.ownerKey} here, so it is left out`,
+          ),
+        )
+        continue
+      }
+      arriving += 1
+      if (declared && !declared.includes(link.provider))
+        undeclared.set(link.provider, (undeclared.get(link.provider) ?? 0) + 1)
+    }
+  }
+  if (arriving > 0)
+    out.push(
+      finding('auto', 'login-links', 'member', 'member', `${arriving} sign-in link(s) arrive`),
+    )
+  for (const [provider, count] of undeclared)
+    out.push(
+      finding(
+        'auto',
+        'login-provider-undeclared',
+        'member',
+        provider,
+        `${count} sign-in link(s) to "${provider}", which this site does not declare: kept, and used once it does`,
+      ),
+    )
+  return out
+}
+
+/**
+ * Story 432: a member's links made what the bundle says, when it says anything: those it
+ * does not carry go, those another member holds are left out. Each change is audited.
+ */
+export async function syncMemberLinks(
+  tx: Db,
+  owner: string,
+  links: readonly BundleExternalLogin[],
+  source: AuditSource,
+  through: string,
+): Promise<{ linked: number; unlinked: number }> {
+  const logins = new ExternalLoginRepository(tx)
+  const audit = new AuditLog(tx)
+  const key = normaliseUuid(owner)
+  const wanted = new Map(
+    links.map((link) => [externalLoginProvider('member', link.provider), link.subject]),
+  )
+  const now = (await logins.forOwner(key)).filter((login) =>
+    login.loginProvider.startsWith(externalLoginProvider('member', '')),
+  )
+  const providerOf = (loginProvider: string) =>
+    loginProvider.slice(externalLoginProvider('member', '').length)
+  let linked = 0
+  let unlinked = 0
+  for (const login of now) {
+    if (wanted.get(login.loginProvider) === login.providerKey) continue
+    if (wanted.has(login.loginProvider)) continue
+    await logins.unlink(key, login.loginProvider)
+    unlinked += 1
+    await audit.record({
+      category: 'member',
+      action: 'Unlink',
+      source,
+      entityType: 'Member',
+      entityKey: key,
+      detail: `Sign-in through ${providerOf(login.loginProvider)} removed, ${through}`,
+    })
+  }
+  for (const [loginProvider, subject] of wanted) {
+    if (now.some((l) => l.loginProvider === loginProvider && l.providerKey === subject)) continue
+    const held = await logins.find(loginProvider, subject)
+    if (held && held.ownerKey !== key) continue
+    await logins.link(key, loginProvider, subject)
+    linked += 1
+    await audit.record({
+      category: 'member',
+      action: 'Link',
+      source,
+      entityType: 'Member',
+      entityKey: key,
+      detail: `Signs in through ${providerOf(loginProvider)}, ${through}`,
+    })
+  }
+  return { linked, unlinked }
+}
+
 /** What one applied person was before: enough for a revert to remove what it created. */
 export interface AppliedPerson {
   kind: PersonKind
@@ -415,7 +540,14 @@ export async function applyPeople(
   tx: Db,
   people: BundlePeople,
   plan: readonly PersonPlan[],
-  run: { id: string; runs: TransferRunRepository; nodeState: NodeSchemaState; nodeId?: string },
+  run: {
+    id: string
+    runs: TransferRunRepository
+    nodeState: NodeSchemaState
+    nodeId?: string
+    /** Where the import came from, for the audit of the links it makes (story 432). */
+    source?: AuditSource
+  },
 ): Promise<AppliedPerson[]> {
   const applied: AppliedPerson[] = []
   const planFor = new Map(plan.map((p) => [`${p.kind}|${p.key}`, p]))
@@ -526,6 +658,14 @@ export async function applyPeople(
       await members.create(content, identity)
       await record('member', member.key, 'create')
     }
+    if (member.externalLogins)
+      await syncMemberLinks(
+        tx,
+        here ? target : member.key,
+        member.externalLogins,
+        run.source ?? 'cli',
+        'by an import',
+      )
   }
 
   const users = new UserRepository(tx)
@@ -659,6 +799,8 @@ export async function exportPeople(
     const members = new MemberRepository(db, {
       nodeState: { version: state.version, revision: state.revision },
     })
+    const logins = new ExternalLoginRepository(db)
+    const memberLogins = externalLoginProvider('member', '')
     for (let skip = 0; ; skip += 500) {
       const page = await members.filter({ skip, take: 500 })
       for (const member of page.items) {
@@ -674,6 +816,12 @@ export async function exportPeople(
           passwordHash: member.passwordHash,
           passwordConfig: member.passwordConfig,
           groupKeys: await members.groupKeys(member.key),
+          externalLogins: (await logins.forOwner(member.key))
+            .filter((login) => login.loginProvider.startsWith(memberLogins))
+            .map((login) => ({
+              provider: login.loginProvider.slice(memberLogins.length),
+              subject: login.providerKey,
+            })),
           values: (content?.values ?? []).map((v) => ({
             property: v.alias,
             culture: v.culture,

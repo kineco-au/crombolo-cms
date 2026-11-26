@@ -141,6 +141,13 @@
           "name": "--client",
           "type": "string",
           "description": "the client id; CROMBOLO_API_CLIENT_ID when not given"
+        },
+        {
+          "name": "--old-stops",
+          "type": "string",
+          "default": "now",
+          "enum": ["now", "day", "week"],
+          "description": "when the old secret stops working, so whatever uses it can move with no gap"
         }
       ],
       "errors": ["usage", "internal", "not_found"]
@@ -4056,10 +4063,6 @@
           }
         },
         {
-          "name": "asksForBackOfficeCode",
-          "type": "boolean"
-        },
-        {
           "name": "dropsSignature",
           "type": "boolean"
         }
@@ -4070,11 +4073,6 @@
           "type": "string",
           "required": true,
           "description": "the extension's package directory"
-        },
-        {
-          "name": "--reason",
-          "type": "string",
-          "description": "why its back-office code is needed, shown when it is installed"
         },
         {
           "name": "--dry-run",
@@ -8173,6 +8171,57 @@
         "refused",
         "unavailable"
       ]
+    },
+    {
+      "name": "members link",
+      "description": "link members to an identity provider by an id they hold",
+      "effects": "idempotent",
+      "cardinality": "single",
+      "output_fields": [
+        {
+          "name": "linked",
+          "type": "number"
+        },
+        {
+          "name": "already",
+          "type": "number"
+        },
+        {
+          "name": "empty",
+          "type": "number"
+        },
+        {
+          "name": "held",
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "declared",
+          "type": "boolean"
+        }
+      ],
+      "args": [
+        {
+          "name": "--provider",
+          "type": "string",
+          "required": true,
+          "description": "the member identity provider's id in crombolo.config.ts"
+        },
+        {
+          "name": "--property",
+          "type": "string",
+          "required": true,
+          "description": "the member property holding their id there"
+        },
+        {
+          "name": "--dry-run",
+          "type": "boolean",
+          "description": "say what it would link, and write nothing"
+        }
+      ],
+      "errors": ["usage", "internal", "refused", "unavailable"]
     },
     {
       "name": "members list",

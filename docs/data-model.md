@@ -50,7 +50,8 @@ and their join tables are populated from the site's `schema/*.toml` files at boo
 `since_version` (the deployment that created the row, for pending-element
 gating) and `retired_at` (a property removed from its file is retired, never
 deleted, so its values survive and return if it is reintroduced). The API no
-longer writes these tables directly. `key` in a schema file is `node.unique_id`, which is why
+longer writes these tables directly. `key` in a schema file is `node.unique_id` (unique in
+Shared and within each workspace since migration 101, story 436), which is why
 tooling pins it before content can reference it.
 
 ## Values are append-only, and versions are events

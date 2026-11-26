@@ -18,7 +18,7 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { carriesTags } from './bundles-carries.js'
 import { bundleSignature, installBundle, searchMarketplace } from './bundles-client.js'
 import { levelBlock, levelStyles } from './bundles-level.js'
-import { configSnippet, grantChoice, unvouchedLine, vouchState } from './bundles-level-words.js'
+import { grantChoice, unvouchedLine, vouchState } from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
@@ -292,22 +292,7 @@ export default class CromboloBundlesMarketplaceElement extends UmbLitElement {
                     @click=${() => this.#install(item, true)}></uui-button>
                   <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
                 </div>`
-            : html`<p class="note">
-                  ${
-                    choice.snippet
-                      ? 'This site turns on Unrestricted extensions only in its configuration. Your developers add this to crombolo.config.ts:'
-                      : choice.sentence
-                  }
-                </p>
-                ${
-                  choice.snippet
-                    ? html`<pre class="snippet">${configSnippet(
-                        this._id,
-                        this._asks.map((ask) => ask.permission),
-                        this._asks.flatMap((ask) => ask.origins ?? []),
-                      )}</pre>`
-                    : nothing
-                }
+            : html`<p class="note">${choice.sentence}</p>
                 <div class="actions">
                   <uui-button look="secondary" label="Cancel" @click=${this.#cancelConsent}></uui-button>
                 </div>`

@@ -50,6 +50,15 @@ export interface UserRecord {
   startNodes: Record<StartNodeTree, StartNodeSelection>
 }
 
+/** Story 433: a client id an account holds. */
+export interface ClientCredentialDetail {
+  clientId: string
+  addedAt: Date
+  lastUsedAt: Date | undefined
+  /** While a replaced secret still works, when it stops. */
+  oldSecretUntil: Date | undefined
+}
+
 export type UserState = 'Active' | 'Disabled' | 'LockedOut' | 'Invited' | 'Inactive'
 
 /** Umbraco's `User.UserState`. */
@@ -222,6 +231,8 @@ export class UserRepository {
       .selectFrom('node')
       .select(['id', 'unique_id'])
       .where('unique_id', 'in', wanted)
+      // Story 436: Shared's item under a key last, so the map keeps it.
+      .orderBy((eb) => eb.case().when('workspace_id', 'is', null).then(1).else(0).end())
       .execute()
     const map = new Map(rows.map((r) => [normaliseUuid(String(r.unique_id)), Number(r.id)]))
     return wanted.every((k) => map.has(k)) ? map : undefined
@@ -578,11 +589,90 @@ export class UserRepository {
     return true
   }
 
+  /** Removes the client id, and ends the sessions signed in with it (story 433). */
   async removeClientCredential(userId: number, clientId: string): Promise<void> {
-    await this.#db.q
-      .deleteFrom('user_client_credential')
+    await this.#db.transaction(async (tx) => {
+      const now = DbDate.toDb(new Date())
+      const sessions = await tx.q
+        .selectFrom('auth_token')
+        .select('session_id')
+        .where('user_id', '=', userId)
+        .where('client_id', '=', clientId)
+        .execute()
+      const ids = [...new Set(sessions.map((s) => s.session_id).filter((s): s is string => !!s))]
+      await tx.q
+        .updateTable('auth_token')
+        .set({ revoked_at: now })
+        .where('user_id', '=', userId)
+        .where('client_id', '=', clientId)
+        .where('revoked_at', 'is', null)
+        .execute()
+      if (ids.length > 0)
+        await tx.q
+          .updateTable('user_login_session')
+          .set({ logged_out_utc: now })
+          .where('session_id', 'in', ids)
+          .where('logged_out_utc', 'is', null)
+          .execute()
+      await tx.q
+        .deleteFrom('user_client_credential')
+        .where('user_id', '=', userId)
+        .where('client_id', '=', clientId)
+        .execute()
+    })
+  }
+
+  /** Story 433: each client id an account holds, when it was added and last used. */
+  async clientCredentialDetails(userId: number): Promise<ClientCredentialDetail[]> {
+    const rows = await this.#db.q
+      .selectFrom('user_client_credential')
+      .select(['client_id', 'create_date', 'last_used_at', 'old_secret_until'])
       .where('user_id', '=', userId)
+      .orderBy('client_id')
+      .execute()
+    const now = Date.now()
+    return rows.map((row) => {
+      const until = DbDate.fromDb(row.old_secret_until)
+      return {
+        clientId: String(row.client_id),
+        addedAt: DbDate.fromDb(row.create_date) ?? new Date(0),
+        lastUsedAt: DbDate.fromDb(row.last_used_at),
+        oldSecretUntil: until && until.getTime() > now ? until : undefined,
+      }
+    })
+  }
+
+  /**
+   * Story 433: a new secret for the client id. The one it replaces keeps working until
+   * `oldUntil`, or stops at once without one.
+   */
+  async replaceClientSecret(
+    clientId: string,
+    secretHash: string,
+    oldUntil: Date | undefined,
+  ): Promise<boolean> {
+    const found = await this.clientCredentialOwner(clientId)
+    if (!found) return false
+    await this.#db.q
+      .updateTable('user_client_credential')
+      .set({
+        secret_hash: secretHash,
+        old_secret_hash: oldUntil ? found.secretHash : null,
+        old_secret_until: oldUntil ? DbDate.toDb(oldUntil) : null,
+      })
       .where('client_id', '=', clientId)
+      .execute()
+    return true
+  }
+
+  /** Story 433: the client id was used now; written at most once an hour. */
+  async touchClientCredential(clientId: string, now = new Date()): Promise<void> {
+    const hourAgo = DbDate.toDb(new Date(now.getTime() - 60 * 60 * 1000))
+    await this.#db.q
+      .updateTable('user_client_credential')
+      .set({ last_used_at: DbDate.toDb(now) })
+      .where('client_id', '=', clientId)
+      .where((eb) => eb.or([eb('last_used_at', 'is', null), eb('last_used_at', '<', hourAgo)]))
       .execute()
   }
 
@@ -607,6 +697,8 @@ export class UserRepository {
             .selectFrom('node')
             .select(NODE_COLUMNS)
             .where('unique_id', 'in', keys)
+            // Story 436: Shared's item under a key last, so the map keeps it.
+            .orderBy((eb) => eb.case().when('workspace_id', 'is', null).then(1).else(0).end())
             .execute()
         : []
     const byKey = new Map(rows.map((r) => [normaliseUuid(String(r.unique_id)), mapNode(r)]))

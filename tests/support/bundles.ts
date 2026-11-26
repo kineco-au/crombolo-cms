@@ -170,7 +170,7 @@ export function toCurrentLayout(dir: string): void {
     mkdirSync(dirname(file), { recursive: true })
     writeFileSync(file, 'export default class extends HTMLElement {}\n')
   }
-  const plan = planMigration(dir, { reason: 'Shows its screens' })
+  const plan = planMigration(dir)
   if (plan.problems.length > 0)
     throw new Error(`The fixture at ${dir} cannot be migrated: ${plan.problems.join('; ')}`)
   applyMigration(dir, plan)

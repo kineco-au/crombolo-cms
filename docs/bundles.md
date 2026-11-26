@@ -814,22 +814,23 @@ implementation serves Settings → Extensions, the remote protocol and the CLI
   | Part | Lands | Runs |
   |---|---|---|
   | its server code (`src/server/`): the server half and its components | stays in the package | in its own Deno process: routes, events and jobs as calls, components as `render` calls |
-  | its back-office code (`src/backoffice/`) | built to `.crombolo/extensions/<id>/backoffice/`, and only that build is served (story 320) | in the back office, as the signed-in user, once `backoffice.code` is granted |
+  | its screens, described (story 323) | stay in the package, answered by its server half | nothing of the extension's runs in the back office: its own back-office code is refused (story 431) |
   | `schema/`, `nodes/`, `values/`, media, dictionary | applied into the site, then the site's own | nothing; it is data |
   | `styles/`, `scripts/` | copied into the site | in the visitor's browser |
 
   An extension's `bundle.json` may not list `components/`, `code/` or value
-  migrations (`schema/migrations/*.ts`): each is refused, and nothing is written.
+  migrations (`schema/migrations/*.ts`): each is refused, and nothing is written. Nor may
+  it carry an HTML, SVG or XML file in `public/` (story 435), refused by name: and every
+  such file in `public/`, the site's own too, is served sandboxed, so it shows and runs no
+  script.
   A site package carries all of them, as the site's own code.
 
-  **Its back-office code asks in the back office's own dialogs.** A file under
-  `src/backoffice/` that calls the browser's `confirm`, `alert` or `prompt`, or makes
-  a dialog on the page with `document.createElement('dialog')`, is refused by
-  `crombolo extension check`, and an install that lands one is removed again, from
-  the command line and the Marketplace alike. Ask with Umbraco's `umbConfirmModal` or
-  its modal manager, and keep a `<dialog>` inside the extension's own element, styled
-  there. An extension installed before this rule keeps loading; `extension check` finds one
-  to fix.
+  **No back-office code of its own** (story 431). An extension's screens are described,
+  answered by its server half and drawn by the back office. A manifest naming a module
+  for the back office, a `src/backoffice/` folder, or `backoffice.code` is refused at
+  `extension check`, discovery and every install, saying to describe its screens; an
+  install that lands one is removed again. One installed before is left off at start,
+  with that reason in Installed.
 - **Content applied at runtime is this node's too.** It writes `schema/` and the
   component directories on the node that served the request. On a
   load-balanced site, turn `applyBundleContentOnInstall` off and let the content
@@ -1630,7 +1631,7 @@ asks for, with nothing imported by the site. Until then, the import in
 export default defineConfig({
   extensions: {
     redirects: {
-      grant: ['backoffice.code', 'redirects.read', 'redirects.write', 'content.read'],
+      grant: ['redirects.read', 'redirects.write', 'content.read'],
       settings: { section: 'content' },
     },
   },
@@ -1883,12 +1884,10 @@ CMS holds it to that:
 
 ```
 @acme/seo-tools/
-├── package.json             crombolo.extensions, crombolo.server, exports
+├── package.json             crombolo.extensions, crombolo.sections, crombolo.server, exports
 └── src/
-    ├── server/              the server half: its entry, its components (312)
-    │   └── index.ts
-    └── backoffice/          its back-office code: what the manifest's entries name
-        └── seo-dashboard.ts
+    └── server/              the server half: its entry, its components (312), its screens
+        └── index.ts
 ```
 
 - **`crombolo.schemaVersion: 5`.** An extension at 4 or before is refused at
@@ -1896,40 +1895,24 @@ CMS holds it to that:
   migrate <dir>`.
 - **The server half** is the entry its package exports, under `src/server/`. Its
   process reads `src/server/` and its build, and nothing else of the package.
-- **Back-office code:**
-  - every `element`, `js`, `api` and `loader` its manifest names, and every import
-    map target, is a `.ts` or `.js` file under `src/backoffice/`;
-  - absolute paths and URLs are refused;
-  - an entry that names none, such as a menu item that is a label and an icon, runs
-    no code.
-- **Neither half imports the other's folder.** The build refuses it, naming the file.
+- **No back-office code** (story 431): a manifest entry naming a module, an import
+  map, or a `src/backoffice/` folder is refused, saying to describe its screens. An
+  entry that names none, such as a menu item that is a label and an icon, runs no code.
 - **`plugin/`, and any other folder under `src/`, is refused,** naming the folder.
-- **The build:** granted back-office code is built with `Bun.build` when first
-  asked for, and again when its files change:
-  - one output per module the manifest names, into
-    `.crombolo/extensions/<id>/backoffice/`;
-  - TypeScript compiled, and its own imports and npm packages bundled;
-  - `@umbraco-cms/*` left as imports, for the back office's import map.
-
-  `/bundles/<package>/<path>` serves only that build, so `src/server/`,
-  `package.json` and the rest of the package are never served. One that cannot be
-  built is left out of the back office, saying why in Installed.
 
 ### Moving an extension to the layout
 
-`crombolo extension migrate <dir> --reason "<why its screens need it>"` rewrites a
-schema 4 package in place, and `--dry-run` says what it would do:
+`crombolo extension migrate <dir>` rewrites a schema 4 package in place, and
+`--dry-run` says what it would do:
 
 - **The server half:** its exported entry, the files it imports and the rest of
   `src/` move under `src/server/`.
-- **The back-office half:** `plugin/`, each module the manifest names and what it
-  imports move under `src/backoffice/`.
 - **Imports and the manifest:** a relative import that crosses out of a moved folder
   is rewritten, and so are the manifest, `exports`, `main` and `files`.
-- **The permission:** with back-office code, it asks for `backoffice.code` with the
-  reason given, and never writes a placeholder.
-- **What it refuses:** a file both halves import, or a schema 3 package, is named,
-  and nothing moves.
+- **What it refuses:** an extension with its own back-office code, saying to describe
+  each screen in its server half and take the code and `backoffice.code` out first
+  (story 431); a file both halves import, or a schema 3 package, is named, and
+  nothing moves.
 - **Signatures:** `provenance.json` is removed, since moving files changes the
   digest. Sign it again before publishing.
 
@@ -1943,9 +1926,8 @@ each permission with the reason it needs it, and it is held to that.
   "bundleType": "extension",
   "id": "redirects",
   "server": "redirects",
-  "schemaVersion": 5,
+  "schemaVersion": 6,
   "permissions": {
-    "backoffice.code": "Shows the redirects screen in Settings",
     "redirects.read": "Lists the redirect rules on the Redirects screen",
     "redirects.write": "Saves the rules you add, change and remove there",
     "content.read": "Shows the address of the page each rule sends people to",
@@ -1985,19 +1967,19 @@ each permission with the reason it needs it, and it is held to that.
   - `routes.public` answers routes anyone may call;
   - `templates` renders components into pages, from story 312;
   - `data.tables` keeps its own tables in the site's database, from story 321:
-    see Part 4;
-  - `backoffice.code` runs its back-office code, from story 320: see "Back-office
-    code" below.
+    see Part 4.
+
+  `backoffice.code` (story 320) is retired (story 431), refused by name.
 
 - **Levels** (story 324). The install panel, Installed and the command line say how
-  far an extension reaches before anything else, as one of three levels computed from
-  what it asks for, never declared:
+  far an extension reaches before anything else, as one of two levels computed from
+  what it asks for, never declared. Unrestricted, for back-office code, went with it
+  (story 431):
 
   | Level | What puts it there | Who grants it |
   |---|---|---|
   | **Limited** | anything else | an administrator |
   | **Acts as you** | `user.delegate` | an administrator, for a package someone vouched for |
-  | **Unrestricted** | `backoffice.code` | an administrator, for a package someone vouched for, unless the host keeps it to the config |
 
   - **Four groups** fold the catalogue: Sees, Changes, Sends to and Adds, with Acts as
     when it asks to (`groupsOf`). "Show each permission and why it asks" opens the list
@@ -2016,7 +1998,7 @@ each permission with the reason it needs it, and it is held to that.
     extension installs, and the panel says "Nobody has vouched for who built this" in
     place of its build line.
   - **Checked at every start, and as a signer is removed.** Before extensions run, an
-    Acts as you or Unrestricted grant recorded here that nobody this site trusts vouches
+    Acts as you grant recorded here that nobody this site trusts vouches
     for is withdrawn, audited and logged. It then needs granting again, under the same
     rule. That covers an upgrade from before 335. Taking a signer off Trusted signers,
     in Settings or with `crombolo keys untrust`, runs the same check at once, so what it
@@ -2031,33 +2013,13 @@ each permission with the reason it needs it, and it is held to that.
     open to Settings access. A remote reaches them with "Install code on this site".
   - **One refusal** (`grantRefusal`, `grant-policy.ts`) answers the panel, the API, the
     command line and a remote, with the panel's words. The grant is audited with its
-    level: "granted Unrestricted: backoffice.code".
-  - **`CROMBOLO_UNRESTRICTED_EXTENSIONS=config`** keeps Unrestricted to the site's config:
-    the panel shows the `extensions` entry to add in place of the button, and every other
-    way of granting it is refused. It is an environment setting because a commit that
-    grants an extension should not also be able to lift the rule.
+    level: "granted Acts as you: user.delegate". `CROMBOLO_UNRESTRICTED_EXTENSIONS` is
+    retired with Unrestricted, and a start with it set says so.
   - **Never offered:** `users.write`, `extensions.install` and `extensions.grant`, each
     refused by name.
   - **Installed** shows each row's level; a version asking for more is "Off · asks for
     more", and its detail names the level it moved to.
 
-- **Back-office code** (story 320). Any back-office code needs `backoffice.code`:
-  - Its screens run in the back office's page as whoever is signed in, with
-    everything that person can do on the site. Unlike the server half, nothing
-    keeps them apart from it: the grant makes the authority visible, and does not
-    take it away.
-  - **Required both ways:** an extension with back-office code that does not ask
-    for it is refused, and so is one that asks for it with none.
-  - **Granted, never implied:** until it is granted, none of its back-office code is
-    built, served or in the back office's manifest.
-  - **Said wherever it is asked for:** in the Marketplace's install panel and
-    Installed, first and apart, as a warning (`BACKOFFICE_CODE_WARNING`). The warning
-    names the publisher and what its signature shows, and its own box must be ticked:
-    "I trust <publisher> to act as anyone signed in to this back office".
-    - `extension install` and `extension grant` print it, and at a terminal ask
-      y/N. From a script, `--grant backoffice.code` is the answer.
-    - The boot logs it for each extension the config grants it.
-    - A remote's grant check names it.
 - **The areas through `api`:** one capability calls the Management API, and the
   CMS's own back-office API, in this process:
   `bundle.api.get('management/api/v1/document/<key>')`, `post`, `put`, `delete`.
@@ -2555,6 +2517,10 @@ site rather than the screen that stored it.
 
 ### The screen's own view of the user
 
+Redirects describes its screens now (story 329), and no extension ships code for the
+back office (story 431). This part and the next are how a site's own back-office
+code (`docs/rendering.md`, "Staff screens") knows its user and calls its routes.
+
 The client half is an ordinary backoffice extension, so it uses the client's own
 mechanisms — there is nothing bundle-specific here.
 
@@ -2605,7 +2571,7 @@ const response = await fetch(`${base()}/rules`, {
 
 `base()` is read from `<base href>` rather than hard-coded, because the
 backoffice path is configurable (`CROMBOLO_BACKOFFICE_PATH`) and the plugin path
-moves with it — see `src/backoffice/redirects-client.js`.
+moves with it.
 
 The identity needs no passing: the cookie is the session, the server resolves it
 to a `Principal`, and the same `Principal` is what reaches the handler. There is

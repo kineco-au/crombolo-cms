@@ -1,8 +1,8 @@
 /**
  * Story 320: `crombolo extension migrate` rewrites a schema 4 extension to
- * schema 5's layout: its server code under `src/server/`, its back-office code
- * under `src/backoffice/`, its manifest and exports following, and
- * `backoffice.code` asked for with the reason given.
+ * the layout this release takes: its server code under `src/server/`, its manifest
+ * and exports following. One that runs its own code in the back office is refused,
+ * saying to describe its screens (story 431).
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -43,81 +43,44 @@ function schema4(
 const SCREEN = { type: 'dashboard', alias: 'Acme.Seo', name: 'SEO', element: 'plugin/seo.js' }
 
 describe('extension migrate', () => {
-  test('moves both halves, rewrites the manifest and an import that leaves its folder', () => {
+  test('moves its server half, rewriting the manifest and an import that leaves its folder', () => {
     const dir = schema4(
-      { server: 'seo', permissions: { 'content.read': 'Reads pages' }, extensions: [SCREEN] },
+      { server: 'seo', permissions: { 'content.read': 'Reads pages' } },
       {
         'src/index.ts':
           "import manifest from '../package.json' with { type: 'json' }\nimport { words } from './words.ts'\nexport const seo = () => ({ manifest, words })\n",
         'src/words.ts': "export const words = 'hi'\n",
-        'plugin/seo.js':
-          "import { call } from './client.js'\nexport default class extends HTMLElement {}\n",
-        'plugin/client.js': 'export const call = () => {}\n',
       },
       { exports: { '.': './src/index.ts' } },
     )
-    const plan = planMigration(dir, { reason: 'Shows the SEO report' })
+    const plan = planMigration(dir)
     expect(plan.problems).toEqual([])
     expect(plan.moves).toEqual([
       { from: 'src/index.ts', to: 'src/server/index.ts' },
       { from: 'src/words.ts', to: 'src/server/words.ts' },
-      { from: 'plugin/client.js', to: 'src/backoffice/client.js' },
-      { from: 'plugin/seo.js', to: 'src/backoffice/seo.js' },
     ])
     applyMigration(dir, plan)
 
     const json = readPackageJson(join(dir, 'package.json'))
     expect(json?.exports).toEqual({ '.': './src/server/index.ts' })
-    expect((json as { files: string[] }).files).toEqual(['NOTICE', 'src'])
     expect(json?.crombolo).toMatchObject({
       schemaVersion: 6,
-      extensions: [{ element: 'src/backoffice/seo.js' }],
-      permissions: { 'backoffice.code': 'Shows the SEO report', 'content.read': 'Reads pages' },
+      permissions: { 'content.read': 'Reads pages' },
     })
     expect(readFileSync(join(dir, 'src/server/index.ts'), 'utf8')).toContain("'../../package.json'")
-    // An import within the half that moved together stays as it was.
-    expect(readFileSync(join(dir, 'src/backoffice/seo.js'), 'utf8')).toContain("'./client.js'")
-    expect(existsSync(join(dir, 'plugin'))).toBe(false)
     expect(validateBundlePackage(json as never, dir)).toEqual([])
   })
 
-  test('a server half alone asks for nothing more; screens alone ask for backoffice.code', () => {
-    const server = schema4(
-      { server: 'seo', permissions: {} },
-      { 'src/index.ts': 'export const seo = () => ({})\n' },
-      { exports: './src/index.ts' },
-    )
-    const serverPlan = planMigration(server)
-    expect(serverPlan.problems).toEqual([])
-    expect(serverPlan.asksForBackOfficeCode).toBe(false)
-
-    const screens = schema4({ permissions: {}, extensions: [SCREEN] }, { 'plugin/seo.js': '' })
-    expect(planMigration(screens).problems.join()).toContain('give it with --reason')
-    expect(planMigration(screens, { reason: 'Shows it' }).asksForBackOfficeCode).toBe(true)
-  })
-
-  test('refuses a file both halves use, a list of permissions, and a package already at 5', () => {
-    const shared = schema4(
+  test('one that runs its own code in the back office is refused, saying to describe its screens (story 431)', () => {
+    const screens = schema4(
       { server: 'seo', permissions: {}, extensions: [SCREEN] },
-      {
-        'src/index.ts': "import { x } from './shared.ts'\nexport const seo = () => ({ x })\n",
-        'src/shared.ts': 'export const x = 1\n',
-        'plugin/seo.js': "import { x } from '../src/shared.ts'\nexport default x\n",
-      },
-      { exports: './src/index.ts' },
+      { 'plugin/seo.js': '' },
     )
-    const plan = planMigration(shared, { reason: 'Shows it' })
-    expect(plan.problems.join()).toContain('src/shared.ts is used by both')
+    const plan = planMigration(screens)
     expect(plan.moves).toEqual([])
+    expect(plan.problems.join()).toContain('it runs its own code in the back office (Acme.Seo)')
+    expect(plan.problems.join()).toContain('Describe each of its screens in its server half')
 
-    const listed = schema4({ server: 'seo', schemaVersion: 3, permissions: ['redirects.read'] }, {})
-    expect(planMigration(listed).problems.join()).toContain('give each its reason')
-
-    const current = schema4({ schemaVersion: 6, permissions: {} }, {})
-    expect(planMigration(current).problems.join()).toContain('already written for bundle schema 6')
-  })
-
-  test('takes schema 5 to 6 with nothing moved, naming entries that could be screens (story 329)', () => {
     const five = schema4(
       {
         server: 'seo',
@@ -127,11 +90,26 @@ describe('extension migrate', () => {
       },
       {},
     )
+    expect(planMigration(five).problems.join()).toContain('"backoffice.code" out of its manifest')
+  })
+
+  test('refuses a list of permissions, and a package already at 6', () => {
+    const listed = schema4({ server: 'seo', schemaVersion: 3, permissions: ['redirects.read'] }, {})
+    expect(planMigration(listed).problems.join()).toContain('give each its reason')
+
+    const current = schema4({ schemaVersion: 6, permissions: {} }, {})
+    expect(planMigration(current).problems.join()).toContain('already written for bundle schema 6')
+  })
+
+  test('takes schema 5 to 6 with nothing moved', () => {
+    const five = schema4(
+      { server: 'seo', schemaVersion: 5, permissions: { 'content.read': 'Reads pages' } },
+      {},
+    )
     const plan = planMigration(five)
     expect(plan.problems).toEqual([])
     expect(plan.moves).toEqual([])
     expect((plan.json.crombolo as { schemaVersion: number }).schemaVersion).toBe(6)
-    expect(plan.couldBeScreens).toEqual(['Acme.Seo'])
   })
 
   test('a signature no longer matches, so it is removed', () => {

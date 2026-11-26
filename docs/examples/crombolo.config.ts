@@ -237,7 +237,6 @@ export default defineConfig({
   trustedKeys: [{ name: 'Riverside CI', publicKey: 'MCowBQYDK2VwAyEA…', kind: 'site' }],
   trustedSources: [{ name: 'Our extensions', source: 'github.com/riverside/*' }],
   bundlePolicy: { signatures: 'required', sources: ['github.com/riverside/*'] },
-  unrestrictedExtensions: 'config', // CROMBOLO_UNRESTRICTED_EXTENSIONS
   hostProvided: [],
   applyBundleContentOnInstall: true,
   runtimeInstalls: false, // CROMBOLO_RUNTIME_INSTALLS

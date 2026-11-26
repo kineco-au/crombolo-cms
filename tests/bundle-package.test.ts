@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import {
   CORE_PACKAGE,
   declaresBundle,
-  describePermissions,
   discoverBundles,
   type PackageJson,
   peerRangeProblem,
@@ -184,20 +183,24 @@ describe('the layout (story 320)', () => {
       { extensions: [screen], permissions, ...extra },
     )
 
-  test('takes server code under src/server and back-office code under src/backoffice', () => {
-    const json = withScreen({ 'backoffice.code': 'Shows its dashboard' })
+  test('takes server code under src/server', () => {
+    const json = valid({ exports: { '.': './src/server/index.ts' } })
+    const dir = packageAt(json, { 'src/server/index.ts': 'export const tasks = () => ({})' })
+    expect(validateBundlePackage(json, dir)).toEqual([])
+  })
+
+  test('refuses its own back-office code, and the retired backoffice.code (story 431)', () => {
+    const json = withScreen({})
     const dir = packageAt(json, {
       'src/server/index.ts': 'export const tasks = () => ({})',
       'src/backoffice/d.ts': 'export default class {}',
     })
-    expect(validateBundlePackage(json, dir)).toEqual([])
-  })
-
-  test('refuses back-office code that does not ask for backoffice.code, and the ask without the code', () => {
-    expect(problemsOf(withScreen({}))).toContain('does not ask for "backoffice.code"')
+    expect(problemsOf(json, dir)).toContain(
+      'it has its own back-office code (src/backoffice/d.ts), and extensions no longer run their own code in the back office',
+    )
     expect(
       problemsOf(valid({}, { permissions: { 'backoffice.code': 'Shows nothing' } })),
-    ).toContain('has no back-office code')
+    ).toContain('"backoffice.code" is retired')
   })
 
   test('refuses a module outside src/backoffice, or one that is not a file in the package', () => {
@@ -207,7 +210,7 @@ describe('the layout (story 320)', () => {
           {},
           {
             extensions: [{ ...screen, element }],
-            permissions: { 'backoffice.code': 'Shows its dashboard' },
+            permissions: {},
           },
         ),
       )
@@ -230,13 +233,5 @@ describe('the layout (story 320)', () => {
     const problems = problemsOf(valid({}, { schemaVersion: 4 }))
     expect(problems).toContain('bundle schema 4')
     expect(problems).toContain('crombolo extension migrate')
-  })
-
-  test('says what backoffice.code grants, with its warning', () => {
-    const [described] = describePermissions([
-      { permission: 'backoffice.code', reason: 'Shows its dashboard' },
-    ])
-    expect(described?.allows).toBe('Runs in your back office as each person using it')
-    expect(described?.warning).toContain('Only install this from a publisher you trust')
   })
 })

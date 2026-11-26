@@ -32,11 +32,13 @@ export interface OidcProviderOptions {
   clientSecret?: string
   scopes: readonly string[]
   claims: OidcClaims
+  /** The claim the account is linked by; `sub` when unset. */
+  subject?: string
 }
 
 /** Who the provider says signed in. */
 export interface OidcIdentity {
-  /** The provider's stable id for the account (`sub`). */
+  /** The provider's stable id for the account: `sub`, or the claim the provider names. */
   subject: string
   email: string | undefined
   emailVerified: boolean
@@ -53,6 +55,7 @@ interface Discovery {
   authorization_endpoint: string
   token_endpoint: string
   jwks_uri: string
+  end_session_endpoint?: string
 }
 
 /** What a sign-in carries while the browser is away at the provider. */
@@ -62,6 +65,8 @@ export interface OidcFlowState {
   nonce: string
   verifier: string
   returnUrl: string
+  /** Which of the provider's flows was started (story 191); its sign-in when absent. */
+  flow?: string
 }
 
 const DISCOVERY_TTL_MS = 60 * 60 * 1000
@@ -69,8 +74,25 @@ const FLOW_SECONDS = 10 * 60
 
 export class OidcError extends Error {}
 
-const stringClaim = (claims: JWTPayload, name: string): string | undefined => {
+/** The provider answered with an error of its own, for the flow that was started. */
+export class OidcRefusal extends OidcError {
+  constructor(
+    message: string,
+    readonly error: string,
+    readonly description: string,
+  ) {
+    super(message)
+  }
+}
+
+/** A claim's value; a list's first. */
+export const claimValue = (claims: JWTPayload, name: string): unknown => {
   const value = claims[name]
+  return Array.isArray(value) ? value[0] : value
+}
+
+const stringClaim = (claims: JWTPayload, name: string): string | undefined => {
+  const value = claimValue(claims, name)
   return typeof value === 'string' && value ? value : undefined
 }
 
@@ -112,6 +134,7 @@ export class OidcClient {
   async start(
     redirectUri: string,
     returnUrl: string,
+    flowName?: string,
   ): Promise<{ url: string; flow: OidcFlowState }> {
     const { authorization_endpoint } = await this.discovery()
     const flow: OidcFlowState = {
@@ -120,6 +143,7 @@ export class OidcClient {
       nonce: generateToken(),
       verifier: generateToken(),
       returnUrl,
+      ...(flowName ? { flow: flowName } : {}),
     }
     const url = new URL(authorization_endpoint)
     url.searchParams.set('response_type', 'code')
@@ -133,18 +157,32 @@ export class OidcClient {
     return { url: url.href, flow }
   }
 
+  /** Where to send the browser to end the provider's own session, if it says. */
+  async signOutUrl(returnTo: string): Promise<string | undefined> {
+    const { end_session_endpoint } = await this.discovery()
+    if (typeof end_session_endpoint !== 'string') return undefined
+    const url = new URL(end_session_endpoint)
+    url.searchParams.set('client_id', this.options.clientId)
+    url.searchParams.set('post_logout_redirect_uri', returnTo)
+    return url.href
+  }
+
   /**
    * The provider's answer, checked against the flow that started it, turned
    * into a verified identity. Throws `OidcError` with a reason fit to log.
    */
   async finish(callback: URL, flow: OidcFlowState, redirectUri: string): Promise<OidcIdentity> {
-    const error = callback.searchParams.get('error')
-    if (error)
-      throw new OidcError(
-        `${this.options.name} refused the sign-in: ${callback.searchParams.get('error_description') ?? error}`,
-      )
     if (callback.searchParams.get('state') !== flow.state)
       throw new OidcError('the sign-in came back with a state it did not start with')
+    const error = callback.searchParams.get('error')
+    if (error) {
+      const description = callback.searchParams.get('error_description') ?? ''
+      throw new OidcRefusal(
+        `${this.options.name} refused the sign-in: ${description || error}`,
+        error,
+        description,
+      )
+    }
     const code = callback.searchParams.get('code')
     if (!code) throw new OidcError(`${this.options.name} sent no code`)
 
@@ -185,10 +223,11 @@ export class OidcClient {
       )
     }
     if (claims.nonce !== nonce) throw new OidcError('the ID token was not issued for this sign-in')
-    if (!claims.sub) throw new OidcError(`the ID token from ${this.options.name} names no subject`)
+    const subject = stringClaim(claims, this.options.subject ?? 'sub')
+    if (!subject) throw new OidcError(`the ID token from ${this.options.name} names no subject`)
     const verified = claims.email_verified
     return {
-      subject: claims.sub,
+      subject,
       email: stringClaim(claims, this.options.claims.email)?.toLowerCase(),
       emailVerified: verified === true || verified === 'true',
       name: stringClaim(claims, this.options.claims.name),
@@ -221,6 +260,7 @@ export async function readFlowState(
     const flow = payload as unknown as OidcFlowState
     for (const field of ['provider', 'state', 'nonce', 'verifier', 'returnUrl'] as const)
       if (typeof flow[field] !== 'string') return undefined
+    if (flow.flow !== undefined && typeof flow.flow !== 'string') return undefined
     return flow
   } catch {
     return undefined

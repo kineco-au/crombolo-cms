@@ -9,6 +9,7 @@ import {
   currentCulture,
   markPersonal,
   type QueryCaller,
+  type QueryUser,
   type RequestMember,
   type SiteQueries,
 } from '@crombolo/render'
@@ -82,7 +83,7 @@ type Member = RequestMember | undefined
 export function createSiteQueries(options: {
   queries: SiteQueryModules | undefined
   chain: TablesChain | undefined
-}): (member: Member | (() => Promise<Member>)) => SiteQueries {
+}): (member: Member | (() => Promise<Member>), user?: QueryUser) => SiteQueries {
   const modules = Object.entries(options.queries ?? {})
   let handle: TablesDatabase | undefined
   const database = () => {
@@ -91,9 +92,13 @@ export function createSiteQueries(options: {
     return handle
   }
 
-  return (member) => {
+  return (member, user) => {
     let found: Promise<Member> | undefined
+    const asUser = user
+      ? Object.freeze({ ...user, groups: Object.freeze([...user.groups]) as string[] })
+      : undefined
     const caller: QueryCaller = Object.freeze({
+      user: async () => asUser,
       member: async () => {
         markPersonal()
         found ??= typeof member === 'function' ? member() : Promise.resolve(member)

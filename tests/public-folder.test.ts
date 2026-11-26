@@ -97,6 +97,15 @@ async function site(config: Partial<CromboloConfig> = {}, root = folder()) {
 const control = (response: Response) => response.headers.get('cache-control')
 
 describe.each(['all', 'web'] as const)('a public file on an `%s` node', (role) => {
+  test('one that opens as a page shows, sandboxed, and an image is not (story 435)', async () => {
+    const { visit } = await site({ role })
+    const page = await visit('/google1234.html')
+    expect(page.status).toBe(200)
+    expect(await page.text()).toBe('<p>verified</p>')
+    expect(page.headers.get('content-security-policy')).toBe('sandbox')
+    expect((await visit('/images/logo.png')).headers.get('content-security-policy')).toBeNull()
+  })
+
   test('answers at its path, with its type, an ETag and a conditional request', async () => {
     const { visit } = await site({ role })
     const logo = await visit('/images/logo.png')

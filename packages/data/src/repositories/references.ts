@@ -107,6 +107,8 @@ export class ReferenceRepository {
       .selectFrom('node')
       .select('id')
       .where('unique_id', '=', normaliseUuid(key))
+      // Story 436: Shared's item under the key first.
+      .orderBy((eb) => eb.case().when('workspace_id', 'is', null).then(0).else(1).end())
       .execute()
     const selfId = self[0]?.id
     const ids = (await this.#referencingIds([key])).get(normaliseUuid(key)) ?? []
@@ -127,6 +129,7 @@ export class ReferenceRepository {
       .selectFrom('node')
       .select(['id', 'path'])
       .where('unique_id', '=', normaliseUuid(key))
+      .orderBy((eb) => eb.case().when('workspace_id', 'is', null).then(0).else(1).end())
       .execute()
     const node = self[0]
     if (!node) return { total: 0, items: [] }
@@ -163,6 +166,7 @@ export class ReferenceRepository {
         .selectFrom('node')
         .select('id')
         .where('unique_id', '=', key)
+        .orderBy((eb) => eb.case().when('workspace_id', 'is', null).then(0).else(1).end())
         .execute()
       if (rows[0]) selfIds.set(key, Number(rows[0].id))
     }

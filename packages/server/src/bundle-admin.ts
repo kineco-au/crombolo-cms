@@ -58,7 +58,7 @@ export interface BundleActor {
   id: string | null
   name: string
   email: string | null
-  /** An administrator: only one grants Acts as you and Unrestricted (story 324). */
+  /** An administrator: only one grants Acts as you (story 324). */
   isAdmin: boolean
   source: 'request' | 'cli'
   ipAddress?: string | null
@@ -545,7 +545,6 @@ export function createBundleAdmin(options: {
         grants: asks.length > 0,
         isAdmin: actor.isAdmin,
         provenance,
-        from: config.unrestrictedExtensions ?? 'backoffice',
       })
       if (refused) return { status: 403, ok: false, message: `${pkg.name}: ${refused}` }
       const delegateKey = asks.includes(USER_DELEGATE)
@@ -589,7 +588,6 @@ export function createBundleAdmin(options: {
             grants: true,
             isAdmin: actor.isAdmin,
             provenance,
-            from: config.unrestrictedExtensions ?? 'backoffice',
           })
           if (refused) return { status: 403, ok: false, message: `${pkg.name}: ${refused}` }
         }
@@ -645,7 +643,6 @@ export async function localBundleAdmin(
     installs: true,
     policy: config.bundlePolicy,
     applyContentOnInstall: true,
-    unrestrictedFrom: config.unrestrictedExtensions,
     contentApplied: async (packageName) =>
       (await new TransferRunRepository(db).appliedForPackage(packageName))?.packageVersion ?? null,
     applyContent: async (packageName) => {

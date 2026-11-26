@@ -29,6 +29,7 @@ export type {
   BundleDocuments,
   BundleEventHandler,
   BundleEvents,
+  BundleFiles,
   BundleForms,
   BundleHost,
   BundleIdentityProviders,

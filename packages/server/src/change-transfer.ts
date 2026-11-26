@@ -90,6 +90,28 @@ export type SiteStageOutcome =
     }
   | { ok: false; status: number; code: string; title: string; detail?: string }
 
+/** Story 434: the step staging a page was at, said when it fails. */
+type StagingStep =
+  | 'read'
+  | 'make'
+  | 'change'
+  | 'publish'
+  | 'unpublish'
+  | 'move'
+  | 'place'
+  | 'delete'
+
+const STEP_WORDS: Record<StagingStep, string> = {
+  read: 'staged',
+  make: 'made',
+  change: 'changed',
+  publish: 'published',
+  unpublish: 'unpublished',
+  move: 'moved',
+  place: 'put in its place among its siblings',
+  delete: 'deleted',
+}
+
 /** A bundle's section path as a workspace keeps its files; undefined for one not staged. */
 export function siteFileKey(path: string): string | undefined {
   if (path.startsWith('schema/') || path.startsWith('components/') || path.startsWith('scripts/'))
@@ -699,7 +721,6 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       await options.schema()?.snapshot(workspace.id)
     }
     const store = new WorkspaceFileRepository(db)
-    let schemaTouched = false
     for (const { change, media } of todo) {
       const missing = change.depends.filter(
         (d) => !known.has(normaliseUuid(d)) && !coming.has(normaliseUuid(d)),
@@ -717,12 +738,15 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         return true
       }
 
+      let typesChanged = false
       for (const file of change.files) {
         const now = (await store.files(workspace.id, file.path)).get(file.path) ?? null
         if (now !== file.before && missing.length > 0) moved(file.path)
         await store.rebase(workspace.id, file.path, file.before, file.after)
-        if (file.path.startsWith('schema/')) schemaTouched = true
+        if (file.path.startsWith('schema/')) typesChanged = true
       }
+      // Story 434: the types a change makes are there before its pages, which may be of them.
+      if (typesChanged) await options.schema()?.build({ id: workspace.id, key: workspace.key })
       for (const [url, bytes] of media) {
         const key = options.media.key(url)
         if (key) await options.media.store.put(key, bytes)
@@ -747,22 +771,24 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
               ...[...deleted.values()].sort((a, b) => depth(a) - depth(b)),
             ]
           : change.pages
-      for (const page of ordered)
+      for (const page of ordered) {
+        const step: { at: StagingStep } = { at: 'read' }
         try {
-          await stagePage(workspace, page, conflict, moved)
+          await stagePage(workspace, page, conflict, moved, step)
         } catch (error) {
           // Story 421: a page that cannot be staged is a conflict naming it, never a 500.
+          // Story 434: saying which step failed, "here already" only for making it.
           const label = `"${page.after?.name ?? page.before?.name ?? page.key}"`
           conflict(
             label,
-            /unique|duplicate/i.test(String(error))
+            step.at === 'make' && /unique|duplicate/i.test(String(error))
               ? `${label} is here already under its key, so it could not be made again.`
-              : `${label} could not be staged here.`,
+              : `${label} could not be ${STEP_WORDS[step.at]} here.`,
           )
         }
+      }
       for (const order of change.orders ?? []) await stageOrder(workspace, order, conflict)
     }
-    if (schemaTouched) await options.schema()?.build({ id: workspace.id, key: workspace.key })
     const staged = [...(workspace.stagedChanges ?? [])]
     for (const { change } of todo) {
       // Story 395: a schedule is set on Shared by the merge (story 423), which drops a workspace's.
@@ -793,7 +819,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     const typeRows = await db.q
       .selectFrom('content_type as t')
       .innerJoin('node as n', 'n.id', 't.node_id')
-      .select(['n.unique_id', 't.alias', 'n.workspace_id'])
+      // A workspace's type is marked on its type row; its node row is Shared's (story 434).
+      .select(['n.unique_id', 't.alias', 't.workspace_id'])
       .execute()
     const here = typeRows.filter(
       (r) => r.workspace_id === null || (into !== undefined && Number(r.workspace_id) === into.id),
@@ -845,11 +872,15 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
   }
 
   /** Story 403: the page's type as this site keys it: by its key, or else by its alias. */
-  async function typeKeyHere(page: ChangeBundlePage, workspace: Workspace): Promise<string> {
+  async function typeKeyHere(
+    page: ChangeBundlePage,
+    workspace: Workspace,
+  ): Promise<string | undefined> {
     const rows = await db.q
       .selectFrom('content_type as t')
       .innerJoin('node as n', 'n.id', 't.node_id')
-      .select(['n.unique_id', 't.alias', 'n.workspace_id'])
+      // A workspace's type is marked on its type row; its node row is Shared's (story 434).
+      .select(['n.unique_id', 't.alias', 't.workspace_id'])
       .where((eb) =>
         eb.or([
           eb('n.unique_id', '=', normaliseUuid(page.contentTypeKey)),
@@ -864,7 +895,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       (r) => normaliseUuid(String(r.unique_id)) === normaliseUuid(page.contentTypeKey),
     )
     const found = byKey ?? usable.find((r) => String(r.alias) === page.contentTypeAlias)
-    return found ? String(found.unique_id) : page.contentTypeKey
+    // Story 434: never another workspace's, whose discard it would then stand in the way of.
+    return found ? String(found.unique_id) : undefined
   }
 
   async function stagePage(
@@ -872,7 +904,12 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     page: ChangeBundlePage,
     conflict: (item: string, says: string) => void,
     moved: (item: string) => boolean,
+    step: { at: StagingStep } = { at: 'read' },
   ) {
+    const doing = <T>(at: StagingStep, run: () => Promise<T>): Promise<T> => {
+      step.at = at
+      return run()
+    }
     const shared = repo(page.kind)
     const here = repo(page.kind, workspace.id)
     // Story 421: the workspace first, which holds what changes staged before this one made.
@@ -894,6 +931,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         return
       }
       // Story 430: a change destroys nothing; a blueprint has no bin.
+      step.at = 'delete'
       if (page.kind === 'blueprint') await here.delete(page.key)
       else await here.moveToRecycleBin(page.key)
       return
@@ -909,16 +947,25 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         conflict(label, `${label} was made here too, as "${clash}", at the same address.`)
         return
       }
+      const contentTypeKey = await typeKeyHere(page, workspace)
+      if (!contentTypeKey) {
+        conflict(
+          label,
+          `${label} needs the content type ${page.contentTypeAlias ?? page.contentTypeKey}, which this site does not have: stage the change that makes it first.`,
+        )
+        return
+      }
+      step.at = 'make'
       await here.create({
         key: page.key,
-        contentTypeKey: await typeKeyHere(page, workspace),
+        contentTypeKey,
         componentKey: page.componentKey,
         parentKey: page.parentKey,
         values: after.values,
         variants: variantsOf(after),
       })
-      if (after.published) await here.publish(page.key, null)
-      await placeAmong(here, page)
+      if (after.published) await doing('publish', () => here.publish(page.key, null))
+      await doing('place', () => placeAmong(here, page))
       return
     }
 
@@ -932,8 +979,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         conflict(label, `${label} is in the recycle bin here, and so is the page it belongs under.`)
         return
       }
-      await here.move(page.key, page.parentKey)
-      await placeAmong(here, page)
+      await doing('move', () => here.move(page.key, page.parentKey))
+      await doing('place', () => placeAmong(here, page))
       if (page.restored) return
     }
     const now = (await here.byKey(page.key)) ?? target
@@ -968,6 +1015,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
             v.name,
         ),
       }))
+      step.at = 'change'
       await here.update({
         key: page.key,
         contentTypeKey: now.contentTypeKey,
@@ -979,17 +1027,18 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     }
     if (!binned && page.beforeParentKey !== undefined && now.parentKey !== page.parentKey) {
       if (now.parentKey === page.beforeParentKey) {
-        await here.move(page.key, page.parentKey)
-        await placeAmong(here, page)
+        await doing('move', () => here.move(page.key, page.parentKey))
+        await doing('place', () => placeAmong(here, page))
       } else {
         moved(label)
         conflict(label, `${label} was moved here since.`)
       }
     }
-    if ((taken.size > 0 || binned) && after.published) await here.publish(page.key, null)
+    if ((taken.size > 0 || binned) && after.published)
+      await doing('publish', () => here.publish(page.key, null))
     // Story 411: unpublished by the change, and published here, it is unpublished here too.
     if (page.before?.published && !after.published && now.published)
-      await here.unpublish(page.key, null)
+      await doing('unpublish', () => here.unpublish(page.key, null))
   }
 
   /**
@@ -1141,6 +1190,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
             .selectFrom('node')
             .select('id')
             .where('unique_id', '=', page.parentKey as string)
+            // Story 436: Shared's, as the siblings it is compared with are.
+            .where('workspace_id', 'is', null)
             .executeTakeFirst()
         )?.id
       : -1

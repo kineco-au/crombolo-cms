@@ -87,7 +87,8 @@ export interface ManifestSet {
 export function collectManifests(
   paths: BackOfficePaths,
   extensions: readonly InstalledExtension[] = [],
-  options: { omit?: readonly string[] } = {},
+  /** `more` are the site's own (story 431), loaded as an extension's are. */
+  options: { omit?: readonly string[]; more?: readonly PackageManifest[] } = {},
 ): ManifestSet {
   const omit = new Set(options.omit ?? [])
   const all = [...discoverManifests(paths.vendorDir), ...frameworkManifests(paths)].filter(
@@ -95,10 +96,10 @@ export function collectManifests(
   )
   // A described screen is drawn by the back office's own element, wherever it is mounted.
   all.push(
-    ...extensions.map(
-      (extension) =>
+    ...[...extensions.map((extension) => extension.manifest), ...(options.more ?? [])].map(
+      (manifest) =>
         JSON.parse(
-          JSON.stringify(extension.manifest).replaceAll(
+          JSON.stringify(manifest).replaceAll(
             `"${PLUGIN_PATH_PLACEHOLDER}/`,
             `"${paths.pluginPath}/`,
           ),

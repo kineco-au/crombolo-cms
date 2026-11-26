@@ -1,5 +1,5 @@
 /**
- * Story 335: an extension granted Acts as you or Unrestricted keeps that only
+ * Story 335: an extension granted Acts as you keeps that only
  * while someone this site trusts vouches for it. Checked at every start, before
  * extensions run, so an upgrade switches off what no longer qualifies; and as a
  * signer is taken off Trusted signers, so what it vouched for stops at once.
@@ -58,7 +58,7 @@ export async function switchOffUntrusted(
       action: 'Disable',
       entityType: 'Bundle',
       entityName: `${pkg.packageName}@${pkg.version}`,
-      detail: `switched off ${when === 'start' ? 'at start' : 'as its signer was taken off Trusted signers'}: it acts as you or runs unrestricted, and is ${why}; it needs granting again`,
+      detail: `switched off ${when === 'start' ? 'at start' : 'as its signer was taken off Trusted signers'}: it acts as you, and is ${why}; it needs granting again`,
       source: when === 'start' ? 'boot' : 'request',
       userKey: null,
       userName: SWITCHED_OFF_BY,
@@ -66,7 +66,7 @@ export async function switchOffUntrusted(
       forwardedFor: null,
     })
     logger('server').warn(
-      '{extension} is switched off: it acts as you or runs unrestricted, and is {why}. Trust its signer in Settings → Trusted signers, then grant it again.',
+      '{extension} is switched off: it acts as you, and is {why}. Trust its signer in Settings → Trusted signers, then grant it again.',
       { extension: pkg.packageName, why },
     )
     switched.push(item.id)

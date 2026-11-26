@@ -203,6 +203,8 @@ export interface CheckOptions {
   adoptUsers?: boolean
   /** The bundle's members, member groups, users and user groups are left out entirely. */
   excludePeople?: boolean
+  /** Story 432: the member identity providers this site declares, for the links people carry. */
+  memberProviders?: readonly string[]
   /** Story 404: the site's users are managed outside it, so a bundle carrying users is refused. */
   usersManaged?: boolean
   /** Story 405: the site's user groups are defined outside it, so a bundle carrying one is refused. */
@@ -969,6 +971,7 @@ export async function checkBundle(
         resolutions,
         resolveAll: options.resolveAll,
         adoptUsers: options.adoptUsers,
+        ...(options.memberProviders ? { memberProviders: options.memberProviders } : {}),
         carried: new Map(
           set.nodes.flatMap((n) =>
             n.kind === 'document' || n.kind === 'element'

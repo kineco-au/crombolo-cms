@@ -11,6 +11,7 @@ import {
   LogSearchRepository,
   MIGRATION_STATE_KEY,
   migrate,
+  nodeKeyDefinition,
   pendingMigrations,
   resolveDialectName,
   WORKSPACE_COLUMNS,
@@ -115,6 +116,22 @@ export async function migratedDb(): Promise<Db> {
   return db
 }
 
+/** Undoes migration 101: a key unique across the site again (story 436). */
+export async function undoKeysPerWorkspace(db: Db): Promise<void> {
+  for (const index of ['ux_node_key_shared', 'ux_node_key_workspace', 'ix_node_unique_id'])
+    await db.exec(`DROP INDEX IF EXISTS ${index}`)
+  if (db.dialect.name === 'postgres')
+    await db.exec('ALTER TABLE node ADD CONSTRAINT node_unique_id_key UNIQUE (unique_id)')
+  else {
+    const rebuild = () =>
+      db.transaction(
+        (tx) => tx.rebuildTable?.('node', nodeKeyDefinition(true)) ?? Promise.resolve(),
+      )
+    await (db.withoutForeignKeys ? db.withoutForeignKeys(rebuild) : rebuild())
+  }
+  await db.exec("DELETE FROM migration_history WHERE name = 'KeysPerWorkspace'")
+}
+
 /** Undoes migration 050, media permissions: its index before its columns, then its tables. */
 export async function undoMediaAccess(db: Db): Promise<void> {
   await undoMediaMemberUploads(db)
@@ -134,6 +151,13 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 102, service accounts' secrets (story 433): columns on a table that stays.
+  for (const column of ['last_used_at', 'old_secret_hash', 'old_secret_until'])
+    await db.exec(`ALTER TABLE user_client_credential DROP COLUMN ${column}`)
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddServiceAccountSecrets'")
+  // 101, a key once in Shared and once per workspace (story 436): its indexes, and the
+  // site-wide UNIQUE back, rebuilding SQLite's node with foreign keys off, as the step does.
+  await undoKeysPerWorkspace(db)
   // 100, Users in Settings (story 429): grants only, which a replay adds once.
   await db.exec("DELETE FROM migration_history WHERE name = 'PutUsersInSettings'")
   // 099, what a workspace is for: a column on a table that goes.

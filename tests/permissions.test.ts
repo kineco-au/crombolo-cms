@@ -215,6 +215,8 @@ describe('the media verbs (story 088)', () => {
       'AddWorkspacePlaces',
       'AddWorkspaceDescription',
       'PutUsersInSettings',
+      'KeysPerWorkspace',
+      'AddServiceAccountSecrets',
     ])
     const held = async (key: string) =>
       (

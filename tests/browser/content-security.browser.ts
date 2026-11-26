@@ -1,8 +1,8 @@
 /**
  * The back office's content security policy (story 313): the back office works
- * under it with nothing blocked, a page's request to an origin no granted
- * extension declared is blocked by the browser, and one the browser site's
- * extension declares is not.
+ * under it with nothing blocked, and a page's request to another origin is blocked
+ * by the browser, even one a granted extension declares: no extension's code runs
+ * in the back office (story 431), so its origins are its server half's.
  */
 import type { Page } from '@playwright/test'
 import { expect, settle, signIn, test } from './fixtures.ts'
@@ -33,7 +33,7 @@ test('the back office runs under its policy with nothing blocked', async ({ page
   }
 })
 
-test('a request to an undeclared origin is blocked; a granted extension’s origin is not', async ({
+test('a request to another origin is blocked, a granted extension’s too', async ({
   page,
   diagnostics,
 }) => {
@@ -51,6 +51,11 @@ test('a request to an undeclared origin is blocked; a granted extension’s orig
       }
     }, url)
   expect(await attempt('https://elsewhere.crombolo.test/collect')).toBe('failed')
-  await attempt('https://notes.crombolo.test/notes')
-  await expect.poll(violations).toEqual(['connect-src https://elsewhere.crombolo.test/collect'])
+  expect(await attempt('https://notes.crombolo.test/notes')).toBe('failed')
+  await expect
+    .poll(violations)
+    .toEqual([
+      'connect-src https://elsewhere.crombolo.test/collect',
+      'connect-src https://notes.crombolo.test/notes',
+    ])
 })

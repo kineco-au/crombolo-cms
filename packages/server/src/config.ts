@@ -23,7 +23,6 @@ import {
 import type { ServerBundle } from './bundles.ts'
 import type { EmailPort } from './email.ts'
 import type { GitConfig } from './git-routes.ts'
-import { type UnrestrictedFrom, unrestrictedFrom } from './grant-policy.ts'
 import { checkHost, type HostConfig } from './host-token.ts'
 import {
   checkIdentityProviders,
@@ -37,6 +36,7 @@ import type { JobSchedule } from './owner-jobs.ts'
 import type { ProvenancePolicy, SignaturePolicy } from './provenance.ts'
 import type { SchemaStore } from './schema-store.ts'
 import { setting } from './settings.ts'
+import type { SiteBackOfficeConfig } from './site-backoffice.ts'
 import type { SiteEventHandler } from './site-events.ts'
 import type { SiteDatabaseConfig, SiteQueryModules } from './site-queries.ts'
 import type { TelemetryOptions } from './telemetry.ts'
@@ -438,6 +438,12 @@ export interface CromboloConfig {
   actions?: Record<string, Record<string, unknown>>
   /** How long a route handler may take before it answers 504; 0 for no limit. */
   routeTimeoutMs: number
+  /**
+   * The site's own back-office sections (story 431): places, each a menu of screens
+   * the site's back-office code draws, and routes given `site()` as the signed-in
+   * user. docs/rendering.md, "Staff screens".
+   */
+  backoffice?: SiteBackOfficeConfig
   /** Requests a minute each caller may make to the site's routes, on each server; 0 for no limit. */
   routeRateLimitPerMinute: number
   /** Where `schema/*.toml` lives; sync is skipped when the directory is absent. */
@@ -794,6 +800,15 @@ export interface CromboloConfig {
    */
   content?: { actAs?: string }
   /**
+   * `site().members` (story 207): the client id of the API user jobs and event
+   * handlers act as, and the member groups site code may change, by name: those a
+   * member may join or leave, and those jobs and staff may change too.
+   */
+  members?: {
+    actAs?: string
+    groups?: { selfService?: readonly string[]; managed?: readonly string[] }
+  }
+  /**
    * Handlers for content events, by the names webhooks use (story 298), each run
    * as a site job on a node that owns writes: `(event, { db, site, job })`.
    * docs/rendering.md, "Content events".
@@ -854,13 +869,6 @@ export interface CromboloConfig {
    * `CROMBOLO_BUNDLE_SIGNATURES` and `CROMBOLO_BUNDLE_SOURCES`.
    */
   bundlePolicy: ProvenancePolicy
-  /**
-   * Where an Unrestricted extension may be granted from (story 324): the back
-   * office, by an administrator, or only the site's config, so a commit someone
-   * reviews is the only way. `CROMBOLO_UNRESTRICTED_EXTENSIONS`, `backoffice`
-   * unless it says `config`.
-   */
-  unrestrictedExtensions: UnrestrictedFrom
   /**
    * Where the Packages section's Marketplace sends someone browsing for
    * extensions. Never framed — npm refuses to be framed — so the native view
@@ -1263,7 +1271,6 @@ export function loadConfig(
     applyBundleContentOnInstall: setting('CROMBOLO_APPLY_BUNDLE_CONTENT') !== 'false',
     // Resolved again below, once it is known whether a store was configured.
     runtimeInstalls: setting('CROMBOLO_RUNTIME_INSTALLS') !== 'false',
-    unrestrictedExtensions: unrestrictedFrom(setting('CROMBOLO_UNRESTRICTED_EXTENSIONS')),
     bundlePolicy: {
       signatures: bundleSignatures(setting('CROMBOLO_BUNDLE_SIGNATURES')),
       sources: (setting('CROMBOLO_BUNDLE_SOURCES') ?? '')
@@ -1532,7 +1539,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.80.1'
+export const VERSION = '0.81.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */

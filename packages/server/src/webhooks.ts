@@ -919,6 +919,8 @@ async function itemFacts(
       'd.original_parent_id as original_parent_id',
     ])
     .where('n.unique_id', '=', key)
+    // Story 436: Shared's item under the key first.
+    .orderBy((eb) => eb.case().when('n.workspace_id', 'is', null).then(0).else(1).end())
     .execute()
   const row = rows[0]
   if (!row) return undefined

@@ -5,13 +5,15 @@
  * links or creates their account, makes their groups follow the provider, and
  * ends exactly as a password sign-in does. docs/operations.md.
  *
- *   GET {base}/{provider}?returnUrl=…   leave for the provider
+ *   GET {base}/{provider}?returnUrl=…   leave for the provider (`flow=` another of its flows)
  *   GET {base}/{provider}/callback      come back from it
  */
 import {
   OidcClient,
   OidcError,
   type OidcIdentity,
+  type OidcProviderOptions,
+  OidcRefusal,
   readCookie,
   readFlowState,
   serializeCookie,
@@ -25,7 +27,7 @@ import {
   ensureKeyValue,
   externalLoginProvider,
 } from '@crombolo/data'
-import type { IdentityProvider } from './identity-providers.ts'
+import { flowOf, type IdentityProvider } from './identity-providers.ts'
 import { originOf } from './seo.ts'
 
 /** A member or user, as far as signing in is concerned. */
@@ -108,10 +110,17 @@ export interface ExternalSignInAudience {
     groups: string[],
   ): Promise<ExternalAccount>
   setGroups(account: ExternalAccount, groups: string[]): Promise<void>
+  /** Brings an existing account's properties to what the provider's claims say (story 191). */
+  setProperties?(
+    account: ExternalAccount,
+    identity: OidcIdentity,
+    provider: IdentityProvider,
+  ): Promise<void>
   /** Signs the account in: the cookies to set, or why it may not. */
   signIn(
     account: ExternalAccount,
     request: Request,
+    provider: IdentityProvider,
   ): Promise<{ cookies: string[] } | { refused: string }>
   /** Where a sign-in goes back to when it fails, with the reason to show. */
   failed(returnUrl: string, reason: string): string
@@ -121,6 +130,8 @@ export interface ExternalSignIn {
   /** The provider URL to start a sign-in, for a link or button. */
   startUrl(providerId: string, returnUrl?: string): string
   handle(request: Request, pathname: string): Promise<Response | undefined>
+  /** Where to send the browser to end a provider's own session, coming back to a path here. */
+  signOutUrl(request: Request, providerId: string, returnUrl: string): Promise<string | undefined>
 }
 
 const FLOW_KEY = 'crombolo/externalLoginKey'
@@ -142,11 +153,11 @@ export function createExternalSignIn(
   // One client per effective configuration, so discovery stays cached until a
   // setting changes, and a changed one is used at once.
   const clients = new Map<string, OidcClient>()
-  const clientFor = (provider: IdentityProvider) => {
-    const key = JSON.stringify(provider.oidc)
+  const clientFor = (oidc: OidcProviderOptions) => {
+    const key = JSON.stringify(oidc)
     let client = clients.get(key)
     if (!client) {
-      client = new OidcClient(provider.oidc)
+      client = new OidcClient(oidc)
       clients.set(key, client)
     }
     return client
@@ -181,37 +192,62 @@ export function createExternalSignIn(
       path: audience.basePath,
     })
 
-  const start = async (request: Request, provider: IdentityProvider, client: OidcClient) => {
-    const returnUrl = localReturnUrl(new URL(request.url).searchParams.get('returnUrl')) ?? '/'
+  const failed = (provider: IdentityProvider, returnUrl: string, reason: string) =>
+    audience.failed(provider.failedUrl ?? returnUrl, reason)
+
+  const start = async (
+    request: Request,
+    provider: IdentityProvider,
+    name: string | undefined,
+    returnUrl: string,
+  ) => {
+    const oidc = flowOf(provider, name)
+    if (!oidc) return new Response(null, { status: 404 })
     try {
-      const { url, flow } = await client.start(callbackUrl(request, provider.oidc.id), returnUrl)
+      const { url, flow } = await clientFor(oidc).start(
+        callbackUrl(request, provider.oidc.id),
+        returnUrl,
+        name,
+      )
       return redirect(url, [flowCookieValue(await signFlowState(await secret(), flow), 600)])
     } catch (error) {
       options.log?.(`${provider.oidc.name} sign-in could not start: ${(error as Error).message}`)
       return redirect(
-        audience.failed(returnUrl, `${provider.oidc.name} is not reachable right now.`),
+        failed(provider, returnUrl, `${provider.oidc.name} is not reachable right now.`),
       )
     }
   }
 
-  const finish = async (request: Request, provider: IdentityProvider, client: OidcClient) => {
+  const finish = async (request: Request, provider: IdentityProvider) => {
     const clear = flowCookieValue('', 0)
     const flow = await readFlowState(await secret(), readCookie(request, flowCookie))
-    if (!flow || flow.provider !== provider.oidc.id)
+    const oidc = flow?.provider === provider.oidc.id ? flowOf(provider, flow.flow) : undefined
+    if (!flow || !oidc)
       return redirect(
-        audience.failed('/', 'That sign-in took too long, or was not started here. Try again.'),
+        failed(provider, '/', 'That sign-in took too long, or was not started here. Try again.'),
         [clear],
       )
-    const back = (reason: string) => redirect(audience.failed(flow.returnUrl, reason), [clear])
+    const back = (reason: string) => redirect(failed(provider, flow.returnUrl, reason), [clear])
     let identity: OidcIdentity
     try {
-      identity = await client.finish(
+      identity = await clientFor(oidc).finish(
         new URL(request.url),
         flow,
         callbackUrl(request, provider.oidc.id),
       )
     } catch (error) {
       if (!(error instanceof OidcError)) throw error
+      if (error instanceof OidcRefusal) {
+        if (
+          provider.forgottenPassword &&
+          flow.flow !== 'resetPassword' &&
+          provider.flows.resetPassword &&
+          error.description.startsWith(provider.forgottenPassword)
+        )
+          return start(request, provider, 'resetPassword', flow.returnUrl)
+        if (error.error === 'access_denied' && provider.cancelUrl)
+          return redirect(provider.cancelUrl, [clear])
+      }
       options.log?.(error.message)
       return back(`Signing in with ${provider.oidc.name} did not work.`)
     }
@@ -261,7 +297,9 @@ export function createExternalSignIn(
       const groups = syncedGroups(account.groups, identity.groups, provider.groupMap)
       if (groups.join('\n') !== account.groups.join('\n')) await audience.setGroups(account, groups)
     }
-    const signedIn = await audience.signIn(account, request)
+    if (decision.kind !== 'create' && Object.keys(provider.properties).length > 0)
+      await audience.setProperties?.(account, identity, provider)
+    const signedIn = await audience.signIn(account, request, provider)
     if ('refused' in signedIn) return back(signedIn.refused)
     return redirect(flow.returnUrl, [clear, ...signedIn.cookies])
   }
@@ -278,20 +316,37 @@ export function createExternalSignIn(
       if (!declared || rest.length > 0) return undefined
       if (request.method !== 'GET') return new Response(null, { status: 405 })
       const provider = options.resolve ? await options.resolve(declared) : declared
+      const query = new URL(request.url).searchParams
+      const returnUrl = localReturnUrl(query.get('returnUrl')) ?? '/'
       // Story 305: never a sign-in to an issuer without the secret meant for it.
       if (provider.unavailable) {
         options.log?.(provider.unavailable)
         return redirect(
-          audience.failed(
-            localReturnUrl(new URL(request.url).searchParams.get('returnUrl')) ?? '/',
+          failed(
+            provider,
+            returnUrl,
             `${provider.oidc.name} sign-in is not available right now. Ask an administrator.`,
           ),
         )
       }
-      const client = clientFor(provider)
-      if (step === undefined || step === '') return start(request, provider, client)
-      if (step === 'callback') return finish(request, provider, client)
+      if (step === undefined || step === '')
+        return start(request, provider, query.get('flow') ?? undefined, returnUrl)
+      if (step === 'callback') return finish(request, provider)
       return undefined
+    },
+    async signOutUrl(request, providerId, returnUrl) {
+      const declared = byId.get(providerId)
+      if (!declared?.signOut) return undefined
+      const provider = options.resolve ? await options.resolve(declared) : declared
+      if (provider.unavailable) return undefined
+      try {
+        return await clientFor(provider.oidc).signOutUrl(
+          new URL(returnUrl, callbackOrigin(request)).href,
+        )
+      } catch (error) {
+        options.log?.(`${provider.oidc.name} sign-out: ${(error as Error).message}`)
+        return undefined
+      }
     },
   }
 }

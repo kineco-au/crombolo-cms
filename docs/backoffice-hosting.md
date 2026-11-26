@@ -679,6 +679,28 @@ each open their own tree, which shows only beside the editors it opens.
   `structure` and `code` open the trees; `dashboard/welcome`, Umbraco's welcome,
   which the fork deletes, opens the landing page.
 
+### Service accounts
+
+A Settings card in People, for administrators alone (story 433): the API users other systems
+and the site's own code sign in as. `plugin/service-accounts.js`, its words in
+`service-accounts-words.js`, over `<plugin>/api/service-accounts` (`packages/server/src/service-accounts.ts`).
+
+- **What each is for** comes from the config the server started with: `content.actAs`,
+  `members.actAs`, `users.managedBy` and `groups.managedBy` name client ids, said in words.
+- **A client id and its secret are made by the server** and shown once. Replacing a secret
+  keeps the old one working for a day or a week if asked, so whatever uses it moves with no
+  gap (`old_secret_hash`, `old_secret_until`). Removing a client id ends its sessions.
+- **Last used** is per client id, moved by a token issued with it and by the site's code
+  acting as its account, written at most once an hour.
+- **Taking away what the config names** (disabling, deleting, removing a client id) answers
+  409 naming each use unless `?confirm=true`; the screen asks with `ask()` first. The
+  Management API refuses those outright (`ServiceAccountInUse`). A used account may be
+  deleted; the audit log keeps its name.
+- **Users lists people.** For a person, the Management API's user lists leave API users
+  out; an API user's client and integrations still see them. A link to an API user in
+  Users opens its screen here (`service-account-redirect.js`). Anyone but an administrator
+  is refused acting on an API user, and creating one.
+
 ## Boot sequence the server must satisfy
 
 From `apps/app/app.element.ts` `#setup()`:
@@ -748,7 +770,8 @@ Non-obvious requirements, all of which the client depends on:
   revokes the previous reference token
 - API users authenticate with `grant_type=client_credentials`, their own
   `client_id` and secret, and receive a real bearer token with no refresh token
-  — a machine client, not the SPA. Umbraco requires the prefix
+  — a machine client, not the SPA. Only an administrator adds a secret (Umbraco lets
+  anyone with Users). Umbraco requires the prefix
   `umbraco-back-office-` here; crombolo requires `crombolo-back-office-`, since
   this one is a name an administrator types rather than anything the client
   sends. Migration 020 renamed existing credentials in place, keeping their

@@ -56,6 +56,7 @@ import { loadAccess } from '../access.ts'
 import type { CromboloConfig, UsersSetting } from '../config.ts'
 import { managedUserPorts } from '../managed-users.ts'
 import type { MediaFileStore } from '../media-files.ts'
+import { accountUses, serviceAccountUses } from '../service-accounts.ts'
 
 const INVITE_HOURS = 72
 const RESET_HOURS = 24
@@ -114,11 +115,18 @@ export interface UserPortOptions {
     | 'allowPasswordReset'
     | 'backOfficePath'
     | 'backofficeIdentityProviders'
-  > & { users?: UsersSetting; groups?: UsersSetting }
+  > & {
+    users?: UsersSetting
+    groups?: UsersSetting
+    content?: { actAs?: string }
+    members?: { actAs?: string }
+  }
   mediaFiles: MediaFileStore
   nodes: NodeLookup
   /** The groups the site's files declare (story 228). */
   declaredGroups?: () => DeclaredGroups
+  /** Story 433: what each client id is used for; read from `config` when not given. */
+  serviceAccountUses?: () => (clientId: string) => string[]
   /** Signs a user out everywhere, as a password change set by someone else does. */
   endSessions: (userId: number) => Promise<void>
   /** A group save changed what it may do on these pages (story 045: the "rights" notification). */
@@ -136,12 +144,27 @@ export function createUserPorts(
   const isAdmin = (user: UserRecord, admin: string | undefined) =>
     admin !== undefined && user.groupKeys.includes(admin)
 
-  /** Umbraco's `UserPermissionByResource`: only an admin may act on an admin. */
+  /**
+   * Umbraco's `UserPermissionByResource`: only an admin may act on an admin. Story 433:
+   * and on a service account.
+   */
   const mayActOn = async (principal: Principal, targets: readonly UserRecord[]) => {
     if (principal.isAdmin) return true
     const admin = await adminKey()
-    return !targets.some((t) => isAdmin(t, admin))
+    return !targets.some((t) => isAdmin(t, admin) || t.kind === 'Api')
   }
+
+  /** Story 433: what the accounts' client ids are used for, from the config. */
+  const usesOf = async (targets: readonly UserRecord[]) => {
+    const uses = options.serviceAccountUses?.() ?? serviceAccountUses(config)
+    const out: string[] = []
+    for (const target of targets.filter((t) => t.kind === 'Api'))
+      out.push(...accountUses(uses, await users.clientCredentials(target.id)))
+    return out
+  }
+  /** Story 433: a person's Users lists people; service accounts are in Settings. */
+  const people = (principal: Principal) => (user: UserRecord) =>
+    principal.viaClient !== undefined || user.kind !== 'Api'
 
   /** Umbraco's `UserEditorAuthorizationHelper`: who may give which groups to whom. */
   /** Story 302: each group added to or taken from a user must be one the caller owns. */
@@ -231,6 +254,7 @@ export function createUserPorts(
     input: Parameters<UserPort['create']>[1],
     invited: boolean,
   ): Promise<Result<UserRecord>> {
+    if (input.kind === 'Api' && !principal.isAdmin) return { status: 'Forbidden' }
     const valid = await validateIdentity(input)
     if (valid !== 'Success') return { status: valid }
     if (input.groupKeys.length === 0) return { status: 'NoUserGroup' }
@@ -302,7 +326,9 @@ export function createUserPorts(
 
     async list(principal, skip, take) {
       const admin = await adminKey()
-      const visible = (await users.all()).filter(await visibleTo(principal))
+      const visible = (await users.all())
+        .filter(await visibleTo(principal))
+        .filter(people(principal))
       visible.sort((a, b) => a.userName.localeCompare(b.userName))
       return {
         total: visible.length,
@@ -317,6 +343,7 @@ export function createUserPorts(
       const states = query.states.filter((s) => s !== 'All')
       const visible = (await users.all())
         .filter(await visibleTo(principal))
+        .filter(people(principal))
         .filter(
           (u) =>
             !text || u.name.toLowerCase().includes(text) || u.userName.toLowerCase().includes(text),
@@ -451,7 +478,10 @@ export function createUserPorts(
       // The site's own administrator, whom the Users section shows to nobody else.
       if (found.some((u) => normaliseUuid(u.key) === SUPER_USER_KEY)) return 'CannotDelete'
       if (await leavesNoAdmin(found, undefined)) return 'AdminGroupCannotBeEmpty'
-      if (found.some((u) => u.lastLoginDate)) return 'CannotDeleteUserWithLoginHistory'
+      // Story 433: a used service account may go, once nothing the config names needs it.
+      if (found.some((u) => u.kind !== 'Api' && u.lastLoginDate))
+        return 'CannotDeleteUserWithLoginHistory'
+      if ((await usesOf(found)).length > 0) return 'ServiceAccountInUse'
       for (const user of found) {
         if (user.avatar) await options.mediaFiles.remove(user.avatar)
         await users.delete(user.key)
@@ -467,6 +497,7 @@ export function createUserPorts(
       if (!(await mayActOn(principal, found))) return 'Forbidden'
       if (!approved && found.some((u) => userState(u) === 'Invited'))
         return 'CannotDisableInvitedUser'
+      if (!approved && (await usesOf(found)).length > 0) return 'ServiceAccountInUse'
       await users.setApproved(keys, approved)
       if (!approved) for (const user of found) await options.endSessions(user.id)
       return 'Success'
@@ -570,6 +601,8 @@ export function createUserPorts(
       const user = await users.byKey(key)
       if (!user) return 'UserNotFound'
       if (!(await mayActOn(principal, [user]))) return 'Forbidden'
+      // A secret signs in as the API user, with groups the caller may not own.
+      if (!principal.isAdmin) return 'AdministratorsOnly'
       if (user.kind !== 'Api') return 'InvalidUserType'
       if (!clientId.startsWith(CLIENT_ID_PREFIX) || clientId.length <= CLIENT_ID_PREFIX.length)
         return 'InvalidClientId'
@@ -583,6 +616,8 @@ export function createUserPorts(
       const user = await users.byKey(key)
       if (!user) return 'UserNotFound'
       if (!(await mayActOn(principal, [user]))) return 'Forbidden'
+      if ((options.serviceAccountUses?.() ?? serviceAccountUses(config))(clientId).length > 0)
+        return 'ServiceAccountInUse'
       await users.removeClientCredential(user.id, clientId)
       return 'Success'
     },

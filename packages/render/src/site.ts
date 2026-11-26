@@ -21,8 +21,18 @@ export interface QueryCaller {
   member(): Promise<
     Pick<RequestMember, 'key' | 'name' | 'username' | 'email' | 'roles'> | undefined
   >
+  /** The signed-in back-office user, on a staff screen's route (story 431); undefined for a member or a visitor. */
+  user(): Promise<QueryUser | undefined>
   /** The language the page renders in, when there is a page. */
   locale: string | null
+}
+
+/** A back-office user, as a query sees them: their groups by alias. */
+export interface QueryUser {
+  key: string
+  name: string
+  email: string
+  groups: string[]
 }
 
 /**
@@ -58,10 +68,66 @@ export type SiteQueries = Register extends { queries: infer Q }
       }
     }
 
-/** Members, acting as the caller; filled by story 207. */
+/** A member as the site's code reads one (story 207): the properties the caller may see. */
+export interface SiteMember {
+  key: string
+  /** Their member type's alias. */
+  type: string
+  name: string
+  username: string
+  email: string
+  /** Group names. */
+  groups: readonly string[]
+  approved: boolean
+  properties: Readonly<Record<string, unknown>>
+}
+
+/** Which members to list; `after` is the last page's `next`. */
+export interface SiteMemberQuery {
+  group?: string
+  /** A member type's alias. */
+  type?: string
+  approved?: boolean
+  /** Found in their name, username or e-mail. */
+  text?: string
+  /** Made or saved since. */
+  since?: Date
+  after?: string
+  /** How many at once: 100, and at most 500. */
+  take?: number
+}
+
+/** A change to a member: what is given, the rest kept. A property set to null is cleared. */
+export interface SiteMemberChange {
+  name?: string
+  email?: string
+  properties?: Readonly<Record<string, unknown>>
+}
+
+/**
+ * Members, acting as whoever is asking: a member reaches their own record only,
+ * and a job or an event handler is the API user `members.actAs` names.
+ */
 export interface SiteMembers {
-  // biome-ignore lint/suspicious/noExplicitAny: a slot story 207 will type.
-  [operation: string]: (...args: any[]) => Promise<Result<any>>
+  /** The signed-in member. */
+  me(): Promise<Result<SiteMember, 403>>
+  get(key: string): Promise<Result<SiteMember, 403 | 404>>
+  byEmail(email: string): Promise<Result<SiteMember, 403 | 404>>
+  byUsername(username: string): Promise<Result<SiteMember, 403 | 404>>
+  list(
+    query?: SiteMemberQuery,
+  ): Promise<Result<{ items: SiteMember[]; next: string | null }, 400 | 403>>
+  update(
+    key: string,
+    change: SiteMemberChange,
+  ): Promise<Result<{ key: string }, 400 | 403 | 404 | 422>>
+  addToGroups(key: string, groups: readonly string[]): Promise<Result<{ key: string }, 403 | 404>>
+  removeFromGroups(
+    key: string,
+    groups: readonly string[],
+  ): Promise<Result<{ key: string }, 403 | 404>>
+  /** For good: members have no recycle bin. Never as the member themselves. */
+  delete(key: string): Promise<Result<{ key: string }, 403 | 404>>
 }
 
 /** A background job as the site's code reads it (story 187). */

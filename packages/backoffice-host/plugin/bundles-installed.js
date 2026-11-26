@@ -28,13 +28,7 @@ import {
 } from './bundles-client.js'
 import './bundles-activity.js'
 import { levelBlock, levelStyles } from './bundles-level.js'
-import {
-  configSnippet,
-  grantChoice,
-  levelWords,
-  unvouchedLine,
-  vouchState,
-} from './bundles-level-words.js'
+import { grantChoice, levelWords, unvouchedLine, vouchState } from './bundles-level-words.js'
 import { signatureBlock, signatureStyles, signatureWords } from './bundles-signature.js'
 
 /** Where each part of a bundle stands on this site, in the words of someone running it. */
@@ -324,17 +318,7 @@ export default class CromboloBundlesInstalledElement extends UmbLitElement {
                       label="Grant"
                       .state=${this._busy === item.packageName ? 'waiting' : undefined}
                       @click=${() => this.#grant(item)}></uui-button>`
-                  : choice.snippet
-                    ? html`<p class="note">
-                          This site turns on Unrestricted extensions only in its configuration. Your
-                          developers add this to crombolo.config.ts:
-                        </p>
-                        <pre class="snippet">${configSnippet(
-                          item.id,
-                          (item.permissions ?? []).map((ask) => ask.permission),
-                          (item.permissions ?? []).flatMap((ask) => ask.origins ?? []),
-                        )}</pre>`
-                    : html`<p class="note">${choice.sentence}</p>`
+                  : html`<p class="note">${choice.sentence}</p>`
               }`
           : item.on
             ? html`${approved ? html`<p class="note">${approved}</p>` : nothing}

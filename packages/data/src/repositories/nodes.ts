@@ -81,11 +81,32 @@ const WORKSPACE_OBJECT_TYPES: Record<string, string> = {
   [ObjectTypes.DocumentBlueprint]: ObjectTypes.WorkspaceDocumentBlueprint,
 }
 
+/**
+ * Story 436: which row a key answers when Shared and workspaces each hold one. In a
+ * workspace, its own, then Shared's; with none, Shared's. Any other is last, as a key a
+ * workspace alone made was found before.
+ */
+export interface NodeScope {
+  workspace?: number
+}
+
+/** Story 436: how near a row is to a scope: lower is the one a key answers. */
+const rank = (row: { workspace_id: unknown }, workspace: number | undefined): number =>
+  row.workspace_id === null || row.workspace_id === undefined
+    ? workspace === undefined
+      ? 0
+      : 1
+    : Number(row.workspace_id) === workspace
+      ? 0
+      : 2
+
 export class NodeRepository {
   #db: Db
+  #workspace: number | undefined
 
-  constructor(db: Db) {
+  constructor(db: Db, scope: NodeScope = {}) {
     this.#db = db
+    this.#workspace = scope.workspace
   }
 
   async byKey(key: string): Promise<NodeRow | undefined> {
@@ -94,7 +115,8 @@ export class NodeRepository {
       .select(NODE_COLUMNS)
       .where('unique_id', '=', normaliseUuid(key))
       .execute()
-    return rows[0] ? mapNode(rows[0]) : undefined
+    const best = [...rows].sort((a, b) => rank(a, this.#workspace) - rank(b, this.#workspace))[0]
+    return best ? mapNode(best) : undefined
   }
 
   async byId(id: number): Promise<NodeRow | undefined> {
@@ -113,7 +135,14 @@ export class NodeRepository {
       .select(NODE_COLUMNS)
       .where('unique_id', 'in', keys.map(normaliseUuid))
       .execute()
-    return rows.map(mapNode)
+    // Story 436: one row a key, the nearest to the scope.
+    const nearest = new Map<string, (typeof rows)[number]>()
+    for (const row of rows) {
+      const key = String(row.unique_id)
+      const held = nearest.get(key)
+      if (!held || rank(row, this.#workspace) < rank(held, this.#workspace)) nearest.set(key, row)
+    }
+    return [...nearest.values()].map(mapNode)
   }
 
   /**
@@ -144,7 +173,18 @@ export class NodeRepository {
         workspace_id: init.workspaceId ?? null,
       })
       .execute()
-    const created = await this.byKey(key)
+    // Story 436: the row just made, Shared's or its workspace's, never another under the key.
+    const made = await this.#db.q
+      .selectFrom('node')
+      .select(NODE_COLUMNS)
+      .where('unique_id', '=', key)
+      .where((eb) =>
+        init.workspaceId === undefined
+          ? eb('workspace_id', 'is', null)
+          : eb('workspace_id', '=', init.workspaceId),
+      )
+      .executeTakeFirst()
+    const created = made ? mapNode(made) : undefined
     if (!created) throw new Error('Node insert did not produce a row.')
 
     const path = parent ? `${parent.path},${created.id}` : `${SystemNodes.Root},${created.id}`
@@ -182,7 +222,19 @@ export class NodeRepository {
         workspaceId === undefined
           ? eb('node_object_type', '=', objectType)
           : eb.or([
-              eb('node_object_type', '=', objectType),
+              // Story 436: Shared's, unless the workspace has its own under the key.
+              eb.and([
+                eb('node_object_type', '=', objectType),
+                eb.not(
+                  eb.exists(
+                    eb
+                      .selectFrom('node as own')
+                      .select('own.id')
+                      .whereRef('own.unique_id', '=', 'node.unique_id')
+                      .where('own.workspace_id', '=', workspaceId),
+                  ),
+                ),
+              ]),
               eb.and([
                 // The workspace's own of this kind (stories 375, 390).
                 eb('node_object_type', '=', WORKSPACE_OBJECT_TYPES[objectType] ?? objectType),
@@ -228,7 +280,19 @@ export class NodeRepository {
       .where((eb) =>
         workspace && own.length > 0
           ? eb.or([
-              eb('node_object_type', 'in', objectTypes),
+              // Story 436: Shared's, unless the workspace has its own under the key.
+              eb.and([
+                eb('node_object_type', 'in', objectTypes),
+                eb.not(
+                  eb.exists(
+                    eb
+                      .selectFrom('node as own')
+                      .select('own.id')
+                      .whereRef('own.unique_id', '=', 'node.unique_id')
+                      .where('own.workspace_id', '=', workspace.id),
+                  ),
+                ),
+              ]),
               eb.and([eb('node_object_type', 'in', own), eb('workspace_id', '=', workspace.id)]),
             ])
           : eb('node_object_type', 'in', objectTypes),

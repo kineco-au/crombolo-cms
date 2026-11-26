@@ -28,6 +28,8 @@ export const CAPABILITY_PERMISSIONS: Record<string, readonly BundlePermission[]>
   identityProviders: ['identityProviders.read', 'identityProviders.write'],
   media: ['media.read', 'media.write', 'member.delegate'],
   log: [],
+  // Story 435: its own files, which need no permission, as its log does not.
+  files: [],
   // Story 308: the areas through the Management API, and requests out.
   api: Object.keys(API_PERMISSIONS) as BundlePermission[],
   fetch: ['http.outbound'],
@@ -41,8 +43,6 @@ const DECLARATION_PERMISSIONS: ReadonlySet<string> = new Set([
   USER_DELEGATE,
   'templates',
   'member.delegate',
-  // What the screens need, not the server half (story 320).
-  'backoffice.code',
   // Checked against the tables it declares, not a capability (story 321).
   'data.tables',
 ])

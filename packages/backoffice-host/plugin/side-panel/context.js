@@ -113,8 +113,10 @@ export class CromboloSidePanelContext extends UmbContextBase {
 
   #restore() {
     if (this.#restored || this.#userKey === undefined || this.#panels.size === 0) return
-    this.#restored = true
     const open = this.#remembered.open
+    // Panels arrive as each package's manifests do: the one remembered may come after another.
+    if (open && !this.#panels.has(open)) return
+    this.#restored = true
     if (open && this.isAvailable(open)) this.open(open)
   }
 

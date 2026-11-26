@@ -21,3 +21,21 @@ test('the Settings dashboards open without an error', async ({ page }) => {
   }
   expect(errors.filter((message) => message.includes('provideContext'))).toEqual([])
 })
+
+test('a service account is made in Settings, its secret shown once (story 433)', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.goto('/crombolo/section/settings/dashboard/service-accounts')
+  const screen = page.locator('crombolo-service-accounts')
+  await screen.getByRole('button', { name: 'New service account' }).click()
+  await screen.getByLabel('Name').fill('Nightly importer')
+  await screen.locator('uui-checkbox[label="Writers"]').click()
+  await screen.getByRole('button', { name: 'Create' }).click()
+  await expect(screen.getByRole('heading', { name: 'Nightly importer' })).toBeVisible()
+  await screen.getByRole('button', { name: 'Add a client id' }).click()
+  await expect(screen.getByText('Copy this secret now')).toBeVisible()
+  await screen.getByRole('button', { name: 'All service accounts' }).click()
+  await expect(screen.getByRole('button', { name: 'Nightly importer' })).toBeVisible()
+  await expect(screen.getByText('Copy this secret now')).toBeHidden()
+})

@@ -6,9 +6,6 @@
  */
 import type { ServerEvent } from '@crombolo/api-management/domain'
 import {
-  BACKOFFICE_CODE,
-  BACKOFFICE_CODE_WARNING,
-  BUNDLE_PERMISSIONS,
   type BundlePackage,
   createBackOfficePaths,
   createExtensionRegistry,
@@ -18,6 +15,7 @@ import { mediaJobHandlers } from '@crombolo/content'
 import { ObjectTypes } from '@crombolo/core'
 import {
   appendCacheInstruction,
+  ContentTypeRepository,
   ExtensionSettingRepository,
   type JobWake,
   notifyJobs,
@@ -47,6 +45,7 @@ import { createMediaSource, createPublishedContentSource } from './adapters/docu
 import { backOfficeUrl, documentEditUrl } from './back-office-url.ts'
 import { BACKOFFICE_EXTERNAL_PATH } from './backoffice-external.ts'
 import { createBundleApi, extensionPrincipal } from './bundle-api.ts'
+import { createBundleFiles, extensionDataDir } from './bundle-files.ts'
 import {
   APPROVED_BY_CODE,
   createBundleGrants,
@@ -110,6 +109,7 @@ import { createBackgroundJobs } from './jobs.ts'
 import { logger } from './logging.ts'
 import { MediaFileStore } from './media-files.ts'
 import { mediaStoreFromEnvironment } from './media-store.ts'
+import { unknownClaimProperties } from './member-claims.ts'
 import { createNodeOperations } from './node-operations.ts'
 import { OutboundRefused, pinnedFetch } from './outbound-address.ts'
 import {
@@ -124,8 +124,10 @@ import { createRedirectTracker } from './redirects.ts'
 import { withRemoteMedia } from './remote-media.ts'
 import { bootSchema, CacheInstructionPoller } from './schema.ts'
 import { publishSchema, type SchemaStore, useSchemaStore } from './schema-store.ts'
+import { siteBackOfficeProblems } from './site-backoffice.ts'
 import { apiUserPrincipal, createSiteContent, userPrincipalByKey } from './site-content.ts'
 import { SITE_EVENT_JOB, siteEventJob, siteEventProblems } from './site-events.ts'
+import { createSiteMembers, unknownMemberGroups } from './site-members.ts'
 import { createSiteQueries, queryProblems } from './site-queries.ts'
 import { createSiteServices } from './site-services.ts'
 import { recordCacheLookup, startTelemetry, tracedDb, tracedEmail } from './telemetry.ts'
@@ -336,16 +338,6 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     // import wires; anything else waits for a grant recorded here.
     const byCode = wiredByImport.has(pkg.id) || entryCovers(pkg, entry)
     if (!byCode) continue
-    // The one grant that is not confined, said each boot (story 320).
-    if (declaredPermissions(pkg).includes(BACKOFFICE_CODE))
-      log.warning(
-        "{package} is granted back-office code by the site's code: {permission}. {warning}",
-        {
-          package: pkg.packageName,
-          permission: BUNDLE_PERMISSIONS[BACKOFFICE_CODE],
-          warning: BACKOFFICE_CODE_WARNING,
-        },
-      )
     const bundle = { id: pkg.id }
     // Recorded where the database is written, and audited when it changes.
     if (owns && (await bundleGrants.grant(pkg, APPROVED_BY_CODE)))
@@ -705,6 +697,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       identityProviders: identityProvidersFor(),
     },
     log: (id) => bundleLog(id),
+    files: (id) => createBundleFiles(extensionDataDir(config.siteDir, id)),
     callerHost: {
       // Story 305: each change audited as the person, by the extension.
       identityProviders: (caller, bundle) =>
@@ -1030,14 +1023,49 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   })
   await poller.start(config.development ? 2_000 : 5_000)
 
+  const claimProblems = await unknownClaimProperties(
+    new ContentTypeRepository(db, { kind: 'member' }),
+    config.memberIdentityProviders,
+    config.memberRegistrationType,
+  )
+  if (claimProblems.length > 0) throw new Error(claimProblems.join('\n'))
+
+  // Story 431: Unrestricted went with extensions' back-office code; a host still setting it is told.
+  if (process.env.CROMBOLO_UNRESTRICTED_EXTENSIONS !== undefined)
+    log.warning(
+      'CROMBOLO_UNRESTRICTED_EXTENSIONS is retired and does nothing: extensions no longer run their own code in the back office, so there is no Unrestricted level to keep to the config.',
+    )
+
+  // Story 431: the site's sections, places, screens and routes, checked before any of it is served.
+  const sectionProblems = siteBackOfficeProblems(config.backoffice, config.siteDir)
+  if (sectionProblems.length > 0)
+    throw new Error(`The site's back office cannot be mounted:\n- ${sectionProblems.join('\n- ')}`)
+
   // The API user `content.actAs` names must be there to act as (story 298).
   if (config.content?.actAs && !(await apiUserPrincipal(db, config.content.actAs)))
     throw new Error(
       `The config's content.actAs names "${config.content.actAs}", which is no API user's client id.`,
     )
+  if (config.members?.actAs && !(await apiUserPrincipal(db, config.members.actAs)))
+    throw new Error(
+      `The config's members.actAs names "${config.members.actAs}", which is no API user's client id.`,
+    )
+  const noGroups = await unknownMemberGroups(db, config.members?.groups)
+  if (noGroups.length > 0)
+    throw new Error(
+      `The config's members.groups names ${noGroups.map((g) => `"${g}"`).join(', ')}, which is no member group.`,
+    )
+  const siteMembersFor = createSiteMembers({
+    db,
+    nodeState: schema.nodeState,
+    nodeId: schema.nodeId,
+    actAs: config.members?.actAs,
+    groups: config.members?.groups,
+  })
   const siteServicesFor = createSiteServices({
     db,
     cache,
+    members: siteMembersFor,
     content: createSiteContent({
       db,
       documents: operations.documents,
@@ -1045,6 +1073,14 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
       nodeState: schema.nodeState,
       nodeId: schema.nodeId,
     }),
+    contentAs: (principal) =>
+      createSiteContent({
+        db,
+        documents: operations.documents,
+        as: principal,
+        nodeState: schema.nodeState,
+        nodeId: schema.nodeId,
+      }),
     queries: createSiteQueries({ queries: config.queries, chain: siteChains[0] }),
     jobs: (queuedBy) => ({
       enqueue: async (name, payload) =>

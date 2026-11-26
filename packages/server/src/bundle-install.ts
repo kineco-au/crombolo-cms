@@ -425,6 +425,7 @@ export async function transferOptions(
       hasBlob: async (key: string) => Boolean(await store.get(key)),
       backOfficePath: config.backOfficePath,
       ...(input.excludePeople ? { excludePeople: true } : {}),
+      memberProviders: config.memberIdentityProviders.map((provider) => provider.oidc.id),
       // Stories 404 and 405: what the directory alone writes is not taken from a bundle.
       ...(usersManaged(config) ? { usersManaged: true } : {}),
       ...(groupsManaged(config) ? { groupsManaged: true } : {}),

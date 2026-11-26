@@ -281,6 +281,11 @@ export interface WorkspacePageMerge {
   key: string
   nodeId: number
   made: boolean
+  /**
+   * Story 436: Shared's node under the same key, when the workspace made its own copy of
+   * an item Shared has since: it merges as a change to Shared's from a blank start.
+   */
+  twinNodeId?: number
   level: number
   contentTypeKey: string
   parentKey: string | null
@@ -454,7 +459,7 @@ export class DocumentRepository {
 
   constructor(db: Db, options: DocumentRepositoryOptions = {}) {
     this.#db = db
-    this.#nodes = new NodeRepository(db)
+    this.#nodes = new NodeRepository(db, { workspace: options.workspace })
     this.#nodeState = options.nodeState ?? BASELINE_NODE_STATE
     this.#nodeId = options.nodeId
     this.kind = options.kind ?? 'document'
@@ -1121,6 +1126,22 @@ export class DocumentRepository {
 
   async #mergePage(node: NodeRow, wd: WorkspaceDocumentRow): Promise<WorkspacePageMerge> {
     const workspace = this.#workspace as number
+    // Story 436: Shared's copy under the key this workspace made its own of, if Shared has one.
+    const twin = wd.created
+      ? (
+          await this.#db.q
+            .selectFrom('node')
+            .select('id')
+            .where('unique_id', '=', normaliseUuid(node.key))
+            .where('workspace_id', 'is', null)
+            .where('id', '!=', node.id)
+            .executeTakeFirst()
+        )?.id
+      : undefined
+    const twinId = twin === undefined ? undefined : Number(twin)
+    // Made here and nowhere else: every field the workspace's. With a twin, three ways from blank.
+    const fresh = wd.created && twinId === undefined
+    const theirsId = twinId ?? node.id
     const contentTypeNodeId = (await this.#contentTypeNodeId(node.id)) as number
     const propertyTypes = await this.#propertyTypes(contentTypeNodeId)
     const languages = await this.#languages()
@@ -1153,17 +1174,17 @@ export class DocumentRepository {
         ? new Map<string, Held>()
         : asValues(await this.#valueRowsAsOf(node.id, { eventId: wd.baseEventId }))
     const mine = asValues(await this.#workspaceView(node.id, wd))
-    const theirs = wd.created
+    const theirs = fresh
       ? new Map<string, Held>()
-      : asValues(await this.#currentValueRows(node.id))
+      : asValues(await this.#currentValueRows(theirsId))
     const fields: MergeField[] = []
     for (const field of new Set([...base.keys(), ...mine.keys(), ...theirs.keys()])) {
       const known = mine.get(field) ?? theirs.get(field) ?? base.get(field)
       fields.push({
         field,
-        base: wd.created ? undefined : (base.get(field)?.value ?? null),
+        base: fresh ? undefined : twinId !== undefined ? null : (base.get(field)?.value ?? null),
         mine: mine.get(field)?.value ?? null,
-        theirs: wd.created ? undefined : (theirs.get(field)?.value ?? null),
+        theirs: fresh ? undefined : (theirs.get(field)?.value ?? null),
         ...(known
           ? {
               value: {
@@ -1203,13 +1224,18 @@ export class DocumentRepository {
     const head = await this.#workspaceHead(node.id)
     const baseFacts = await eventFacts(wd.baseEventId)
     const mineFacts = await eventFacts(head ? Number(head.id) : null)
-    const sharedHead = wd.created ? undefined : await this.#headEvent(node.id)
+    const sharedHead = fresh ? undefined : await this.#headEvent(theirsId)
     const theirsFacts = await eventFacts(sharedHead?.id)
     fields.push(
-      { field: '@name', base: baseFacts?.name, mine: mineFacts?.name, theirs: theirsFacts?.name },
+      {
+        field: '@name',
+        base: twinId !== undefined ? null : baseFacts?.name,
+        mine: mineFacts?.name,
+        theirs: theirsFacts?.name,
+      },
       {
         field: '@template',
-        base: baseFacts?.template,
+        base: twinId !== undefined ? null : baseFacts?.template,
         mine: mineFacts?.template ?? null,
         theirs: theirsFacts?.template,
       },
@@ -1229,7 +1255,7 @@ export class DocumentRepository {
           .selectFrom('document_culture_variation as dcv')
           .innerJoin('language as l', 'l.id', 'dcv.language_id')
           .select(['l.iso_code', 'dcv.name', 'dcv.published'])
-          .where('dcv.node_id', '=', node.id)
+          .where('dcv.node_id', '=', theirsId)
           .execute()
       ).map((c) => [String(c.iso_code), c]),
     )
@@ -1239,9 +1265,13 @@ export class DocumentRepository {
       const theirsCulture = theirsCultures.get(iso)
       fields.push({
         field: `@name:${iso}`,
-        base: wd.created ? undefined : (baseFacts?.cultures.get(iso) ?? null),
+        base: fresh
+          ? undefined
+          : twinId !== undefined
+            ? null
+            : (baseFacts?.cultures.get(iso) ?? null),
         mine: String(c.name ?? ''),
-        theirs: wd.created ? undefined : theirsCulture ? String(theirsCulture.name ?? '') : null,
+        theirs: fresh ? undefined : theirsCulture ? String(theirsCulture.name ?? '') : null,
       })
       cultures.push({
         iso,
@@ -1254,7 +1284,7 @@ export class DocumentRepository {
       await this.#db.q
         .selectFrom('document')
         .select(['published', 'edited'])
-        .where('node_id', '=', node.id)
+        .where('node_id', '=', theirsId)
         .execute()
     )[0]
     const publishedHere =
@@ -1288,7 +1318,8 @@ export class DocumentRepository {
       kind: this.kind,
       key: node.key,
       nodeId: node.id,
-      made: wd.created,
+      made: fresh,
+      ...(twinId !== undefined ? { twinNodeId: twinId } : {}),
       level: node.level,
       contentTypeKey: normaliseUuid(String(typeRow?.unique_id)),
       parentKey: parent && parent.id !== SystemNodes.Root ? parent.key : null,
@@ -1301,9 +1332,9 @@ export class DocumentRepository {
             ? null
             : fromDbBool(based.base_published),
         mine: wd.published,
-        theirs: wd.created ? false : fromDbBool(document?.published),
+        theirs: fresh ? false : fromDbBool(document?.published),
         here: publishedHere,
-        sharedEdited: wd.created ? false : fromDbBool(document?.edited),
+        sharedEdited: fresh ? false : fromDbBool(document?.edited),
       },
       cultures,
     }
@@ -1710,14 +1741,19 @@ export class DocumentRepository {
       .select('node_id')
       .where('workspace_id', '=', workspace)
       .execute()
+    const own = new Set<string>()
     for (const { node_id } of touched) {
       const node = await this.#nodes.byId(Number(node_id))
       const wd = node ? await this.#workspaceDocument(node.id) : undefined
       if (!node || !wd || node.trashed) continue
+      if (node.workspaceId === workspace) own.add(normaliseUuid(node.key))
       const row = wd.published ? await this.#workspacePublishedRow(node, wd) : undefined
       if (row) byId.set(node.id, row)
       else byId.delete(node.id)
     }
+    // Story 436: a key the workspace made its own of is its own, never Shared's beside it.
+    for (const row of shared)
+      if (own.has(normaliseUuid(row.key)) && byId.get(row.id) === row) byId.delete(row.id)
     return [...byId.values()].sort(
       (a, b) => a.level - b.level || a.sortOrder - b.sortOrder || a.id - b.id,
     )

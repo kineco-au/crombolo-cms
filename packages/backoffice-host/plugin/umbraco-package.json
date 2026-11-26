@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.80.1",
+  "version": "0.81.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -240,6 +240,37 @@
       "meta": {
         "label": "Authenticator app"
       }
+    },
+    {
+      "type": "dashboard",
+      "alias": "Crombolo.Dashboard.ServiceAccounts",
+      "name": "Crombolo Service Accounts",
+      "element": "/crombolo-plugin/service-accounts.js",
+      "meta": {
+        "label": "Service accounts",
+        "pathname": "service-accounts"
+      },
+      "conditions": [
+        {
+          "alias": "Umb.Condition.SectionAlias",
+          "match": "Umb.Section.Settings"
+        },
+        {
+          "alias": "Umb.Condition.CurrentUser.IsAdmin"
+        }
+      ]
+    },
+    {
+      "type": "workspaceContext",
+      "alias": "Crombolo.WorkspaceContext.User.ServiceAccountRedirect",
+      "name": "Crombolo Service Account Redirect",
+      "api": "/crombolo-plugin/service-account-redirect.js",
+      "conditions": [
+        {
+          "alias": "Umb.Condition.WorkspaceAlias",
+          "match": "Umb.Workspace.User"
+        }
+      ]
     },
     {
       "type": "dashboard",
@@ -1108,6 +1139,17 @@
           "alias": "Umb.Condition.SectionUserPermission",
           "match": "Crombolo.Section.Structure"
         }
+      ]
+    },
+    {
+      "type": "workspaceInfoApp",
+      "alias": "Crombolo.WorkspaceInfoApp.Member.SignIns",
+      "name": "Crombolo Member Sign-ins",
+      "element": "/crombolo-plugin/member-sign-ins.js",
+      "weight": 30,
+      "conditions": [
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "Umb.Workspace.Member" },
+        { "alias": "Umb.Condition.WorkspaceEntityIsNew", "match": false }
       ]
     },
     {

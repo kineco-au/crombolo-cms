@@ -1,7 +1,8 @@
 /**
  * Story 313: the back office's pages send a content security policy. They talk
- * to the site, and to the origins granted extensions declare in
- * `http.outbound`, and nowhere else; inline scripts carry the page's nonce; the
+ * to the site, and to the host's origin, and nowhere else: no extension's code
+ * runs there (story 431), so the origins one declares in `http.outbound` are its
+ * server half's, not the back office's. Inline scripts carry the page's nonce; the
  * browser reports what it blocks to the site's log.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
@@ -28,7 +29,7 @@ const directive = (policy: string, name: string) =>
     .slice(1) ?? []
 
 describe('the policy', () => {
-  test('the site, the nonce, and what the granted extensions declare', () => {
+  test('the site, the nonce, and the origins it is given', () => {
     const policy = backOfficePolicy({
       nonce: 'abc',
       connect: ['https://api.acme.com/v1', 'not a url'],
@@ -47,7 +48,7 @@ describe('the policy', () => {
   })
 })
 
-/** A site with an extension whose screens may reach https://api.acme.test. */
+/** A site with an extension whose server half may reach https://api.acme.test. */
 function siteWithScreens() {
   return siteDeclaring('content-security', {
     '@acme/reports': {
@@ -61,25 +62,19 @@ function siteWithScreens() {
             'http.outbound': { reason: 'Reads its report', origins: ['https://api.acme.test'] },
           },
           extensions: [
-            {
-              type: 'dashboard',
-              alias: 'Acme.Dashboard.Reports',
-              name: 'Reports',
-              element: 'r.js',
-            },
+            { type: 'dashboard', alias: 'Acme.Dashboard.Reports', name: 'Reports', meta: {} },
           ],
         },
       },
       files: {
         'index.js': `export function reports() { return { id: 'reports', section: 'settings', capabilities: [] } }\n`,
-        'r.js': 'export default class {}\n',
       },
     },
   })
 }
 
 describe('the back office', () => {
-  test('sends the policy, its nonce on the inline scripts, and a granted extension’s origins', async () => {
+  test('sends the policy and its nonce on the inline scripts; a granted extension’s origins stay its server half’s', async () => {
     const dir = siteWithScreens()
     const h = await signedInServer({
       config: {
@@ -87,7 +82,7 @@ describe('the back office', () => {
         componentsDir: join(dir, 'components'),
         extensions: {
           reports: {
-            grant: ['backoffice.code', 'http.outbound'],
+            grant: ['http.outbound'],
             origins: ['https://api.acme.test'],
           },
         },
@@ -96,7 +91,7 @@ describe('the back office', () => {
     open.push(h)
     const page = await h.call(`${BACKOFFICE}/section/content`)
     const policy = page.headers.get('content-security-policy') ?? ''
-    expect(directive(policy, 'connect-src')).toEqual(["'self'", 'https://api.acme.test'])
+    expect(directive(policy, 'connect-src')).toEqual(["'self'"])
     const nonce = /'nonce-([^']+)'/.exec(policy)?.[1] as string
     expect(nonce).toBeDefined()
     const html = await page.text()
@@ -128,7 +123,7 @@ describe('the back office', () => {
     expect(directive(policy, 'connect-src')).toEqual(["'self'"])
   })
 
-  test('a host’s origin is reachable, beside a granted extension’s, each once (story 318)', async () => {
+  test('a host’s origin is reachable, and a granted extension’s is not (story 318)', async () => {
     const dir = siteWithScreens()
     const h = await signedInServer({
       config: {
@@ -136,7 +131,7 @@ describe('the back office', () => {
         componentsDir: join(dir, 'components'),
         extensions: {
           reports: {
-            grant: ['backoffice.code', 'http.outbound'],
+            grant: ['http.outbound'],
             origins: ['https://api.acme.test'],
           },
         },
@@ -151,11 +146,7 @@ describe('the back office', () => {
     for (const path of ['section/content', 'login']) {
       const policy =
         (await h.call(`${BACKOFFICE}/${path}`)).headers.get('content-security-policy') ?? ''
-      expect(directive(policy, 'connect-src')).toEqual([
-        "'self'",
-        'https://api.acme.test',
-        'https://console.example.com',
-      ])
+      expect(directive(policy, 'connect-src')).toEqual(["'self'", 'https://console.example.com'])
     }
   })
 

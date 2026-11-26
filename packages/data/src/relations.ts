@@ -220,12 +220,13 @@ export async function loadReferences(db: Db): Promise<ReferenceEdge[]> {
   if (wanted.size === 0) return []
   const nodes = await db.q
     .selectFrom('node')
-    .select(['id', 'unique_id', 'node_object_type'])
+    .select(['id', 'unique_id', 'node_object_type', 'workspace_id'])
     .execute()
   const byKey = new Map<string, KnownNode>()
   for (const node of nodes) {
     const key = normaliseUuid(String(node.unique_id))
-    if (wanted.has(key))
+    // Story 436: Shared's item under a key, never a workspace's copy beside it.
+    if (wanted.has(key) && (node.workspace_id === null || !byKey.has(key)))
       byKey.set(key, {
         id: Number(node.id),
         key,

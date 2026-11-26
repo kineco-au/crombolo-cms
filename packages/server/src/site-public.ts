@@ -6,7 +6,7 @@
  */
 import { existsSync, type FSWatcher, readdirSync, realpathSync, statSync, watch } from 'node:fs'
 import { basename, dirname, join, relative, sep } from 'node:path'
-import { serveStaticFile } from '@crombolo/backoffice-host'
+import { SCRIPTING_FILE, serveStaticFile } from '@crombolo/backoffice-host'
 import { hashedAddress, splitHashedAddress } from '@crombolo/render'
 import { BUNDLE_SECTIONS, hashFile, type PublicSource } from '@crombolo/transfer'
 import { isSitePath } from './middleware.ts'
@@ -236,6 +236,9 @@ export class PublicFiles {
   async #send(entry: PublicEntry, cacheControl: string, request: Request) {
     const response = await serveStaticFile({ file: entry.file, cacheControl }, request)
     response?.headers.set('x-content-type-options', 'nosniff')
+    // Story 435: a file that opens as a page shows, and runs no script, as media of its kind.
+    if (response && SCRIPTING_FILE.test(entry.file))
+      response.headers.set('content-security-policy', 'sandbox')
     return response
   }
 

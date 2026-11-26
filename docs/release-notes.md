@@ -6,6 +6,124 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.81.0 — 2026-11-26
+
+### Features
+
+- **Members sign in with Azure AD B2C (191).** `b2c()` takes a tenant's user flows:
+  sign in, sign up, reset password and edit profile, each started by name
+  (`externalSignInUrl(id, returnUrl, { flow })`). A forgotten password starts the
+  reset. Any member provider can fill member properties from claims at every
+  sign-in, name pages for a cancelled or failed sign-in, link by another claim, and
+  end the provider's own session on signing out. `docs/operations.md`, "Azure AD B2C".
+- **The site's own code reads and changes members (207).** `site().members` acts as the
+  signed-in member, for their own record as far as their member type lets them, and in
+  a job or an event handler as the API user `members.actAs` names. Members are listed a
+  page at a time, put in the groups the config lists, and every change is audited.
+  A signed-in member's `properties` hold what they may see of themselves, which
+  `/umbraco/members/current` now answers too. A route reached with a member's token is
+  given the member as a page is, no longer with their sign-in details.
+- **Staff screens of the site's own (431).** `backoffice.sections` in `crombolo.config.ts`
+  gives the back office a section of the site's: a grant offered in each group's Access,
+  places in the row under the header, as Content's, each a menu of screens the site's
+  own back-office code draws, built for the browser and served from that build. Routes
+  below it answer only those who hold it, with `site()` acting as them, and a named
+  query's caller has `user()` beside `member()`, so pages and staff share one set of
+  queries. An extension declares a section the same way, `crombolo.sections`, its
+  screens described. `docs/rendering.md`, "Staff screens".
+- **Panels of the site's own, and modules from its packages (437).** `backoffice.panels`
+  gives the site side panels, beside every section and opened from the header, each a grant
+  of its own, with routes behind it. A screen's or panel's module may be a package the site
+  depends on (`@acme/host/backoffice/help.ts`), so a config composed in a wrapper package
+  brings its own code. What an extension's back-office code gave, a drawer or a section,
+  now has a home in the site.
+- **Service accounts in Settings (433).** The accounts other systems and the site's own
+  code sign in as have a card of their own, for administrators: each says what it is used
+  for, when each client id was last used, and its activity. A secret is made by the site and
+  shown once; replacing one can keep the old working for a day or a week, so nothing using it
+  stops. Taking away an account or client id the site's settings name says what will stop,
+  and asks. A used account can be deleted. `crombolo api-client rotate --old-stops day|week`
+  does the same from the command line.
+- **The site's own code as the back office starts (438).** `backoffice.entryPoints` runs
+  modules of the site's, or of a package it depends on, for everyone signed in, free to
+  register what the back office offers: a workspace context, a profile card, a header app.
+  A panel with `everyone: true` needs no grant.
+- **Extensions no longer run their own code in the back office (431).** Their screens
+  are described. `backoffice.code` and the Unrestricted level are retired, and with them
+  `CROMBOLO_UNRESTRICTED_EXTENSIONS`; the back office's content security policy no
+  longer names extensions' origins, which are their server halves'.
+- **Imported members keep their identity provider sign-in (432).** A site export with
+  members carries each one's links to identity providers, sealed with them, and the import
+  makes them, so a member brought from another site signs in through B2C as themselves.
+  `crombolo members link --provider b2c --property aDObjectID` links members already here
+  from the id an Umbraco site kept. A link another member holds is left out, naming both,
+  one to a provider the site does not declare is kept and said, and each is audited. A
+  member's Info, and `members show`, say which providers they sign in with.
+- **Each workspace makes its own new pages (436).** An item's key was unique across the
+  whole site, so a workspace still open with a new page held its key, and nothing else
+  could make that page, the same change staged into another workspace included. A key is
+  unique in Shared and within each workspace now. The first workspace merged makes the
+  item; a later one holding the same change merges as a change to it, and one holding a
+  different copy merges field by field, each difference a conflict to answer. Anything
+  that reads an item by its key without a workspace reads Shared's.
+- **An extension runs only what was installed, and writes no script into the site (435).**
+  Its process cannot run code from text (`eval`, `new Function`) or load a module it did
+  not bring, and keeps its files through the host rather than in a folder of its own. An
+  extension may not bring an HTML, SVG or XML file into `public/`, and every such file
+  there, the site's own included, is served sandboxed, as media is. Rich text an extension
+  saves is cleaned of script before it is stored, and it is told what was removed.
+
+### Fixes
+
+- **Only an administrator gives an API user a secret.** Anyone who held Users could add
+  one to any API user that was not an administrator, and sign in with what its groups
+  may do, groups they might not own. Others now get `AdministratorsOnly` (403).
+  Listing and removing secrets are unchanged.
+- **A remembered side panel opens again after a reload when another panel's package loads
+  first.** It was looked for once, among the first panels to arrive.
+- **A staged change no longer takes another workspace's content type (434).** A type
+  staged in one workspace was taken for the site's own, so a page staged in another
+  workspace was made with it, and the first workspace could then not be discarded on
+  Postgres, holding its pages' keys and blocking every later stage of them. A page whose
+  type is in neither the site nor its workspace is now a conflict saying so, a change's
+  types are made before its pages, so one change may carry both, a page another open
+  workspace is making is a conflict naming that workspace, and a staging conflict says
+  which step failed. A workspace discards its pages before its types, and one whose types
+  are used outside it is refused, naming what uses them, rather than failing.
+
+### Migrations
+
+- **102 `AddServiceAccountSecrets`** (expand, 433): when each client id was last used, and
+  the secret it is moving from with when that stops, on `user_client_credential`.
+- **101 `KeysPerWorkspace`** (expand, 436): an item's key unique in Shared and within each
+  workspace, by two partial indexes, with one for reading by key. On SQLite the `node`
+  table is rebuilt, with foreign keys off for the step and checked before it commits.
+
+### Upgrade notes
+
+- **API users have moved to Settings → Service accounts (433),** for administrators alone.
+  Anyone else who looked after API users from Users can no longer; an administrator does it
+  there. Users lists people now.
+- **An extension that ships back-office code** (`src/backoffice/`, a manifest entry
+  naming a module, or `backoffice.code`) is left off at start, saying why, and refused at
+  install. Describe its screens in its server half (`docs/extensions.md`, "Screens") and
+  publish it again; `crombolo extension migrate` says what to change. Neither of
+  crombolo's own extensions is affected.
+- **`CROMBOLO_UNRESTRICTED_EXTENSIONS`** does nothing now: take it out. A start with it
+  set says so.
+- **A workspace that would not discard** since a page elsewhere used its type: discarding
+  it now names that page. Remove or retype the page, then discard the workspace.
+- **Migration 101 rebuilds SQLite's `node` table (436),** the table every page, media item,
+  Library item and type is in. It takes a moment on a large site and needs room for a
+  second copy of the table while it runs: back up first, as for any upgrade. On Postgres
+  it changes indexes only.
+- **An extension that keeps files in its own folder (435)** reads and writes them through
+  the host now; one that runs code from text, or loads a module it fetched, is stopped and
+  logged. Neither of crombolo's own extensions does either.
+- **An HTML, SVG or XML file in `public/` is served sandboxed (435):** it still shows, and
+  runs no script. A page the site needs to run script belongs in its components, not
+  `public/`.
+
 ## v0.80.1 — 2026-11-25
 
 ### Changes

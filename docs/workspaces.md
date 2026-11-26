@@ -64,6 +64,19 @@ wrote it.
 - **A page made in a workspace** has a node carrying it and an object type of its own
   (`ObjectTypes.WorkspaceDocument`), so Shared's node queries, which name their type,
   never return it.
+- **A key is unique in Shared, and within each workspace** (story 436, migration 101): two
+  partial indexes on `node.unique_id`. So a workspace makes a page under a key another open
+  workspace, or Shared, holds too, and nothing a workspace leaves open stops anyone else.
+  - **A lookup by key** answers its scope's row: in a workspace (`NodeRepository` given
+    `{ workspace }`, as each workspace's repository and operations are), its own, then
+    Shared's; with none, Shared's. A workspace's tree shows its own copy, never Shared's
+    beside it, and its published view the same. `tests/keys-per-workspace.test.ts` counts
+    every raw query by key against a reviewed list, so a new one says which row it answers.
+  - **The first workspace merged makes the item.** A later one holding its own copy merges
+    it as a change to Shared's from a blank start: what the two set alike goes in, what only
+    one sets is taken, and what they set differently is a conflict on that field, answered
+    as any other. The copy goes when the workspace closes. The same change staged into two
+    workspaces merges in both, and is held once.
 - **Per-language state** is `workspace_document_culture`, a copy of the page's
   `document_culture_variation` rows taken when the workspace first writes it.
 - **Pending moves, reorders and deletes** are `workspace_pending` rows, with where the

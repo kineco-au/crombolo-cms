@@ -100,6 +100,16 @@ const USER_PROBLEMS: Partial<Record<UserStatus, [number, string, string]>> = {
     'Invalid client ID',
     'The client ID must be prefixed with "crombolo-back-office-".',
   ],
+  AdministratorsOnly: [
+    403,
+    'Only an administrator can do this',
+    'Only an administrator can give an API user a secret.',
+  ],
+  ServiceAccountInUse: [
+    409,
+    'The service account is in use',
+    "The site's settings name it, so this would stop what it is used for. Do it from Service accounts in Settings, which says what will stop.",
+  ],
   AdminGroupCannotBeEmpty: [
     400,
     'Admin group cannot be empty',

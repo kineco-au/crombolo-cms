@@ -18,6 +18,7 @@ import {
   ROOT_ACCESS,
   SECTION_ALIASES,
 } from '@crombolo/core'
+import { sanitiseHtml } from '@crombolo/render'
 import { type ActivityPerson, type ActivityRecorder, timed } from './extension-activity.ts'
 
 /** A permission's reach: the paths, under the back office, its methods may call. */
@@ -313,13 +314,15 @@ export function createBundleApi(options: {
     const principal = await options.principal()
     if (!principal) throw new ApiRefusedError(`${options.bundleId} has no one to act as.`)
     const call = crypto.randomUUID()
+    // Story 435: rich text it writes carries no script, as its components do not (330).
+    const cleaned = verb === 'GET' || verb === 'DELETE' ? undefined : cleanMarkup(body)
     const sent = new Request(`${options.origin}${base}/${clean}`, {
       method: verb,
       headers: {
         [ACTING_HEADER]: `${SECRET}.${call}`,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(cleaned?.body ?? body),
     })
     acting.set(call, principal)
     try {
@@ -328,7 +331,15 @@ export function createBundleApi(options: {
           dispatch(sent),
         ),
       )
-      return answered
+      if (!cleaned || cleaned.removed.length === 0) return answered
+      // What was taken out, said to the extension beside the answer.
+      const headers = new Headers(answered.headers)
+      headers.set(REMOVED_HEADER, cleaned.removed.join(', '))
+      return new Response(answered.body, {
+        status: answered.status,
+        statusText: answered.statusText,
+        headers,
+      })
     } finally {
       acting.delete(call)
     }
@@ -340,6 +351,35 @@ export function createBundleApi(options: {
     put: (path, body) => request('PUT', path, body),
     delete: (path) => request('DELETE', path),
   }
+}
+
+/** Story 435: what cleaning took out of the rich text an extension sent, by element and attribute. */
+export const REMOVED_HEADER = 'crombolo-removed-from-rich-text'
+
+/**
+ * Every rich text value in a body (an object holding `markup`, as the rich text editors
+ * store it), held to the safe baseline, with what was removed. Pure.
+ */
+export function cleanMarkup(body: unknown): { body: unknown; removed: string[] } {
+  const removed = new Set<string>()
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk)
+    if (!value || typeof value !== 'object') return value
+    const out: Record<string, unknown> = {}
+    for (const [key, item] of Object.entries(value as Record<string, unknown>))
+      out[key] =
+        key === 'markup' && typeof item === 'string'
+          ? sanitiseHtml(item, (kind, name) => {
+              const [element, attribute] = name.split(' ')
+              removed.add(
+                kind === 'element' || !attribute ? `<${name}>` : `${attribute} on <${element}>`,
+              )
+            })
+          : walk(item)
+    return out
+  }
+  const cleaned = walk(body)
+  return { body: cleaned, removed: [...removed].sort() }
 }
 
 const KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

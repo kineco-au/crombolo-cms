@@ -20,6 +20,7 @@ import {
 import { ANTIFORGERY_HEADER, type PageOutcome, requestScope } from '@crombolo/render'
 import { isSitePath, requestCookies } from './middleware.ts'
 import { RateLimiter } from './rate-limit.ts'
+import { SITE_BACKOFFICE_OWNER } from './site-backoffice.ts'
 import { withSiteWrites } from './site-content.ts'
 
 /** A member as a route sees them: their key, for limits, and their group names. */
@@ -53,6 +54,14 @@ export interface RouteDeps<Member extends RouteMember> {
 }
 
 /** A route with what it needs added to its context, such as a bundle's capabilities. */
+/** How a route is answered: with the site's checks, and anything its context adds. */
+export interface RouteInvokeOptions {
+  checks: boolean
+  extra?: Record<string, unknown>
+  /** `site()` for the handler in place of the member's: a staff screen's, as the user (story 431). */
+  site?: () => unknown
+}
+
 /** Who the site's own routes are declared by; a bundle's say its id. */
 export const SITE_ROUTE_OWNER = 'the site'
 
@@ -230,7 +239,7 @@ export function createRoutes<Member extends RouteMember>(
     request: Request,
     url: URL,
     params: Record<string, string>,
-    options: { checks: boolean; extra?: Record<string, unknown> } = { checks: true },
+    options: RouteInvokeOptions = { checks: true },
   ): Promise<Response> {
     const policy = entry.route.options.cors ? deps.cors : undefined
     if (!policy) return answer(entry, request, url, params, options)
@@ -243,7 +252,7 @@ export function createRoutes<Member extends RouteMember>(
     request: Request,
     url: URL,
     params: Record<string, string>,
-    options: { checks: boolean; extra?: Record<string, unknown> },
+    options: RouteInvokeOptions,
   ): Promise<Response> {
     const { route } = entry
     const method = request.method.toUpperCase() as RouteMethod
@@ -316,7 +325,7 @@ export function createRoutes<Member extends RouteMember>(
     const cookies: string[] = []
     const deadline = new AbortController()
     const signal = AbortSignal.any([request.signal, deadline.signal])
-    const site = deps.siteFor(member)
+    const site = options.site ?? deps.siteFor(member)
     const context = {
       params,
       url,
@@ -351,9 +360,13 @@ export function createRoutes<Member extends RouteMember>(
       const work = Promise.resolve().then(() =>
         requestScope({ headers: request.headers }, site, () =>
           // The site's own routes may change content (story 298), named for the audit.
-          entry.owner === SITE_ROUTE_OWNER
-            ? withSiteWrites({ via: `route ${method} ${route.path}`, source: 'request' }, () =>
-                handler(request, context as never),
+          entry.owner === SITE_ROUTE_OWNER || entry.owner === SITE_BACKOFFICE_OWNER
+            ? withSiteWrites(
+                {
+                  via: `${entry.owner === SITE_ROUTE_OWNER ? 'route' : 'back-office route'} ${method} ${route.path}`,
+                  source: 'request',
+                },
+                () => handler(request, context as never),
               )
             : handler(request, context as never),
         ),

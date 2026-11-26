@@ -7,8 +7,8 @@
  * bundle is.
  */
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { basename, dirname, join, normalize } from 'node:path'
-import { BACKOFFICE_CODE, permissionsProblem, readSettings } from './bundle-permissions.ts'
+import { basename, dirname, join, normalize, sep } from 'node:path'
+import { BACKOFFICE_CODE_RETIRED, permissionsProblem, readSettings } from './bundle-permissions.ts'
 import { packageInRoot, readRecord, rootOf } from './extension-roots.ts'
 import type { PackageManifestImportmap } from './manifests.ts'
 
@@ -81,6 +81,82 @@ export interface CromboloField {
   permissions?: string[] | Record<string, string | { reason: string; origins?: string[] }>
   /** What it may be set to, by the config or in the back office (story 310). */
   settings?: Record<string, unknown>
+  /**
+   * Sections of its own (story 431): each a grant, with places, each a menu of the
+   * screens its server half describes.
+   */
+  sections?: ExtensionSection[]
+}
+
+/** A section an extension declares: its manifest alias, its address, and its places. */
+export interface ExtensionSection {
+  alias: string
+  path: string
+  label: string
+  places: Array<{
+    alias: string
+    label: string
+    menu: Array<{ alias: string; label: string; icon?: string; screen: string }>
+  }>
+}
+
+const SECTION_PATH = /^[a-z][a-z0-9-]{0,39}$/
+
+/**
+ * Why its sections cannot be declared as they are (story 431): a manifest alias of its
+ * own, an address, and places whose menus name screens its server half describes. Pure.
+ */
+export function sectionProblems(f: Record<string, unknown>): string[] {
+  if (f.sections === undefined) return []
+  if (!Array.isArray(f.sections)) return ['"crombolo.sections" must be a list of sections']
+  const problems: string[] = []
+  const label = (value: unknown) => typeof value === 'string' && value.trim() !== ''
+  for (const section of f.sections) {
+    if (!isPlainObject(section)) {
+      problems.push('each of "crombolo.sections" is a section')
+      continue
+    }
+    const name = `the section ${JSON.stringify(section.alias)}`
+    if (
+      typeof section.alias !== 'string' ||
+      !/^[A-Za-z][\w-]*(?:\.[A-Za-z][\w-]*)+$/.test(section.alias) ||
+      section.alias.startsWith('Site.') ||
+      section.alias.startsWith('Umb.') ||
+      section.alias.startsWith('Crombolo.')
+    )
+      problems.push(`${name} needs an alias of its own, as Vendor.Section.Name`)
+    if (typeof section.path !== 'string' || !SECTION_PATH.test(section.path))
+      problems.push(`${name} needs a path: lowercase letters, digits and hyphens`)
+    if (!label(section.label)) problems.push(`${name} has no label`)
+    if (!Array.isArray(section.places) || section.places.length === 0) {
+      problems.push(`${name} has no places`)
+      continue
+    }
+    for (const place of section.places) {
+      if (!isPlainObject(place) || !SCREEN_ID.test(String(place.alias)) || !label(place.label)) {
+        problems.push(`${name} has a place without an alias and a label`)
+        continue
+      }
+      if (!Array.isArray(place.menu) || place.menu.length === 0) {
+        problems.push(`${name}'s place ${place.alias} has no screens in its menu`)
+        continue
+      }
+      for (const entry of place.menu)
+        if (
+          !isPlainObject(entry) ||
+          !SCREEN_ID.test(String(entry.alias)) ||
+          !label(entry.label) ||
+          typeof entry.screen !== 'string' ||
+          !SCREEN_ID.test(entry.screen)
+        )
+          problems.push(
+            `${name}'s place ${place.alias} has a menu entry without an alias, a label and the screen it shows`,
+          )
+    }
+  }
+  if (f.server === undefined)
+    problems.push('it declares sections, and has no server half to describe their screens')
+  return problems
 }
 
 /**
@@ -405,15 +481,17 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
   else if (f.permissions !== undefined) {
     const problem = permissionsProblem(f.permissions, schema)
     if (problem) problems.push(problem)
-    else if (schema >= OLDEST_BUNDLE_SCHEMA_VERSION) {
-      const asksForCode = Object.hasOwn(f.permissions as object, BACKOFFICE_CODE)
-      if (modules.length > 0 && !asksForCode)
-        problems.push(
-          `it runs code in the back office and does not ask for "${BACKOFFICE_CODE}": that code acts as whoever is signed in, so it is asked for, with its reason`,
-        )
-      if (modules.length === 0 && asksForCode)
-        problems.push(`it asks for "${BACKOFFICE_CODE}" and has no back-office code`)
-    }
+  }
+  // Story 431: an extension's screens are described, never its own code in the back office.
+  if (f.bundleType === 'extension') {
+    if (modules.length > 0)
+      problems.push(
+        `it has its own back-office code (${modules.join(', ')}), and ${BACKOFFICE_CODE_RETIRED}`,
+      )
+    else if (directory && existsSync(join(directory, BACKOFFICE_DIR)))
+      problems.push(
+        `it has its own back-office code (${BACKOFFICE_DIR}/), and ${BACKOFFICE_CODE_RETIRED}`,
+      )
   }
   {
     const settings = readSettings(f.settings)
@@ -436,9 +514,15 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
       problems.push(
         `it is an extension, which never carries the site's code, and ${PAYLOAD_MANIFEST} lists ${code}`,
       )
+    // Story 435: nothing it puts in the site's public folder runs as a page there.
+    for (const file of scriptingPublicFiles(directory))
+      problems.push(
+        `it is an extension, which brings no file that can carry script into the site's public folder, and it carries ${file}`,
+      )
   }
 
   problems.push(...screenEntryProblems(f, schema))
+  problems.push(...sectionProblems(f))
 
   const hasExtensions = Array.isArray(f.extensions) && f.extensions.length > 0
   if (!hasExtensions && f.content === undefined && f.server === undefined)
@@ -453,6 +537,31 @@ export function validateBundlePackage(json: PackageJson, directory?: string): st
 }
 
 /** What a bundle's `bundle.json` lists under `code/`, said briefly; undefined when nothing. */
+/** Files that open as a page and can carry script: HTML, SVG and XML (story 435). */
+export const SCRIPTING_FILE = /\.(html?|xhtml|svgz?|xml|xsl|xslt)$/i
+
+/** The files under a package's `public/` that could run script where the site serves them. */
+function scriptingPublicFiles(directory: string): string[] {
+  const root = join(directory, 'public')
+  const out: string[] = []
+  const walk = (dir: string) => {
+    if (!existsSync(dir)) return
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (SCRIPTING_FILE.test(entry.name))
+        out.push(
+          `public/${path
+            .slice(root.length + 1)
+            .split(sep)
+            .join('/')}`,
+        )
+    }
+  }
+  walk(root)
+  return out.sort()
+}
+
 function carriedCode(directory: string): string | undefined {
   try {
     const manifest = JSON.parse(readFileSync(join(directory, PAYLOAD_MANIFEST), 'utf8')) as {
@@ -499,7 +608,9 @@ export function readBundlePackage(directory: string): {
       field,
       contentDir: field.content === true ? directory : undefined,
       carries: {
-        extensions: Array.isArray(field.extensions) && field.extensions.length > 0,
+        extensions:
+          (Array.isArray(field.extensions) && field.extensions.length > 0) ||
+          (Array.isArray(field.sections) && field.sections.length > 0),
         content: field.content !== undefined,
         server: field.server !== undefined,
       },

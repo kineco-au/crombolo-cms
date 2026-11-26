@@ -140,6 +140,8 @@ export {
   awsIdentityCenter,
   azureMediaStore,
   azureSchemaStore,
+  type B2cFlows,
+  b2c,
   type CromboloConfig,
   type CustomEmailOptions,
   customEmail,

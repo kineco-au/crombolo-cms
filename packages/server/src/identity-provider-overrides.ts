@@ -59,14 +59,18 @@ const OVERRIDABLE: readonly (keyof ProviderOverrides)[] = [
 const keyOf = (audience: ExternalLoginAudience, id: string) =>
   `crombolo:identity-provider:${audience}:${id}`
 
+const hasFlows = (code: IdentityProvider) => Object.keys(code.flows).length > 0
+
 /** Where a provider sends its sign-ins with these changes: its issuer and client id. Pure. */
 function targetOf(code: IdentityProvider, overrides: ProviderOverrides): SecretFor {
   return {
-    issuer:
-      overrides.issuer ??
-      (code.kind === 'entra' && overrides.tenantId
-        ? entraIssuer(overrides.tenantId)
-        : code.oidc.issuer),
+    // Story 191: a provider with flows signs in where the config says, for every flow.
+    issuer: hasFlows(code)
+      ? code.oidc.issuer
+      : (overrides.issuer ??
+        (code.kind === 'entra' && overrides.tenantId
+          ? entraIssuer(overrides.tenantId)
+          : code.oidc.issuer)),
     clientId: overrides.clientId ?? code.oidc.clientId,
   }
 }
@@ -110,6 +114,12 @@ export function effectiveProvider(
       clientId: target.clientId,
       clientSecret,
     },
+    flows: Object.fromEntries(
+      Object.entries(code.flows).map(([flow, oidc]) => [
+        flow,
+        { ...oidc, name, clientId: target.clientId, clientSecret },
+      ]),
+    ),
     autoCreate: overrides.autoCreate ?? code.autoCreate,
     linkByEmail: overrides.linkByEmail ?? code.linkByEmail,
     emailsVerified: overrides.emailsVerified ?? code.emailsVerified,
@@ -192,6 +202,11 @@ export class IdentityProviderOverrides {
           lock === 'config'
             ? `${code.oidc.name} is locked by the site's configuration, so it cannot be changed here.`
             : `${code.oidc.name} is locked by the server's CROMBOLO_LOCKED_IDENTITY_PROVIDERS, so it cannot be changed here.`,
+      }
+    if (hasFlows(code) && input.issuer)
+      return {
+        ok: false,
+        error: `${code.oidc.name} signs in where the site's configuration says, so its issuer cannot be changed here.`,
       }
     const id = code.oidc.id
     const stored = await this.#read(audience, id)

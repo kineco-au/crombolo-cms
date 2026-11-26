@@ -794,3 +794,156 @@ describe(`changes staged one by one into one workspace (${dialectUnderTest}, sto
     expect(read.status).toBe(404)
   }, 60_000)
 })
+
+describe('story 434: workspaces that make the same page, and a type staged elsewhere', () => {
+  /** A type made and merged, then a page of it made and published in an own workspace. */
+  async function typeThenPage() {
+    const source = await site()
+    const shared = (await (await source.send('GET', `${V1}/document/${HOME}`)).json()) as {
+      documentType: { id: string }
+    }
+    const own = (await (
+      await source.send('GET', `${V1}/document-type/${shared.documentType.id}`)
+    ).json()) as Record<string, unknown>
+    const types = await source.opened('Proof type')
+    const typeKey = crypto.randomUUID()
+    const madeType = await source.send(
+      'POST',
+      `${V1}/document-type`,
+      {
+        ...own,
+        id: typeKey,
+        alias: 'proofPage',
+        name: 'Proof page',
+        properties: [],
+        containers: [],
+      },
+      { 'crombolo-workspace': types.key },
+    )
+    expect(madeType.status, await madeType.clone().text()).toBe(201)
+    await source.merge(types.key)
+    const proof = await source.send(
+      'POST',
+      `${V1}/document`,
+      {
+        documentType: { id: typeKey },
+        parent: null,
+        values: [],
+        variants: [{ culture: null, segment: null, name: 'Proof page X' }],
+      },
+      { 'crombolo-workspace': 'mine' },
+    )
+    expect(proof.status, await proof.clone().text()).toBe(201)
+    const pageKey = proof.headers.get('umb-generated-resource') as string
+    const published = await source.send(
+      'PUT',
+      `${V1}/document/${pageKey}/publish`,
+      { publishSchedules: [{ culture: null }] },
+      { 'crombolo-workspace': 'mine' },
+    )
+    expect(published.status, await published.clone().text()).toBe(200)
+    const listed = (await source.changes()).slice().reverse()
+    const typeChange = listed.find((c) => c.name === 'Proof type')
+    const pageChange = listed.find((c) => c.name?.startsWith('Published'))
+    const bundles = {
+      type: await source.take(`changes/${typeChange?.id}/bundle`),
+      page: await source.take(`changes/${pageChange?.id}/bundle`),
+    }
+    await source.close()
+    return { bundles, typeKey, pageKey }
+  }
+  const stage = async (target: Awaited<ReturnType<typeof site>>, bundle: Bytes, into?: string) => {
+    const answer = await target.put(bundle, into ? `?stage=true&into=${into}` : '?stage=true')
+    return {
+      status: answer.status,
+      ...((await answer.json()) as {
+        workspace: string
+        conflicts: Array<{ item: string; says: string }>
+      }),
+    }
+  }
+
+  test('a page whose type is in neither Shared nor the workspace is a conflict, never another workspace’s type', async () => {
+    const { bundles, typeKey } = await typeThenPage()
+    const target = await site()
+    const typeHeld = await stage(target, bundles.type)
+    expect(typeHeld.status).toBe(200)
+    const alone = await stage(target, bundles.page)
+    expect(alone.status).toBe(409)
+    expect(alone.conflicts[0]?.says).toContain(
+      'needs the document type "proofPage", which this site does not have',
+    )
+    // Nothing of it uses the type the other workspace staged, so that one discards.
+    const gone = await target.send('DELETE', `${WORKSPACES}/${typeHeld.workspace}`)
+    expect(gone.status, await gone.clone().text()).toBe(204)
+    const left = await target.h.server.db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('unique_id', '=', typeKey)
+      .execute()
+    expect(left).toEqual([])
+  }, 30_000)
+
+  test('staged after the change that makes its type, into one workspace, it builds on it, and both discard', async () => {
+    const { bundles, pageKey } = await typeThenPage()
+    const target = await site()
+    const first = await stage(target, bundles.type)
+    const second = await stage(target, bundles.page, first.workspace)
+    expect(second.status, JSON.stringify(second)).toBe(200)
+    const gone = await target.send('DELETE', `${WORKSPACES}/${first.workspace}`)
+    expect(gone.status, await gone.clone().text()).toBe(204)
+    const left = await target.h.server.db.q
+      .selectFrom('node')
+      .select('unique_id')
+      .where('unique_id', '=', pageKey)
+      .execute()
+    expect(left).toEqual([])
+  }, 30_000)
+
+  test('story 436: the same change staged into two workspaces stages in both, and both merge', async () => {
+    const { bundles, pageKey } = await typeThenPage()
+    const target = await site()
+    const first = await stage(target, bundles.type)
+    expect((await stage(target, bundles.page, first.workspace)).status).toBe(200)
+    const second = await stage(target, bundles.type)
+    // The type change made its type in the second workspace too; the page is its own copy.
+    const again = await stage(target, bundles.page, second.workspace)
+    expect(again.status, JSON.stringify(again)).toBe(200)
+    await target.merge(first.workspace)
+    // The second holds the same change: it merges as a change to Shared's, with nothing to ask.
+    await target.merge(second.workspace)
+    const left = await target.h.server.db.q
+      .selectFrom('node')
+      .select(['workspace_id'])
+      .where('unique_id', '=', pageKey)
+      .execute()
+    expect(left).toEqual([{ workspace_id: null }])
+  }, 30_000)
+
+  test('story 436: a second workspace’s different copy of a page merges field by field', async () => {
+    const { bundles, pageKey } = await typeThenPage()
+    const target = await site()
+    const first = await stage(target, bundles.type)
+    await stage(target, bundles.page, first.workspace)
+    const second = await stage(target, bundles.type)
+    const again = await stage(target, bundles.page, second.workspace)
+    // Opened to edit, its copy renamed: the name is what the two disagree on.
+    await target.h.server.db.q
+      .updateTable('workspace')
+      .set({ staged_changes: null })
+      .where('key', '=', again.workspace)
+      .execute()
+    const read = await target.read(pageKey, again.workspace)
+    const renamed = await target.send(
+      'PUT',
+      `${V1}/document/${pageKey}`,
+      { ...read, variants: [{ culture: null, segment: null, name: 'Proof page Y' }] },
+      { 'crombolo-workspace': again.workspace },
+    )
+    expect(renamed.status, await renamed.clone().text()).toBe(200)
+    await target.merge(first.workspace)
+    const refused = await target.send('POST', `${WORKSPACES}/${again.workspace}/merge`, {})
+    expect(refused.status).toBe(409)
+    expect(JSON.stringify(await refused.json())).toContain('Proof page Y')
+  }, 30_000)
+})

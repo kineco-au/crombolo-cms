@@ -22,6 +22,8 @@ export interface MemberTicket {
   stamp: string
   /** Seconds since the epoch. */
   expires: number
+  /** The identity provider that signed them in, by id (story 191). */
+  via?: string
 }
 
 const base64url = (bytes: Uint8Array): string =>

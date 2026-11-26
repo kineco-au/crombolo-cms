@@ -913,6 +913,9 @@ export interface CoreTables {
   user_client_credential: {
     client_id: string
     create_date: Timestamp
+    last_used_at: Timestamp | null
+    old_secret_hash: string | null
+    old_secret_until: Timestamp | null
     secret_hash: string
     user_id: number
   }

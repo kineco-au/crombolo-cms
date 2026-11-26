@@ -44,6 +44,9 @@ export function withSiteWrites<T>(scope: WriteScope, run: () => T): T {
   return writes.run(scope, run)
 }
 
+/** What site code is running, when it is one that may write; undefined in a page render. */
+export const siteWriteScope = (): Readonly<WriteScope> | undefined => writes.getStore()
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface SiteContentDeps {
@@ -54,13 +57,33 @@ export interface SiteContentDeps {
   nodeId?: string
   /** The API user's client id, from `content.actAs`. */
   actAs?: string
+  /** Who it acts as instead: the signed-in user on a staff screen's route (story 431). */
+  as?: Principal
 }
 
-/** The API user a client id names, as the Management API would see it signed in; undefined when none. */
-export async function apiUserPrincipal(db: Db, clientId: string): Promise<Principal | undefined> {
-  const owner = await new UserRepository(db).clientCredentialOwner(clientId)
+const touched = new WeakMap<Db, Map<string, number>>()
+const HOUR = 60 * 60 * 1000
+
+/**
+ * The API user a client id names, as the Management API would see it signed in; undefined
+ * when none. With `used`, the site's code is acting as it, which moves its last use (story 433).
+ */
+export async function apiUserPrincipal(
+  db: Db,
+  clientId: string,
+  options: { used?: boolean } = {},
+): Promise<Principal | undefined> {
+  const repository = new UserRepository(db)
+  const owner = await repository.clientCredentialOwner(clientId)
   if (!owner) return undefined
-  return userPrincipal(db, owner.userId)
+  const principal = await userPrincipal(db, owner.userId)
+  const seen = touched.get(db) ?? new Map<string, number>()
+  touched.set(db, seen)
+  if (principal && options.used && Date.now() - (seen.get(clientId) ?? 0) > HOUR) {
+    seen.set(clientId, Date.now())
+    await repository.touchClientCredential(clientId).catch(() => {})
+  }
+  return principal
 }
 
 /** A back-office user, by key, as the Management API would see them signed in; undefined when none (story 308). */
@@ -128,7 +151,8 @@ export function createSiteContent(deps: SiteContentDeps): SiteContent {
       "This site's code cannot change content: name an API user in the config's content.actAs.",
     )
 
-  const principal = async () => (deps.actAs ? apiUserPrincipal(db, deps.actAs) : undefined)
+  const principal = async () =>
+    deps.as ?? (deps.actAs ? apiUserPrincipal(db, deps.actAs, { used: true }) : undefined)
 
   /** Who a write is, inside a route, an action, a job or an event; a refusal elsewhere. */
   const writer = async () => {
