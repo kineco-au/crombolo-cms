@@ -101,8 +101,26 @@ export class UmbWebhookDetailsWorkspaceViewElement extends UmbLitElement impleme
 	override render() {
 		if (!this._webhook) return nothing;
 
+		// Crombolo: the name and description are the box's first fields, not inputs in the header.
 		return html`
 			<uui-box>
+				<umb-property-layout mandatory label=${this.localize.term('general_name')}>
+					<uui-input
+						slot="editor"
+						label=${this.localize.term('general_name')}
+						placeholder=${this.localize.term('placeholders_entername')}
+						.value=${this._webhook.name ?? ''}
+						@input=${(e: UUIInputEvent) => this.#webhookWorkspaceContext?.setName(String(e.target.value))}></uui-input>
+				</umb-property-layout>
+				<umb-property-layout label=${this.localize.term('general_description')}>
+					<uui-input
+						slot="editor"
+						label=${this.localize.term('general_description')}
+						placeholder=${this.localize.term('placeholders_enterDescription')}
+						.value=${this._webhook.description ?? ''}
+						@input=${(e: UUIInputEvent) =>
+							this.#webhookWorkspaceContext?.setDescription(String(e.target.value))}></uui-input>
+				</umb-property-layout>
 				<umb-property-layout
 					mandatory
 					label=${this.localize.term('webhooks_url')}
