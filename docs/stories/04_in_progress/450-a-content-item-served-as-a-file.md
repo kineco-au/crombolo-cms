@@ -1,6 +1,6 @@
 # 450 — A content item served as a file
 
-**Epic:** O — Building a site · **Priority:** should · **Size:** M
+**Epic:** O — Building a site · **Priority:** should · **Size:** L
 **Depends on:** 284, 377, 381
 
 ## Story
@@ -95,12 +95,44 @@ the story should say so, and decide whether more is needed.
 ## The design
 
 - **The File type:** a content type the CMS defines, like a folder, with:
-  - **its body:** text, edited in a code editor that highlights by the extension, or an
-    upload;
+  - **its body:** one field, edited in the editor that suits the File's extension (below),
+    or an upload;
   - **settings:** allowed at the root and under any page or File, and never a view or a
     layout.
 
   It goes into a site's schema as every built-in does, and moves with it.
+- **An editor for each kind of File:** the body field (`Crombolo.PropertyEditorUi.FileBody`)
+  chooses its editor from the File's name, and changes when the extension does. Each is
+  one the back office already has:
+
+  | Extension | Editor | Checked on save |
+  |---|---|---|
+  | `.md` | the Markdown editor, with its preview | — |
+  | `.txt` | a plain text area | — |
+  | `.json`, `.webmanifest` | the code editor, in JSON | well-formed JSON, refused with the line and column |
+  | `.xml` | the code editor, in XML | well-formed XML, refused the same way |
+  | `.html` | the code editor, in HTML, saying it is shown with no scripts run | — |
+  | `.svg` | the code editor, in XML, with the image shown beside it | well-formed XML |
+  | `.csv` | a plain text area, with its first 20 rows shown as a table | — |
+  | `.pdf`, images | the upload field, with the image, or the PDF's name and size and a link to open it | the 10 MB limit |
+
+  - **Renaming between kinds:** a File renamed from a text extension to an upload one, or
+    the other way, keeps its body until saved. The field then says the body has to be
+    replaced, and the save is refused until it is.
+  - **The checks:** they run in the editor as you type, and again on the server, so a
+    File that isn't well-formed is never published.
+- **In the content tree:** the Create menu offers **File** at the root and under every page,
+  whatever each content type lists as its allowed children, since a File may sit anywhere
+  (decision 2).
+  - **How:** the server adds the File type to its answers for the types allowed at the
+    root and a type's allowed children (`Get{T}AllowedAtRoot`,
+    `Get{T}ByIdAllowedChildren`, documents only). The back office's own Create menu then
+    offers it with no change of its own.
+  - **Under a File** (a folder), only File is offered.
+  - **In the tree,** a File's icon follows its extension: a text, code or image icon, or a
+    folder for a File with children and no body.
+  - **Who may create one:** whoever may create content under that page. Content
+    permissions apply as to any item.
 - **Its name:** kept as typed, never reduced to a slug. It must be a valid path segment:
   no `/`, no `?` or `#`, no leading dot except under `.well-known`. A folder's name has
   no extension, and a File with a body must have one from the list. Two items answering
@@ -146,6 +178,18 @@ the story should say so, and decide whether more is needed.
   - Workspaces, schedules, workflows, history and change transfer apply as to any item.
 - **Links:** content pickers and rich-text links can choose a File, and link to its
   address.
+- **Links from a view, by path:**
+  - **The helper:** `file('/docs/agents.md')`, exported beside `asset()`, answers that
+    File's address while a published File answers at that path. Otherwise it keeps the
+    path, and development logs that no File is there, as `asset()` does for a missing
+    stylesheet.
+  - **The Insert menu:** the template editor's Insert menu gains **A link to a file**. It
+    picks a File from the content tree, then inserts
+    `<a href={file('/docs/agents.md')}>agents.md</a>` at the cursor and the import at the
+    top of the view, as "A personalised part" does.
+  - **By path, not key:** the link names the path, as the view reads it. A File moved or
+    renamed leaves the link at its old path, so the server's start-up log names a `file()`
+    path no File answers.
 - **The Delivery API:**
   - A File is an item of type File, with its address, content type, size and a link to
     its bytes.
@@ -161,8 +205,17 @@ the story should say so, and decide whether more is needed.
 
 - [ ] **A File item** with a text body is created at the root as `llms.txt` and served at
       `/llms.txt` as `text/plain`, its name kept exactly.
+- [ ] **The Create menu** offers File at the root and under any page, whatever its type
+      allows, and only File under a File. A File shows the icon for its extension, and a
+      folder File the folder icon.
 - [ ] **A File under a page,** and a File inside a folder File, answer at their full
       paths. A folder answers nothing at its own address.
+- [ ] **Each extension opens in its editor:** Markdown with preview, plain text, JSON, XML,
+      HTML and SVG in the code editor (SVG with its image), CSV with a table, uploads with
+      their preview. Renaming a File switches the editor, and asks for a new body when the
+      kind changes.
+- [ ] **JSON, `.webmanifest`, XML and SVG** that aren't well-formed are refused on save,
+      naming the line and column, in the editor and on the server.
 - [ ] **An upload** (a PDF, an image) is served with its type. A text body for an image
       type is refused, and so is an upload over 10 MB.
 - [ ] **An upload is stored under `files/`** in the site's file store, never answered at
@@ -179,12 +232,21 @@ the story should say so, and decide whether more is needed.
 - [ ] **Cached as a page** (ETag, cleared on publish), behind Public Access, previewed
       raw, scheduled, approved, held in a workspace, and moved between sites as a change.
 - [ ] **Pickers and links** choose a File and link to its address.
+- [ ] **A view links to a File by path:**
+  - `file('/llms.txt')` answers its address;
+  - a path no File answers keeps its path and is logged in development;
+  - the template editor's **A link to a file** inserts the link and its import for a
+    File chosen from the tree.
 - [ ] **The Delivery API** lists Files with their address, type and size, and answers a
       File's bytes at `file?path=`, under the key and Public Access.
 - [ ] **The agents' guide File** says in its editor that agents read it as instructions.
 - [ ] **Tests:**
   - serving, the order, names and extensions, uploads, caching, the Delivery API, and
     the workspace;
+  - the allowed-at-root and allowed-children answers, with File added for documents only;
+  - `file()` with a File there and without, and the Insert entry's text;
+  - the editor each extension chooses, the kind changing on a rename, and the
+    well-formedness checks on the server;
   - on both dialects, if a migration is needed;
   - a browser journey: make `llms.txt`, preview it, publish it, open it.
 - [ ] **Docs:** `docs/rendering.md` (who answers at an address), `docs/delivery-api.md`,

@@ -399,7 +399,7 @@ requests, only server-side and build-time front ends can call it.
 | `298` | Site code writes content and handles its events | should | L | done | 187, 206 |
 | `371` | Pages served as Markdown | could | M | abandoned | superseded by 450 |
 | `449` | A site's public files edited in the back office | could | M | abandoned | superseded by 450 |
-| `450` | A content item served as a file | should | M | ready | 284, 377, 381 |
+| `450` | A content item served as a file | should | L | in progress | 284, 377, 381 |
 
 ### Epic P — The command line
 
