@@ -6,6 +6,57 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **A lost connection says so, and comes back by itself.** When the back office can't
+  reach the server (a request fails on the network, or a gateway answers for a server it
+  can't reach), a dialog opens over the dimmed, blurred page with **Try to reconnect**. It
+  also tries every 5 seconds, and closes once the server answers. Reads made meanwhile are
+  asked again then, so screens fill back in. A save is never sent twice: it fails as it
+  did, and the dialog says to save again once reconnected. The server's own 503s, such as
+  another site that holds members not answering, don't open it.
+- **The content footer's buttons are strong and clear.** Save and preview, Save, and Save
+  and publish each have a solid colour from the site's palette with light text: cocoa,
+  terracotta and green. Save and preview no longer looks disabled.
+- **A create says it was saved.** The first save of anything new (a member group, a page, a
+  data type) shows its "created" toast. The back office's client used to drop it when it
+  read the new item's address, so the toast only appeared on the second save.
+- **Saving a workflow says what's wrong in plain words.** A refused save names the stage,
+  as in "Review needs at least one group to approve it." It opens that stage and shows the
+  problem under the field. A stage with no approver group is caught before anything is
+  sent. Required fields carry the asterisk, as in the content editor.
+- **Approvals point to the designer.** With no workflow, Approvals says "You have no
+  approval workflows", with "Create one here" for someone who may make one. With some,
+  "Edit workflows" sits above the list, and a page's Workflow tab links to its workflow.
+- **Problems and notes look the same everywhere.** A refused save's problems ("Not saved"
+  and "Not imported") are a red callout in the workflow designer, Forms, Deployment
+  pipelines and schema transfer. Notices are amber and information is white, the same
+  element for each.
+- **Webhooks:**
+  - the list says "No webhooks created" when there are none;
+  - a webhook's name and description are the first fields in Details, with the header
+    showing its name.
+- **Settings, tidied:**
+  - People is now **Access**, first in the list;
+  - Extension insights opens with the same title as every other tool;
+  - Service status shows its information counts in grey, so only warnings are amber;
+  - the tabs of Search, Content settings and Extensions are no longer cut off;
+  - a member group's screen shows its Id only;
+  - several descriptions are shorter: the caches, service accounts, users and groups,
+    trusted signers, and e-mail.
+- **Trusted signers:** the steps to add your own key are in a section you open, in place of
+  the Add my key button.
+- **A page's sharing links to its Caching tab,** where its type has one.
+
+### Fixes
+
+- **The Servers check** failed with "Cannot access 'latest' before initialization" on any
+  server reporting the published content it serves (since 0.25.0).
+
+### Upgrade notes
+
+- **Nothing to do.** No migration, and no setting changes.
+
 ## v0.83.0 — 2026-11-27
 
 ### Features
