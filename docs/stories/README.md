@@ -397,8 +397,9 @@ requests, only server-side and build-time front ends can call it.
 | `287` | A template's element has its name | should | S | done | — |
 | `290` | A starter site that shows what the CMS does | should | L | done | — |
 | `298` | Site code writes content and handles its events | should | L | done | 187, 206 |
-| `371` | Pages served as Markdown | could | M | ready | 370 |
-| `449` | A site's public files edited in the back office | could | M | backlog | 284, 377, 381 |
+| `371` | Pages served as Markdown | could | M | abandoned | superseded by 450 |
+| `449` | A site's public files edited in the back office | could | M | abandoned | superseded by 450 |
+| `450` | A content item served as a file | should | M | ready | 284, 377, 381 |
 
 ### Epic P — The command line
 
