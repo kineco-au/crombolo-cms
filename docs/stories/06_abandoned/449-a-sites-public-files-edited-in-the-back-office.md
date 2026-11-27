@@ -54,6 +54,18 @@ The design isn't settled. These are the questions, not answers:
 7. **Where it lives in the back office:** Settings beside Stylesheets and Scripts, or a
    "Files" area of its own.
 
-## Acceptance criteria
+## Abandoned (2026-11-27)
 
-To be written once the design is decided.
+Superseded by `450`. The files an editor wants at an address of their own, such as
+`llms.txt`, a verification file or a document, are content: they want workspaces, history,
+approvals, schedules, permissions and moving between sites, which the content tree already
+gives every item and which this story would have rebuilt for one folder. The content tree
+couldn't express them because an item's address is reduced to `[a-z0-9-]` and every item
+renders HTML through a view. `450` fixes that instead.
+
+`public/` stays the developer's, as `284` made it: a favicon, fonts, images a stylesheet
+names, a vendor's built files and `.well-known/` belong to the site's code.
+
+Decided before it was dropped: the whole folder, text edited in place; HTML, SVG and XML
+allowed and served sandboxed (`435`), at most 10 MB a file; the Settings section.
+`450` starts from the same answers where they still apply.

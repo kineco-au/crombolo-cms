@@ -30,6 +30,13 @@ office like any other page and published at an address of its own.
   agent reads is writing instructions for that agent. Page permissions apply, and a
   workflow can gate it; say so, and decide whether more is needed.
 
-## Acceptance criteria
+## Abandoned (2026-11-27)
 
-To be written when the decisions above are made.
+Superseded by `450`, a content item served as a file. A Markdown page at an address of its
+own, the agents' guide or `llms.txt`, is a file item whose name is its address
+(`/agents-guide.md`) and whose text is its body, served as `text/markdown`. `450` carries
+this story's question about who may edit text an agent reads as instructions, and names
+`370`'s guide as its first use.
+
+Not carried: a Markdown copy beside every HTML page (`/about.md` for `/about`). It is
+derived from a page rather than an item of its own, so it would be a story of its own.
