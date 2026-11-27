@@ -12,6 +12,7 @@
  * set can place an upload that a different node received.
  */
 import { basename, extname } from 'node:path'
+import { isFileObjectKey } from '@crombolo/core'
 import {
   contentTypeFor,
   fileSystemMediaStore,
@@ -166,6 +167,25 @@ export class MediaFileStore {
     return placed
   }
 
+  /**
+   * Moves a temporary upload to a key of the caller's choosing, where a File's
+   * upload is kept (story 450); undefined when it is gone or expired.
+   */
+  async placeAt(
+    id: string,
+    key: string,
+  ): Promise<{ bytes: number; contentType: string } | undefined> {
+    const temporary = await this.temporary(id)
+    if (!temporary) return undefined
+    const source = await this.store.get(this.#tempKey(id, temporary.fileName))
+    if (!source) return undefined
+    const bytes = await source.bytes()
+    const contentType = contentTypeFor(temporary.fileName)
+    await this.store.put(key, bytes, { contentType })
+    await this.deleteTemporary(id)
+    return { bytes: bytes.byteLength, contentType }
+  }
+
   /** The store key a `/media/…` URL path names; undefined when it names nothing. */
   key(urlPath: string): string | undefined {
     if (!urlPath.startsWith('/media/')) return undefined
@@ -180,6 +200,8 @@ export class MediaFileStore {
     const parts = key.split('/')
     if (parts.length < 2 || parts.some((part) => part === '' || part.startsWith('.')))
       return undefined
+    // Story 450: a File's upload is reached only through its File.
+    if (isFileObjectKey(key)) return undefined
     return key
   }
 

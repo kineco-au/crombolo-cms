@@ -110,6 +110,13 @@ export function publicClashes(options: {
   })
 }
 
+/** The address of every file the folder serves, as a request names it (story 450). */
+export function publicPaths(root: string, backOfficePath: string): string[] {
+  return filesFrom(root)
+    .map((file) => `/${file}`)
+    .filter((path) => !isReservedPublicPath(path, backOfficePath))
+}
+
 interface PublicEntry {
   file: string
   /** Of the file's bytes, worked out when first asked for and kept until it changes. */

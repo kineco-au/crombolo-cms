@@ -4,7 +4,13 @@
  * 18.2's shapes. docs/delivery-api.md, "Output".
  */
 
-import type { SchemaForm } from '@crombolo/core'
+import {
+  FILE_BODY_EDITOR_ALIAS,
+  fileKindOf,
+  fileTextOf,
+  fileUploadOf,
+  type SchemaForm,
+} from '@crombolo/core'
 import {
   type BlockGridItem,
   type BlockItem,
@@ -46,6 +52,8 @@ export interface OutputContext {
   form?(form: SchemaForm): Record<string, unknown>
   /** Media by key, for the links and images rich text names (story 216). */
   media?(keys: readonly string[]): Promise<PublishedMedia[]>
+  /** Where a File's bytes are, by its path (story 450). */
+  fileUrl?(path: string): string
 }
 
 const iso = (date: Date): string => date.toISOString()
@@ -108,6 +116,11 @@ async function properties(
   for (const [index, alias] of aliases.entries()) {
     const property = propertyOf(item.properties, alias, culture) as PublishedProperty
     const converted = values[index]
+    // Story 450: a File's body is described, and its bytes are at `v2/file?path=`.
+    if (property.editorAlias === FILE_BODY_EDITOR_ALIAS && item instanceof PublishedContent) {
+      out[alias] = fileDescription(item, property.value, ctx)
+      continue
+    }
     out[alias] = await deliveryValue(
       property,
       converted,
@@ -117,6 +130,20 @@ async function properties(
     )
   }
   return out
+}
+
+/** A File's address, its type and size, and where its bytes are (story 450). */
+function fileDescription(item: PublishedContent, value: unknown, ctx: OutputContext) {
+  const kind = fileKindOf(item.name)
+  if (!kind) return null
+  const upload = fileUploadOf(value)
+  const path = ctx.route(item)?.path ?? null
+  return {
+    path,
+    contentType: kind.contentType,
+    size: upload ? upload.size : new TextEncoder().encode(fileTextOf(value) ?? '').length,
+    url: path && ctx.fileUrl ? ctx.fileUrl(path) : null,
+  }
 }
 
 /** An element (a block, a library element): its properties are always mapped. */

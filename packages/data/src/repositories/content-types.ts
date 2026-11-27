@@ -14,6 +14,7 @@ import {
   type ContentTypeAggregate,
   ContentVariation,
   ENVIRONMENT_VARIATION,
+  isFileType,
   normaliseUuid,
   ObjectTypes,
   type PropertyGroupModel,
@@ -611,6 +612,10 @@ export class ContentTypeRepository {
    * level), as its parent's type allows children; nothing when it may.
    */
   async placementRefusal(typeKey: string, parentKey: string | null): Promise<string | undefined> {
+    // Story 450: a File may go anywhere, and only a File goes inside one.
+    if (isFileType(typeKey)) return undefined
+    if (parentKey !== null && (await this.#isFileItem(parentKey)))
+      return 'Only a File can go inside a File.'
     if (this.#workspace) {
       const type = await this.byKey(typeKey)
       if (!type) return undefined
@@ -663,6 +668,19 @@ export class ContentTypeRepository {
     return Number(allowed[0]?.n ?? 0) > 0
       ? undefined
       : `"${typeName}" isn't allowed under "${parent.text ?? parentKey}".`
+  }
+
+  /** Whether the item with this key is a File. */
+  async #isFileItem(key: string): Promise<boolean> {
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .innerJoin('node as tn', 'tn.id', 'c.content_type_id')
+      .leftJoin('content_type as tct', 'tct.node_id', 'tn.id')
+      .select(['tn.unique_id', 'tct.origin_key'])
+      .where('n.unique_id', '=', normaliseUuid(key))
+      .execute()
+    return rows.some((row) => isFileType(String(row.origin_key ?? row.unique_id)))
   }
 
   async allowedChildren(

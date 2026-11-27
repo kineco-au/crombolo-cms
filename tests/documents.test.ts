@@ -1019,7 +1019,8 @@ describe('story 020 document workspace', () => {
     const children = await h.json<{ total: number; items: Array<{ alias: string }> }>(
       `${V1}/document-type/${item[0]?.documentType.id}/allowed-children?parentContentKey=${home}`,
     )
-    expect(children.items.map((i) => i.alias)).toEqual(['childPage'])
+    // A File may sit under any page (story 450).
+    expect(children.items.map((i) => i.alias)).toEqual(['childPage', 'fileItem'])
 
     const atRoot = await h.json<{ items: Array<{ alias: string }> }>(
       `${V1}/document-type/allowed-at-root?skip=0&take=100`,

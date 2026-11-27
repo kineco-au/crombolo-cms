@@ -6,6 +6,7 @@
 
 import { marked } from 'marked'
 import { BLOCK_EDITORS } from './blocks.ts'
+import { FILE_BODY_EDITOR_ALIAS, fileUploadOf } from './files.ts'
 
 export const RICH_TEXT_EDITOR_ALIAS = 'Umbraco.RichText'
 export const UPLOAD_FIELD_EDITOR_ALIAS = 'Umbraco.UploadField'
@@ -133,6 +134,8 @@ export function toEditorValue(editorAlias: string | undefined, stored: unknown):
   if (editorAlias === 'Umbraco.TrueFalse')
     return stored === true || stored === 1 || stored === '1' || stored === 'true'
   if (editorAlias === 'Umbraco.DateTime') return toWallClock(stored)
+  // Story 450: a File's body is its text, or the upload it names.
+  if (editorAlias === FILE_BODY_EDITOR_ALIAS) return fileUploadOf(stored) ?? stored
   if (!JSON_VALUE_EDITORS.has(editorAlias) || typeof stored !== 'string') return stored
   const parsed = tryParse(stored)
   return parsed !== null && typeof parsed === 'object' ? parsed : stored

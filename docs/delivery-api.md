@@ -513,6 +513,32 @@ published cache's `resolve`, which the renderer uses.
 - `@crombolo/delivery-client` has it as `route(path, { host })`, which returns
   the answer for a `404` rather than throwing.
 
+## Files
+
+A File in the content tree (story 450, `docs/rendering.md`, "Files in the content
+tree") is an item of type `fileItem`, listed and fetched as any item. Its `body`
+property describes it rather than holding it:
+
+```json
+{
+  "path": "/docs/agents.md",
+  "contentType": "text/markdown; charset=utf-8",
+  "size": 1432,
+  "url": "/umbraco/delivery/api/v2/file?path=%2Fdocs%2Fagents.md"
+}
+```
+
+`size` is in bytes; a folder File's `body` is `null`.
+
+`GET file?path=…&host=…`, a Crombolo addition, answers a File's bytes with its
+content type, `nosniff`, and `Content-Security-Policy: sandbox` for HTML, SVG and
+XML. `path` is its address, resolved as the site resolves it; anything that is not
+a File with a body is `404`. The API key and Public Access apply as to the item:
+a members-only File answers `401` or `403`. A public answer carries an ETag and
+the lifetime a page of its type has; with `Preview: true` the draft's bytes
+answer, never kept. An upload is read from the site's file store, and this route
+and the File's own address are the only ways to it.
+
 ## Members-only pages
 
 The nearest protected ancestor governs, as on the site: a member is let in by

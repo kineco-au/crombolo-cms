@@ -120,6 +120,7 @@ export {
   externalSignInUrl,
   ForgotPasswordForm,
   Form,
+  file,
   formAction,
   Gap,
   Island,

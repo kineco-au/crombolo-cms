@@ -29,6 +29,7 @@ import type {
   ContentNotificationRunner,
   ContentNotificationRunReport,
 } from './content-notifications.ts'
+import { removeUnnamedFileObjects } from './file-items.ts'
 import type { WorkflowRunner, WorkflowRunReport } from './form-workflows.ts'
 import { logger } from './logging.ts'
 import type { MediaFileStore } from './media-files.ts'
@@ -260,7 +261,10 @@ export function createBackgroundJobs(options: JobsOptions): BackgroundJobs {
   }
 
   async function runVersionCleanupUntraced(now = new Date()) {
-    return documents.cleanupVersions(now, options.versionCleanup)
+    const done = await documents.cleanupVersions(now, options.versionCleanup)
+    // Story 450: a File's upload goes with the last version naming it.
+    if (options.mediaFiles) await removeUnnamedFileObjects(options.db, options.mediaFiles.store)
+    return done
   }
 
   /** The later of the time asked for and now: what was queued a moment ago is due too. */

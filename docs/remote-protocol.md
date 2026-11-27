@@ -67,7 +67,11 @@ down notices (story 365).
   no redirect followed, at most 64 KB, as text; its block markers are escaped
   so it can't leave its block, and nothing in it is run. A guide that can't be
   fetched is a line in the output, never a failed pull. The reference server
-  names one from `remote.agentsGuide` (`CROMBOLO_REMOTE_AGENTS_GUIDE`).
+  names one from `remote.agentsGuide` (`CROMBOLO_REMOTE_AGENTS_GUIDE`). Its text
+  can be a File in the content tree at that address, such as `/agents-guide.md`
+  (story 450): its editor says that agents read it as instructions, page
+  permissions apply to it, and a site that cares puts it under a workflow
+  (`docs/rendering.md`, "Files in the content tree").
 - **`environments`:** what the remote offers.
   - `id` is lower case letters, digits and dashes.
   - `protected: true` means a push there replaces something people rely on.

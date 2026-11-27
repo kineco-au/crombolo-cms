@@ -42,3 +42,22 @@ export function setAssetResolver(resolve: AssetResolver | undefined): void {
 export function asset(path: string): string {
   return shared[KEY]?.(path) ?? path
 }
+
+type FileResolver = (path: string) => string | undefined
+
+const FILES_KEY = Symbol.for('crombolo.files')
+const sharedFiles = globalThis as Record<symbol, FileResolver | undefined>
+
+/** What `file()` asks: the server's, which knows the published Files (story 450). */
+export function setFileResolver(resolve: FileResolver | undefined): void {
+  sharedFiles[FILES_KEY] = resolve
+}
+
+/**
+ * The address to link a File in the content tree by: `file('/llms.txt')` is
+ * that File's address while a published File answers there. A path no File
+ * answers keeps its path, and development says so.
+ */
+export function file(path: string): string {
+  return sharedFiles[FILES_KEY]?.(path) ?? path
+}

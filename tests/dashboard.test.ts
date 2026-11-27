@@ -173,6 +173,9 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'sectionView:Crombolo.SectionView.Forms.Entries',
       'propertyEditorSchema:Crombolo.FormPicker',
       'propertyEditorUi:Crombolo.PropertyEditorUi.FormPicker',
+      // A File's body (story 450).
+      'propertyEditorSchema:Crombolo.FileBody',
+      'propertyEditorUi:Crombolo.PropertyEditorUi.FileBody',
       // One tree over components/, in place of Templates and Partial Views.
       'backofficeEntryPoint:Crombolo.EntryPoint.ComponentsTree',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentTypeLabels',
@@ -252,6 +255,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'Crombolo.HeaderApp.Settings',
       'Crombolo.Section.Forms',
       'Crombolo.FormPicker',
+      'Crombolo.FileBody',
       'Crombolo.Section.Workflow',
     ])
     expect(moduleless.map((e) => e.type)).toEqual([
@@ -273,6 +277,7 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'sectionSidebarApp',
       'headerApp',
       'section',
+      'propertyEditorSchema',
       'propertyEditorSchema',
       'section',
     ])

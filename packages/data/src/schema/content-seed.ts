@@ -6,6 +6,9 @@
  * references a well-known data type still applies.
  */
 import {
+  FILE_BODY_DATA_TYPE_KEY,
+  FILE_BODY_EDITOR_ALIAS,
+  FILE_BODY_EDITOR_UI_ALIAS,
   KEEP_COPIES_FOR,
   KEEP_COPIES_FOR_DATA_TYPE_KEY,
   MENU_ITEMS_DATA_TYPE_KEY,
@@ -553,6 +556,16 @@ export const CROMBOLO_DATA_TYPES: readonly SeedDataType[] = [
     // The form's UUID, from `schema/forms/*.toml`. A string rather than a
     // reference: the definition is a file, so there is no row to point at.
     dbType: ValueStorageType.Nvarchar,
+    config: {},
+  },
+  // A File's body (story 450): its text, or the upload it names.
+  {
+    key: FILE_BODY_DATA_TYPE_KEY,
+    alias: 'fileBody',
+    name: 'File body',
+    editorAlias: FILE_BODY_EDITOR_ALIAS,
+    editorUiAlias: FILE_BODY_EDITOR_UI_ALIAS,
+    dbType: ValueStorageType.Ntext,
     config: {},
   },
 ]

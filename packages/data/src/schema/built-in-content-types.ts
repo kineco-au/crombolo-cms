@@ -11,6 +11,7 @@
 import {
   CACHE_FIELDS_PROPERTIES,
   type ContentTypeAggregate,
+  FILE_PROPERTIES,
   MENU_ITEM_PROPERTIES,
   MENU_PROPERTIES,
   SEO_FIELDS_PROPERTIES,
@@ -80,11 +81,28 @@ export const MENU_ITEM_TYPE: BuiltInContentType = {
   properties: MENU_ITEM_PROPERTIES,
 }
 
+/**
+ * A File (story 450): served at its name exactly, from text or an upload. Offered
+ * at the root and under every page by the allowed-type answers, not by its own
+ * settings, so nothing a site's types list changes where it may go.
+ */
+export const FILE_TYPE: BuiltInContentType = {
+  key: SYSTEM_CONTENT_TYPE_KEYS.File,
+  // Not `file`: aliases are unique whatever their case, and the File media type has that one.
+  alias: 'fileItem',
+  name: 'File',
+  description: 'A file such as llms.txt, served at its name exactly, extension included.',
+  icon: 'icon-document',
+  tab: { key: 'e6188664-ad30-4464-8833-2fb61aa51402', name: 'File', alias: 'file' },
+  properties: FILE_PROPERTIES,
+}
+
 export const SYSTEM_CONTENT_TYPES: readonly BuiltInContentType[] = [
   SEO_FIELDS_TYPE,
   CACHE_FIELDS_TYPE,
   MENU_TYPE,
   MENU_ITEM_TYPE,
+  FILE_TYPE,
 ]
 
 export function systemContentTypeAggregate(def: BuiltInContentType): ContentTypeAggregate {

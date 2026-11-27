@@ -286,6 +286,12 @@ export function toDocumentTreeItemResponse(item: DocumentTreeItem, noAccess = fa
 /** A revision as an entity tag. */
 const etag = (revision: string) => `"${revision}"`
 
+/** What a save that went ahead warns of, as the editor's toasts (story 450). */
+const warn = (ctx: RequestContext, warnings: readonly string[] | undefined) => {
+  for (const message of warnings ?? [])
+    ctx.notifications.push({ message, category: 'Content', type: 'Warning' })
+}
+
 /** Refusals about the copy being saved, titled as a save even when a publish followed. */
 const SAVE_REFUSALS: ReadonlySet<Refusal['kind']> = new Set([
   'forbidden',
@@ -406,6 +412,7 @@ export function registerDocumentHandlers(
         sent: input.values,
         approval: 'The document needs approval before it is published',
       })
+    warn(ctx, result.warnings)
     return created(
       `${ctx.url.pathname.replace(/\/create-and-publish$/, '')}/${result.key}`,
       result.key,
@@ -433,6 +440,7 @@ export function registerDocumentHandlers(
         { sent: input.values, approval: 'The document needs approval before it is published' },
       )
     }
+    warn(ctx, result.warnings)
     return okWith(result.revision)
   })
 
@@ -535,6 +543,7 @@ export function registerDocumentHandlers(
     const result = await operations.create(actorOf(ctx), toSaveDocument(key, body))
     if (!result.ok) return refused(result, 'Could not create the document')
     ctx.notifications.push({ message: 'Document created', category: 'Content', type: 'Success' })
+    warn(ctx, result.warnings)
     return created(`${ctx.url.origin}/umbraco/management/api/v1/document/${result.key}`, result.key)
   })
 
@@ -560,6 +569,7 @@ export function registerDocumentHandlers(
         approval: 'The document is waiting for approval',
       })
     ctx.notifications.push({ message: 'Document saved', category: 'Content', type: 'Success' })
+    warn(ctx, result.warnings)
     return okWith(result.revision)
   }
 

@@ -51,6 +51,7 @@ import type { ContentNotifier } from './content-notifications.ts'
 import { writeDomainsFor } from './domains.ts'
 import type { EmailPort } from './email.ts'
 import { createFileIntake, TemporaryFileMissingError } from './file-intake.ts'
+import { createFileItemCheck, type FileWinners } from './file-items.ts'
 import type { MediaFileStore } from './media-files.ts'
 import { createRedirectTracker, NO_REDIRECT_TRACKING, type RedirectTracker } from './redirects.ts'
 import type { WebhookService } from './webhooks.ts'
@@ -74,6 +75,8 @@ export interface NodeOperations {
   merge: WorkspaceMerging
   /** Story 400: what tells the open workspaces Shared has come into conflict with them. */
   conflicts: ConflictWatch
+  /** Story 450: tells a File's save what answers above Files, once the server knows. */
+  fileWinners(winners: () => FileWinners | undefined): void
 }
 
 /** A workspace's merge: what it would do, and doing it, as the person merging. */
@@ -127,6 +130,13 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
   }
   const refusalReason = (error: unknown) =>
     error instanceof TemporaryFileMissingError ? error.message : undefined
+  let winners: () => FileWinners | undefined = () => undefined
+  const checkItem = createFileItemCheck({
+    db,
+    cache,
+    mediaFiles: options.mediaFiles,
+    winners: () => winners(),
+  })
   // Story 400: each write to Shared asks the open workspaces holding its item how they merge now.
   const conflicts = createConflictWatch({ repository, files: () => workspaceSchema })
   const watched = <S extends { record(tx: Db, event: never, actor: never): Promise<void> }>(
@@ -187,6 +197,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     afterDomains: (node, assignment) =>
       writeDomainsFor(db, options.config.siteDir, node, assignment),
     refusalReason,
+    checkItem,
   })
   const media = createMediaOperations({
     db,
@@ -238,7 +249,7 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
   /** The document operations in a workspace (story 375): its pages, audited, announced nowhere else. */
   const documentsIn = (workspace: Workspace): DocumentOperations =>
     createWorkspaceOperations(
-      { db, repository, refusalReason },
+      { db, repository, refusalReason, checkItem },
       { id: workspace.id, name: workspace.name },
     )
   const gate = approvalsGate(approvals)
@@ -348,5 +359,8 @@ export function createNodeOperations(options: NodeOperationsOptions): NodeOperat
     media,
     elements,
     conflicts,
+    fileWinners(next) {
+      winners = next
+    },
   }
 }

@@ -5,6 +5,13 @@
  * Kept as one aggregate because the editor saves it as one document, and because
  * the property set is only meaningful together with the compositions it inherits.
  */
+import {
+  FILE_BODY_ALIAS,
+  FILE_BODY_DATA_TYPE_KEY,
+  FILE_BODY_PROPERTY_KEY,
+  FILE_CONTENT_TYPE_KEY,
+} from './files.ts'
+
 export interface PropertyTypeModel {
   key: string
   alias: string
@@ -161,12 +168,13 @@ export function isSystemMemberType(key: string): boolean {
  * site may add fields to one, but not remove or change the ones it ships with.
  */
 export const SYSTEM_CONTENT_TYPE_KEYS: Readonly<
-  Record<'SeoFields' | 'CacheFields' | 'Menu' | 'MenuItem', string>
+  Record<'SeoFields' | 'CacheFields' | 'Menu' | 'MenuItem' | 'File', string>
 > = {
   SeoFields: '5e0f1c2a-7b3d-4c8e-9a61-0d2b4f6e8a13',
   CacheFields: '7a1e4c93-2b6d-4f58-a0c7-5d3e9b1f8a24',
   Menu: '3c9e2f71-5a4d-4b86-9e13-7f0a2d6c8b45',
   MenuItem: '8b4d1a26-6e3f-4c90-a7d5-2e9c0f4b7a18',
+  File: FILE_CONTENT_TYPE_KEY,
 }
 
 export function isSystemContentType(kind: 'document' | 'media' | 'member', key: string): boolean {
@@ -269,6 +277,7 @@ export function systemContentTypeProperties(key: string): readonly SystemPropert
   if (lower === SYSTEM_CONTENT_TYPE_KEYS.CacheFields) return CACHE_FIELDS_PROPERTIES
   if (lower === SYSTEM_CONTENT_TYPE_KEYS.Menu) return MENU_PROPERTIES
   if (lower === SYSTEM_CONTENT_TYPE_KEYS.MenuItem) return MENU_ITEM_PROPERTIES
+  if (lower === SYSTEM_CONTENT_TYPE_KEYS.File) return FILE_PROPERTIES
   return []
 }
 
@@ -390,6 +399,17 @@ export const MENU_ITEM_PROPERTIES: readonly SystemPropertyModel[] = [
     name: 'Items below',
     description: 'Shown under this item, as a submenu.',
     dataTypeKey: MENU_ITEMS_DATA_TYPE_KEY,
+  },
+]
+
+/** The File type's one field (story 450): its body, text or an upload. */
+export const FILE_PROPERTIES: readonly SystemPropertyModel[] = [
+  {
+    key: FILE_BODY_PROPERTY_KEY,
+    alias: FILE_BODY_ALIAS,
+    name: 'Body',
+    description: "What is served at the File's address: text written here, or an uploaded file.",
+    dataTypeKey: FILE_BODY_DATA_TYPE_KEY,
   },
 ]
 

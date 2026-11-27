@@ -15,7 +15,9 @@ import {
   type DocumentVariant,
   type DocumentVersionSummary,
   dateFromText,
+  fileIconFor,
   variesByCulture as flagVariesByCulture,
+  isFileType,
   type MediaItemAccess,
   normaliseUuid,
   ObjectTypes,
@@ -213,6 +215,8 @@ const KINDS: Record<
 export type ValueIntake = (
   values: readonly DocumentValue[],
   propertyTypes: ReadonlyArray<{ alias: string; editorAlias: string }>,
+  /** The item and the version being written, where a save knows them. */
+  item?: { key: string; version: number },
 ) => Promise<DocumentValue[]>
 
 export interface DocumentRepositoryOptions {
@@ -2135,7 +2139,14 @@ export class DocumentRepository {
             input.userId,
             templateId,
           )
-          await repo.#appendValues(node.id, eventId, state, contentTypeNode.id, input.values)
+          await repo.#appendValues(
+            node.id,
+            eventId,
+            state,
+            contentTypeNode.id,
+            input.values,
+            node.key,
+          )
           await repo.#writeWorkspaceCultures(node.id, eventId, input.variants)
           const made = await repo.#load({ ...node, text: name })
           if (!made) throw new Error('Document could not be read back after creation.')
@@ -2149,7 +2160,14 @@ export class DocumentRepository {
           templateId,
           false,
         )
-        await repo.#appendValues(node.id, eventId, state, contentTypeNode.id, input.values)
+        await repo.#appendValues(
+          node.id,
+          eventId,
+          state,
+          contentTypeNode.id,
+          input.values,
+          node.key,
+        )
         await repo.#writeCultureVariations(node.id, eventId, input.variants)
 
         const created = await repo.#load({ ...node, text: name })
@@ -2351,7 +2369,7 @@ export class DocumentRepository {
           input.userId,
           templateId,
         )
-        await repo.#appendValues(node.id, eventId, state, contentTypeNodeId, input.values)
+        await repo.#appendValues(node.id, eventId, state, contentTypeNodeId, input.values, node.key)
         await repo.#writeWorkspaceCultures(node.id, eventId, input.variants)
         await repo.#setWorkspaceDocument(node.id, { edited: true })
         return repo.#load(node)
@@ -2366,7 +2384,7 @@ export class DocumentRepository {
         false,
       )
 
-      await repo.#appendValues(node.id, eventId, state, contentTypeNodeId, input.values)
+      await repo.#appendValues(node.id, eventId, state, contentTypeNodeId, input.values, node.key)
       await repo.#writeCultureVariations(node.id, eventId, input.variants)
       await repo.#recomputeEdited(node.id)
       const saved = await repo.#load({ ...node, text: name })
@@ -3972,9 +3990,16 @@ export class DocumentRepository {
     state: SchemaStateRow,
     contentTypeNodeId: number,
     incoming: readonly DocumentValue[],
+    nodeKey?: string,
   ): Promise<void> {
     const propertyTypes = await this.#propertyTypes(contentTypeNodeId)
-    const values = this.#intake ? await this.#intake(incoming, propertyTypes) : incoming
+    const values = this.#intake
+      ? await this.#intake(
+          incoming,
+          propertyTypes,
+          nodeKey ? { key: nodeKey, version: eventId } : undefined,
+        )
+      : incoming
     const byAlias = new Map(propertyTypes.map((p) => [p.alias, p]))
     const byId = new Map(propertyTypes.map((p) => [p.id, p]))
     const languages = await this.#languages()
@@ -4452,7 +4477,9 @@ export class DocumentRepository {
           parentKey: parent ? parent.key : null,
           contentTypeKey: mine.contentTypeKey,
           contentTypeCollectionKey: mine.contentTypeCollectionKey,
-          icon: mine.contentTypeIcon,
+          icon: isFileType(mine.contentTypeKey)
+            ? fileIconFor(mine.variants[0]?.name ?? row.text ?? '')
+            : mine.contentTypeIcon,
           isTrashed: row.trashed,
           createDate: row.createDate ?? new Date(),
           ancestorKeys: pathIds(row)
@@ -4484,7 +4511,9 @@ export class DocumentRepository {
         contentTypeCollectionKey: fact.content_type_collection
           ? normaliseUuid(String(fact.content_type_collection))
           : null,
-        icon: String(fact.content_type_icon ?? 'icon-document'),
+        icon: isFileType(String(fact.content_type_key))
+          ? fileIconFor(String(fact.draft_name ?? row.text ?? ''))
+          : String(fact.content_type_icon ?? 'icon-document'),
         isTrashed: row.trashed,
         createDate: row.createDate ?? new Date(),
         ancestorKeys: ancestors.filter((a) => a.objectType === this.objectType).map((a) => a.key),

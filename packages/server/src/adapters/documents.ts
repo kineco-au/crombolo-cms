@@ -8,7 +8,9 @@ import type {
   SkipTake,
 } from '@crombolo/api-management/domain'
 import {
+  fileIconFor,
   forEnvironment,
+  isFileType,
   normaliseUuid,
   ObjectTypes,
   type Page,
@@ -72,7 +74,10 @@ async function toTreeItems(
       name: row.text ?? '',
       hasChildren: (counts.get(row.id) ?? 0) > 0,
       parentKey: parent && parent.objectType === ObjectTypes.Document ? parent.key : null,
-      icon: aggregate?.contentTypeIcon ?? 'icon-document',
+      icon:
+        aggregate && isFileType(aggregate.contentTypeKey)
+          ? fileIconFor(row.text ?? '')
+          : (aggregate?.contentTypeIcon ?? 'icon-document'),
       isFolder: false,
     })
   }

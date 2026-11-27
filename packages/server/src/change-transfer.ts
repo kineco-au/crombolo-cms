@@ -12,7 +12,7 @@
 import type { Principal } from '@crombolo/api-management/domain'
 import { REMOVED_PAGE_PREFIX } from '@crombolo/content'
 import type { DocumentAggregate } from '@crombolo/core'
-import { normaliseUuid, ObjectTypes } from '@crombolo/core'
+import { isFileObjectKey, normaliseUuid, ObjectTypes } from '@crombolo/core'
 import {
   ChangeRepository,
   ChangeSourceRepository,
@@ -322,8 +322,16 @@ function fieldsOf(state: ChangePageState | null): Map<string, unknown> {
   return out
 }
 
-const mediaIn = (state: ChangePageState | null) =>
-  new Set(JSON.stringify(state?.values ?? []).match(MEDIA_URL) ?? [])
+/** A File's upload (story 450), carried beside the media files under its own key. */
+const FILE_OBJECT = /files\/[0-9a-f-]{36}\/\d+\/[^"'\s?#\\]+/g
+/** The media files and File uploads a page's state names, which its change carries. Pure. */
+export const carriedFilesIn = (state: Pick<ChangePageState, 'values'> | null) => {
+  const text = JSON.stringify(state?.values ?? [])
+  return new Set([...(text.match(MEDIA_URL) ?? []), ...(text.match(FILE_OBJECT) ?? [])])
+}
+/** The store key a carried file is kept under: a media URL's, or a File upload's own. */
+const carriedKey = (media: MediaFileStore, url: string) =>
+  isFileObjectKey(url) ? url : media.key(url)
 
 export function createChangeTransfer(options: ChangeTransferOptions) {
   const { db } = options
@@ -380,7 +388,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
   async function mediaBytes(urls: Iterable<string>): Promise<Map<string, Uint8Array>> {
     const out = new Map<string, Uint8Array>()
     for (const url of urls) {
-      const file = await options.media.open(url)
+      const key = carriedKey(options.media, url)
+      const file = key ? await options.media.store.get(key) : undefined
       if (file) out.set(url, new Uint8Array(await file.bytes()))
     }
     return out
@@ -399,8 +408,8 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
   }): ChangeBundle {
     const added = new Set<string>()
     for (const page of input.pages) {
-      const before = mediaIn(page.before)
-      for (const url of mediaIn(page.after)) if (!before.has(url)) added.add(url)
+      const before = carriedFilesIn(page.before)
+      for (const url of carriedFilesIn(page.after)) if (!before.has(url)) added.add(url)
     }
     return {
       key: normaliseUuid(input.key),
@@ -758,7 +767,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
       // Story 434: the types a change makes are there before its pages, which may be of them.
       if (typesChanged) await options.schema()?.build({ id: workspace.id, key: workspace.key })
       for (const [url, bytes] of media) {
-        const key = options.media.key(url)
+        const key = carriedKey(options.media, url)
         if (key) await options.media.store.put(key, bytes)
       }
       // Story 430: a branch is binned whole, so a page it deletes goes before those below it.

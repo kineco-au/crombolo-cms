@@ -4,7 +4,13 @@
  * Every answer is read from memory, so it scales with the nodes that render.
  * docs/delivery-api.md.
  */
-import { branchAccess, type MediaMember, type MediaRule, type SchemaForm } from '@crombolo/core'
+import {
+  branchAccess,
+  FILE_CONTENT_TYPE_ALIAS,
+  type MediaMember,
+  type MediaRule,
+  type SchemaForm,
+} from '@crombolo/core'
 import type {
   PublishedCache,
   PublishedContent,
@@ -95,6 +101,13 @@ export interface DeliveryApiPorts {
    * out, for `seo=true` (story 055).
    */
   seo?(content: PublishedContent, request: Request): Promise<Record<string, unknown>>
+  /**
+   * A File's bytes, read from its body (story 450): its text, or its upload from
+   * the site's file store. Undefined for a folder, or an upload that is gone.
+   */
+  fileBytes?(
+    content: PublishedContent,
+  ): Promise<{ bytes: Uint8Array<ArrayBuffer>; headers: Record<string, string> } | undefined>
   /** The sitemap's pages for a hostname; undefined when the site serves no sitemap (story 055). */
   sitemap?(request: Request, host: string): Promise<unknown[] | undefined>
   /**
@@ -448,7 +461,9 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
 
     const routeIn = async (inCulture: string | null) => {
       const view = await source.navigation(inCulture)
-      const first = view.root()[0]
+      // A File at the root is never the home page (story 450).
+      const isFile = (c: PublishedContent) => c.contentType.alias === FILE_CONTENT_TYPE_ALIAS
+      const first = view.root().find((c) => !isFile(c))
       const cultureRtl = isRightToLeft(inCulture)
       return (content: PublishedContent): ApiRoute | undefined => {
         const here = view.byKey(content.key)
@@ -459,9 +474,11 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
         // A site's settings page has no address (story 058): `#`, as its URL is.
         if (view.isSettings?.(here)) path = '#'
         else if (ancestors.length === 0)
-          path = hide && first && here.id !== first.id ? `/${here.urlSegment}` : '/'
+          path =
+            isFile(here) || (hide && first && here.id !== first.id) ? `/${here.urlSegment}` : '/'
         else {
-          const below = [...ancestors.slice(0, -1).reverse(), here].map((c) => c.urlSegment)
+          const kept = isFile(root) ? ancestors : ancestors.slice(0, -1)
+          const below = [...kept.reverse(), here].map((c) => c.urlSegment)
           path = `/${(cultureRtl ? below.reverse() : below).join('/')}`
         }
         return { path, queryString: null, startItem: { id: root.key, path: root.urlSegment } }
@@ -496,6 +513,7 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
         readable(content) ? accessTo(content.path, loadedRules, member) : 'forbidden',
       mediaAccess: (media) => mediaAccessTo(media, mediaRules, member),
       media: async (keys) => (ports.media ? ports.media.byKeys(keys) : []),
+      fileUrl: (path) => `${prefix}/v2/file?path=${encodeURIComponent(path)}`,
     }
 
     /** Below a node by URL segments, exactly as stored. */
@@ -919,6 +937,17 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       )
     }
 
+    // Story 450: a File's bytes, by its address.
+    if (/^v2\/file\/?$/.test(rest)) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
+      const preview = isPreview(request) ? await previewAccess(request) : undefined
+      if (preview === null) return bare(401)
+      if (!preview && !contentAccess(settings, request)) return bare(401)
+      const response = await fileAnswer(request, url, preview)
+      if (preview) response.headers.set('cache-control', 'no-store')
+      return response
+    }
+
     if (/^v2\/route\/?$/.test(rest)) {
       if (request.method !== 'GET' && request.method !== 'HEAD') return bare(405)
       const preview = isPreview(request) ? await previewAccess(request) : undefined
@@ -1023,6 +1052,40 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
       { kind: 'notFound', item },
       { status: 404, headers: { vary: CONTENT_VARY } },
     )
+  }
+
+  /**
+   * `v2/file?path=&host=` (story 450): a File's bytes with their content type,
+   * under the API key and Public Access as its item is. A Crombolo addition.
+   */
+  async function fileAnswer(
+    request: Request,
+    url: URL,
+    preview: PreviewAccess | undefined,
+  ): Promise<Response> {
+    const path = url.searchParams.get('path')
+    if (!path) return invalid('path', '')
+    const host = url.searchParams.get('host') || url.host
+    const pathname = path.startsWith('/') ? path : `/${path}`
+    const found = await (preview?.cache ?? cache).resolve(host, pathname)
+    if (!found || found.content.contentType.alias !== FILE_CONTENT_TYPE_ALIAS) return bare(404)
+    const r = await contentRequest(request, preview, found.culture)
+    const content = r.servable(r.nav.byKey(found.content.key))
+    if (!content) return bare(404)
+    const access = r.ctx.access(content)
+    if (access !== 'allowed') return bare(access === 'forbidden' ? 403 : 401)
+    const file = await ports.fileBytes?.(content)
+    if (!file) return bare(404)
+    const response = new Response(null, { headers: file.headers })
+    if (preview || personal(request, settings.publicAccess, memberAuthorizationEnabled(settings))) {
+      response.headers.set('cache-control', PRIVATE_NO_STORE)
+      return new Response(file.bytes, { headers: response.headers })
+    }
+    return cacheable(request, response, file.bytes, {
+      lifetime: lifetimeFor(caching, page(content)),
+      tags: [content.key],
+      tagHeader: caching.tagHeader,
+    })
   }
 
   /**

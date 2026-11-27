@@ -11,7 +11,12 @@
  * for the case where the point is to move work in progress.
  */
 import type { DocumentAggregate, DocumentValue, MediaItemAccess } from '@crombolo/core'
-import { isSystemContentType, ObjectTypes } from '@crombolo/core'
+import {
+  FILE_BODY_EDITOR_ALIAS,
+  fileUploadOf,
+  isSystemContentType,
+  ObjectTypes,
+} from '@crombolo/core'
 import {
   ComponentRepository,
   type ContentKind,
@@ -94,6 +99,12 @@ function storeKey(src: unknown): string | undefined {
 function blobKeysOf(values: readonly DocumentValue[]): string[] {
   const found: string[] = []
   for (const value of values) {
+    // Story 450: a File's upload, under `files/`, travels as a media file does.
+    if (value.editorAlias === FILE_BODY_EDITOR_ALIAS) {
+      const upload = fileUploadOf(value.value)
+      if (upload) found.push(upload.src)
+      continue
+    }
     if (!value.editorAlias || !FILE_EDITORS.has(value.editorAlias)) continue
     const raw = value.value
     const src =
@@ -306,8 +317,12 @@ export async function exportBundle(db: Db, options: ExportOptions): Promise<Expo
     contentTypes.set(aggregate.contentTypeAlias, aggregate.contentTypeKey)
     if (componentAlias) templates.add(componentAlias)
     for (const variant of aggregate.variants) if (variant.culture) languages.add(variant.culture)
-    if (kind === 'media')
-      for (const key of blobKeysOf(aggregate.values))
+    if (kind === 'media' || kind === 'document')
+      for (const key of blobKeysOf(
+        kind === 'media'
+          ? aggregate.values
+          : aggregate.values.filter((v) => v.editorAlias === FILE_BODY_EDITOR_ALIAS),
+      ))
         blobs.push({ key, node: node.key, etag: null, size: null, included: false })
   }
 

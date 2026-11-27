@@ -225,7 +225,7 @@
         "@crombolo/extension": "workspace:*",
       },
       "peerDependencies": {
-        "@crombolo/crombolo": ">=0.83.0",
+        "@crombolo/crombolo": ">=0.84.0",
       },
     },
     "packages/extension": {
@@ -331,7 +331,7 @@
         "@crombolo/extension": "workspace:*",
       },
       "peerDependencies": {
-        "@crombolo/crombolo": ">=0.83.0",
+        "@crombolo/crombolo": ">=0.84.0",
       },
     },
     "packages/transfer": {

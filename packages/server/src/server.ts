@@ -76,7 +76,10 @@ import {
   contractPathFor,
   DEFAULT_UPLOAD_SETTINGS,
   DELIVERY_API_PREFIX,
+  FILE_BODY_ALIAS,
+  FILE_CONTENT_TYPE_ALIAS,
   FormPermissions,
+  fileKindOf,
   formTokenSubject,
   hasAccessToSensitiveData,
   libraryFormId,
@@ -168,6 +171,7 @@ import {
   resolveCacheSettings,
   type SnapshotStatus,
   setAssetResolver,
+  setFileResolver,
   splitHashedAddress,
   unchanged,
   type ViewSnapshots,
@@ -228,6 +232,15 @@ import { noticeAboutEmail } from './email-notice.ts'
 import { createEmailSettings, type EmailSettingsInput } from './email-settings.ts'
 import { activityPath, answerActivity } from './extension-activity.ts'
 import { warnAboutAppPlugins } from './extensions-notice.ts'
+import {
+  type FileWinners,
+  fileBodyOf,
+  fileHeaders,
+  fileLinksIn,
+  fileWinner,
+  pathOf,
+  unansweredFiles,
+} from './file-items.ts'
 import { coerceForm, deleteForm, saveForm } from './form-files.ts'
 import {
   FORM_FLASH_COOKIE,
@@ -1345,6 +1358,43 @@ export async function createServer(
           renderLog.warning('The public file {path} hides the page at that address', { path })
       })
       .catch(() => {})
+  // Story 450: a File's save says what answers above it, as `public/` does here.
+  const fileWinners: FileWinners = {
+    backOfficePath: config.backOfficePath,
+    isPublic: (path) => publicFiles.has(path),
+  }
+  core.operations.fileWinners(() => fileWinners)
+  const missingFiles = new Set<string>()
+  setFileResolver((path) => {
+    const found = cache.fileAt(path)
+    if (found && fileKindOf(found.name)) return found.url
+    if (config.development && !missingFiles.has(path)) {
+      missingFiles.add(path)
+      renderLog.warning(
+        'file({path}) names no published File, so it keeps its path. Publish a File there, or change the link.',
+        { path },
+      )
+    }
+    return path
+  })
+  // Story 450: a File something above it answers, or a link to a path no File answers, said once.
+  if (config.role !== 'api')
+    void (async () => {
+      for (const unanswered of unansweredFiles(await cache.files(), fileWinners))
+        renderLog.warning('The File {name} is never served at {path}: {winner}', {
+          name: unanswered.name,
+          path: unanswered.path,
+          winner: unanswered.winner,
+        })
+      for (const [path, views] of fileLinksIn(config.componentsDir))
+        if (!cache.fileAt(path)) {
+          missingFiles.add(path)
+          renderLog.warning('file({path}) in {views} names no published File', {
+            path,
+            views: views.join(', '),
+          })
+        }
+    })().catch(() => {})
   const missingAssets = new Set<string>()
   setAssetResolver((path) => {
     const found = generatedPaths.get(path) ?? siteAssets.address(path) ?? publicFiles.address(path)
@@ -1464,6 +1514,8 @@ export async function createServer(
   })
   const mediaAccessPath = `${paths.pluginPath}/api/media-access`
   const pageSharingPath = `${paths.pluginPath}/api/page-sharing`
+  // Story 450: a File's address and what its editor says of it, and its draft's bytes.
+  const fileItemPath = `${paths.pluginPath}/api/file-item`
   const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   const UUID_PATH = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i
   const previewMemberPath = `${paths.pluginPath}/api/preview-member`
@@ -1604,6 +1656,14 @@ export async function createServer(
             },
           },
           sitemap: (request, host) => seo.sitemapItems(request, host),
+          fileBytes: async (content) => {
+            const body = await fileBodyOf(
+              content.name,
+              content.value(FILE_BODY_ALIAS),
+              mediaFiles.store,
+            )
+            return body ? { bytes: body.bytes, headers: fileHeaders(body.kind) } : undefined
+          },
           notFound: async (host, path) => {
             // The page a rendered site answers with, so an app shows the same one (story 208).
             const found =
@@ -2547,11 +2607,13 @@ export async function createServer(
     // still serves it (story 220).
     if (pathname === BUNDLE_SCRIPT_PATH) return siteScript(BUNDLE_SCRIPT)
 
-    // Not on an `api` node, which serves no public site to describe.
+    // Not on an `api` node, which serves no public site to describe. A File of
+    // the name replaces the generated one (story 450).
     if (
       (pathname === '/sitemap.xml' || pathname === '/robots.txt') &&
       config.role !== 'api' &&
-      !publicFiles.has(pathname)
+      !publicFiles.has(pathname) &&
+      !(await fileItemAt(request, url))
     )
       return pathname === '/sitemap.xml' ? seo.sitemap(request, url.host) : seo.robots(request)
 
@@ -3292,6 +3354,9 @@ export async function createServer(
       if (request.method === 'GET' || request.method === 'HEAD') {
         const file = await publicFiles.serve(request, pathname)
         if (file) return file
+        // Story 450: a File in the content tree, after `public/` and before routes.
+        const item = await serveFileItem(request, url)
+        if (item) return item
       }
       const routed = await siteRoutes.handle(request, url)
       if (routed) return routed
@@ -3301,6 +3366,117 @@ export async function createServer(
     if (pathname.startsWith('/scripts/'))
       return serveSiteFile(request, config.scriptsDir, pathname, '.js')
     return renderSite(request, pathname, url.host, run)
+  }
+
+  /** The published File answering at an address, with a body to serve (story 450). */
+  async function fileItemAt(_request: Request, url: URL): Promise<PublishedContent | undefined> {
+    const found = await cache.resolve(url.host, url.pathname)
+    const content = found?.content
+    return content?.contentType.alias === FILE_CONTENT_TYPE_ALIAS && fileKindOf(content.name)
+      ? content
+      : undefined
+  }
+
+  /**
+   * A File's answer (story 450): its draft's bytes to an editor previewing it,
+   * else the published File's, cached as a page is and behind Public Access.
+   * Undefined when no File answers here.
+   */
+  async function serveFileItem(request: Request, url: URL): Promise<Response | undefined> {
+    const previewed = await previewFileItem(request, url)
+    if (previewed) return previewed
+    const content = await fileItemAt(request, url)
+    if (!content) return undefined
+    const member = (await members.session(request))?.member
+    if ((await members.decide(content, member)).status !== 'allowed')
+      return renderPage(request, url.pathname, url.host)
+    const body = await fileBodyOf(content.name, content.value(FILE_BODY_ALIAS), mediaFiles.store)
+    if (!body)
+      return new Response('Not Found', { status: 404, headers: { 'cache-control': 'no-store' } })
+    const response = new Response(null, { headers: fileHeaders(body.kind) })
+    if ((await members.decide(content, undefined)).status !== 'allowed') {
+      response.headers.set('cache-control', PRIVATE_NO_STORE)
+      return new Response(body.bytes, { headers: response.headers })
+    }
+    const ancestors = (await cache.navigation(content.culture)).ancestors(content)
+    return cacheable(request, response, body.bytes, {
+      lifetime: lifetimeFor(caching, {
+        typeAlias: content.contentType.alias,
+        value: (alias) => content.value(alias),
+      }),
+      tags: [content.key, ...ancestors.map((a) => a.key)],
+      tagHeader: caching.tagHeader,
+      checkFloor: caching.checkFloor,
+    })
+  }
+
+  /** A File's draft, as a browser would show it, to an editor previewing it. */
+  async function previewFileItem(request: Request, url: URL): Promise<Response | undefined> {
+    const editor = readCookie(request, PREVIEW_COOKIE) ? await editorOf(request) : undefined
+    const link = editor ? undefined : await linkedPreview(request)
+    const principal = editor ?? link?.principal
+    if (!principal) return undefined
+    const key =
+      UUID_PATH.exec(url.pathname)?.[1] ??
+      (await cache.resolve(url.host, url.pathname))?.content.key
+    if (!key) return undefined
+    if (link && normaliseUuid(key) !== normaliseUuid(link.document)) return undefined
+    // A published page is no File, and its draft is read once, by the page's own preview.
+    const published = await cache.byKey(key)
+    if (published && published.contentType.alias !== FILE_CONTENT_TYPE_ALIAS) return undefined
+    const draft = await draftModel(key, null, principal)
+    if (draft?.contentTypeAlias !== FILE_CONTENT_TYPE_ALIAS) return undefined
+    const body = await fileBodyOf(
+      draft.content.name,
+      draft.content.value(FILE_BODY_ALIAS),
+      mediaFiles.store,
+    )
+    const unkept = { 'cache-control': PRIVATE_NO_STORE }
+    if (!body) return new Response('Not Found', { status: 404, headers: unkept })
+    return new Response(body.bytes, { headers: { ...fileHeaders(body.kind), ...unkept } })
+  }
+
+  /**
+   * What a File's editor shows of it (story 450): where it answers, whether
+   * something above it answers there instead, and whether it is the guide
+   * agents read; `body` answers its last saved bytes, for the upload's preview.
+   */
+  async function fileItemDetails(key: string, part: string | undefined, principal: Principal) {
+    const draft = await draftModel(key, null, principal)
+    const unkept = { 'cache-control': PRIVATE_NO_STORE }
+    // A File not saved yet has no address and nothing to say, which is not an error.
+    if (!draft && part === undefined)
+      return Response.json({ address: null, winner: null, agentsGuide: false }, { headers: unkept })
+    if (draft?.contentTypeAlias !== FILE_CONTENT_TYPE_ALIAS)
+      return new Response('Not Found', { status: 404 })
+    if (part === 'body') {
+      const body = await fileBodyOf(
+        draft.content.name,
+        draft.content.value(FILE_BODY_ALIAS),
+        mediaFiles.store,
+      )
+      if (!body) return new Response('Not Found', { status: 404, headers: unkept })
+      return new Response(body.bytes, { headers: { ...fileHeaders(body.kind), ...unkept } })
+    }
+    if (part !== undefined) return new Response('Not Found', { status: 404 })
+    const published = draft.published ? draft.content.url : undefined
+    const address =
+      published && published !== '#' && !UUID_PATH.test(published) ? pathOf(published) : null
+    const guide = config.remote.agentsGuide
+    let guidePath: string | undefined
+    try {
+      guidePath = guide ? new URL(guide).pathname : undefined
+    } catch {
+      guidePath = undefined
+    }
+    return Response.json(
+      {
+        address,
+        winner: address ? (fileWinner(address, fileWinners) ?? null) : null,
+        agentsGuide: Boolean(address && guidePath && guidePath === address),
+      },
+      { headers: unkept },
+    )
   }
 
   /** A rewrite stays on this site, among its own pages. */
@@ -3467,6 +3643,16 @@ export async function createServer(
       const key = pathname.slice(pageSharingPath.length + 1)
       if (!UUID_PATTERN.test(key)) return new Response('Not Found', { status: 404 })
       return pageSharing(request, key, principal)
+    }
+
+    // Non-contract, signed in: a File's address and its draft's bytes (story 450).
+    if (pathname.startsWith(`${fileItemPath}/`)) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (request.method !== 'GET') return new Response('Method Not Allowed', { status: 405 })
+      const [key, part] = pathname.slice(fileItemPath.length + 1).split('/')
+      if (!key || !UUID_PATTERN.test(key)) return new Response('Not Found', { status: 404 })
+      return fileItemDetails(key, part, principal)
     }
 
     // Non-contract, signed in: which groups a preview renders as a member of (story 443).

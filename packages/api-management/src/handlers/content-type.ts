@@ -5,7 +5,9 @@
 import type { ResponseOf } from '@crombolo/contracts'
 import {
   type ContentTypeAggregate,
+  FILE_CONTENT_TYPE_KEY,
   invalidSkipTake,
+  isFileType,
   isSystemContentType,
   isSystemMediaType,
   notFound,
@@ -569,7 +571,26 @@ export function registerContentTypeHandlers(
     })
   }
 
-  handle(`Get${T}AllowedAtRoot`, (ctx) => pagedAggregates(ctx, (page) => port.allowedAtRoot(page)))
+  /**
+   * Story 450: a File may sit anywhere, so the Create menu offers it at the root
+   * and under every page whatever the types list, and only it under a File.
+   */
+  const withFile = async (
+    load: (paging: SkipTake) => Promise<{ total: number; items: ContentTypeAggregate[] }>,
+    page: SkipTake,
+  ) => {
+    if (kind !== 'document') return load(page)
+    const file = await port.byKey(FILE_CONTENT_TYPE_KEY)
+    const all = (await load({ skip: 0, take: 10_000 })).items.filter(
+      (item) => !isFileType(item.key),
+    )
+    const items = file ? [...all, file] : all
+    return { total: items.length, items: items.slice(page.skip, page.skip + page.take) }
+  }
+
+  handle(`Get${T}AllowedAtRoot`, (ctx) =>
+    pagedAggregates(ctx, (page) => withFile((paging) => port.allowedAtRoot(paging), page)),
+  )
   // `parentKey` narrows the result through Umbraco's content type filters, an
   // extensibility point with no implementations in core, so it is accepted and
   // has no effect — as it does there.
@@ -577,7 +598,11 @@ export function registerContentTypeHandlers(
     pagedAggregates(ctx, (page) => port.allowedInLibrary(page)),
   )
   handle(`Get${T}ByIdAllowedChildren`, (ctx) =>
-    pagedAggregates(ctx, (page) => port.allowedChildren(ctx.params.id as string, page)),
+    pagedAggregates(ctx, (page) =>
+      kind === 'document' && isFileType(ctx.params.id)
+        ? withFile(async () => ({ total: 0, items: [] }), page)
+        : withFile((paging) => port.allowedChildren(ctx.params.id as string, paging), page),
+    ),
   )
 
   handle(`Get${T}ByIdSchema`, async (ctx) => {

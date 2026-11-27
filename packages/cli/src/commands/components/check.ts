@@ -1,4 +1,4 @@
-import { checkComponents, publicClashes } from '@crombolo/server'
+import { checkComponents, fileClashes, publicClashes } from '@crombolo/server'
 import { BaseCommand } from '../../base.ts'
 import { declaredTypes, gapLine, publicClashLine } from '../../support/components.ts'
 import { here } from '../../support/describe.ts'
@@ -39,6 +39,13 @@ export default class ComponentsCheck extends BaseCommand {
         items: { type: 'object' },
         description:
           "public files at an address something else answers; a page is the server's to report, as it starts",
+      },
+      {
+        name: 'fileClashes',
+        type: 'array',
+        items: { type: 'object' },
+        description:
+          "published Files something above them always answers in place of, read from the site's database when there is one",
       },
     ],
     outcomes: ['problems_found'],
@@ -84,6 +91,9 @@ export default class ComponentsCheck extends BaseCommand {
       routes: config.routes,
     })
     for (const clash of clashes) this.say(publicClashLine(clash))
+    const files = (await fileClashes(config)) ?? []
+    for (const file of files)
+      this.say(`  [warn]   the File ${file.name} is never served at ${file.path}: ${file.winner}`)
     if (report.problems.length > 0 || report.types.problems.length > 0)
       this.outcome = 'problems_found'
     return {
@@ -95,6 +105,7 @@ export default class ComponentsCheck extends BaseCommand {
       orphanBlocks,
       gaps: report.gaps,
       publicClashes: clashes,
+      fileClashes: files,
     }
   }
 }

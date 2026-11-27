@@ -128,6 +128,74 @@ export const personalisedPartInsert = {
   },
 }
 
+const FILE_LINK = 'crombolo:file-link:'
+
+/** The File type's key, as the picker sees an item's type (story 450). */
+export const FILE_TYPE_KEY = '8d9df7ad-2312-4fb9-9f44-7fb37e3690a8'
+
+/** What "A link to a file" hands the editor, for `fileLinkInsert` to write. */
+export const fileLinkSnippet = (path) => `${FILE_LINK}${path}`
+
+/**
+ * A link to a File put in a view (story 450): `<a href={file('/docs/agents.md')}>agents.md</a>`
+ * at the cursor, and `file` imported from the package. Undefined for any other insert. Pure.
+ */
+export const fileLinkInsert = (text) => {
+  if (typeof text !== 'string' || !text.startsWith(FILE_LINK)) return undefined
+  const path = text.slice(FILE_LINK.length)
+  const name = decodeURIComponent(path.split('/').filter(Boolean).pop() ?? path)
+  const quoted = path.replaceAll('\\', '\\\\').replaceAll("'", "\\'")
+  const shown = name.replace(/[{}<>]/g, (c) => `{'${c}'}`)
+  return { tag: `<a href={file('${quoted}')}>${shown}</a>` }
+}
+
+/**
+ * `source` importing `name` from `from`: added to an import of that package it
+ * already has, or as a line of its own. A type-only import is left alone. Pure.
+ */
+export const withNamedImport = (source, name, from) => {
+  const existing = new RegExp(
+    `^import\\s+\\{([^}]*)\\}\\s+from\\s+['"]${from.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}['"]`,
+    'm',
+  ).exec(source)
+  if (existing) {
+    const names = existing[1]
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean)
+    if (names.some((n) => n === name || n.endsWith(` as ${name}`))) return source
+    const line = existing[0].replace(existing[1], ` ${[...names, name].join(', ')} `)
+    return `${source.slice(0, existing.index)}${line}${source.slice(existing.index + existing[0].length)}`
+  }
+  const imports = /^(?:import[^\n]*\n)*/.exec(source)?.[0] ?? ''
+  return `${imports}import { ${name} } from '${from}'\n${source.slice(imports.length)}`
+}
+
+/** The Insert menu's "A link to a file": a File chosen from the content tree, linked by its path. */
+export const fileLinkInsertEntry = {
+  label: 'A link to a file',
+  async pick(host) {
+    const { umbOpenModal } = await import('@umbraco-cms/backoffice/modal')
+    const { UMB_DOCUMENT_PICKER_MODAL } = await import('@umbraco-cms/backoffice/document')
+    const picked = await umbOpenModal(host, UMB_DOCUMENT_PICKER_MODAL, {
+      data: {
+        multiple: false,
+        pickableFilter: (item) => item.documentType?.unique === FILE_TYPE_KEY,
+      },
+    }).catch(() => undefined)
+    const unique = picked?.selection?.[0]
+    if (!unique) return undefined
+    const { DocumentService } = await import('@umbraco-cms/backoffice/external/backend-api')
+    const { data } = await DocumentService.getDocumentUrls({ query: { id: [unique] } })
+    const url = data?.[0]?.urlInfos?.find((info) => info.url)?.url
+    if (!url) return undefined
+    const path = url.startsWith('//')
+      ? url.slice(url.indexOf('/', 2))
+      : url.replace(/^https?:\/\/[^/]+/, '')
+    return fileLinkSnippet(path)
+  },
+}
+
 /** The folder a view sits in under `components/`: `/pages`, or nothing for the top. */
 export const folderOf = (file) => {
   const folder = (file ?? '').replace(/^\/*/, '/').replace(/\/[^/]*$/, '')

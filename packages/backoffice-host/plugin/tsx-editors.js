@@ -15,6 +15,8 @@ import { highlightJsx } from './tsx-highlighting.js'
 import { toTsxSnippet } from './tsx-snippets.js'
 import {
   fileBeingCreated,
+  fileLinkInsert,
+  fileLinkInsertEntry,
   folderOf,
   importFor,
   memberNotes,
@@ -23,6 +25,7 @@ import {
   partInsert,
   personalisedPartInsert,
   withImport,
+  withNamedImport,
 } from './view-parts.js'
 
 export const SCAFFOLD = `import type { PageProps } from '@crombolo/crombolo'
@@ -245,6 +248,36 @@ function viewEditor() {
       })
     },
     insert(text) {
+      // Story 450: a link to a File is a tag at the cursor and `file` imported.
+      const link = fileLinkInsert(text)
+      if (link && model) {
+        const before = model.getValue()
+        const after = withNamedImport(before, 'file', '@crombolo/crombolo')
+        if (after !== before) {
+          const { monaco } = configured
+          let start = 0
+          while (start < before.length && before[start] === after[start]) start += 1
+          let end = 0
+          while (
+            end < before.length - start &&
+            before[before.length - 1 - end] === after[after.length - 1 - end]
+          )
+            end += 1
+          const from = model.getPositionAt(start)
+          const to = model.getPositionAt(before.length - end)
+          model.pushEditOperations(
+            [],
+            [
+              {
+                range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
+                text: after.slice(start, after.length - end),
+              },
+            ],
+            () => null,
+          )
+        }
+        return link.tag
+      }
       // A part is a tag at the cursor and an import at the top (story 264).
       const part = partInsert(text)
       if (!part || !model) return toTsxSnippet(text)
@@ -294,7 +327,7 @@ export const TSX_HOOKS = {
   hideRazorInserts: true,
   // A partial view is a tag and an import, which `insert` writes (story 264).
   showPartialViewInsert: true,
-  extraInserts: [personalisedPartInsert],
+  extraInserts: [personalisedPartInsert, fileLinkInsertEntry],
 }
 
 export const onInit = async (_host, extensionRegistry) => {

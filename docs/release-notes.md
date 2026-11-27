@@ -8,6 +8,23 @@ point at `docs/stories/`.
 
 ### Features
 
+- **A content item served as a file (450).** A built-in **File** type puts a file such as
+  `llms.txt`, a verification file or a guide for agents in the content tree, served at its
+  name exactly, extension included, at the root, under any page, or inside a folder File.
+  Its body is text edited in the editor its extension chooses (Markdown with its preview,
+  a text area, the code editor in JSON, XML or HTML, an SVG with its image, a CSV with its
+  first rows as a table) or an upload of at most 10 MB for a PDF or an image. JSON and XML
+  that aren't well-formed are refused naming the line and column, in the editor and on the
+  server; an extension off the list, and two items at one address, are refused naming them.
+  Files answer after the CMS's paths and `public/`, and before the generated `robots.txt`
+  and `sitemap.xml` (which a File of that name replaces), routes and pages; saving one that
+  something above it answers warns, naming what wins, as do the server's start-up log and
+  `crombolo components check`. A File is cached, protected, previewed, scheduled, approved,
+  held in a workspace and moved between sites as a page is. The Create menu offers it
+  everywhere, `file('/llms.txt')` links to one from a view, the template editor's Insert
+  menu has **A link to a file**, and the Delivery API lists Files with their address, type
+  and size and answers their bytes at `v2/file?path=`. See `docs/rendering.md`, "Files in
+  the content tree".
 - **A lost connection says so, and comes back by itself.** When the back office can't
   reach the server (a request fails on the network, or a gateway answers for a server it
   can't reach), a dialog opens over the dimmed, blurred page with **Try to reconnect**. It
@@ -55,7 +72,11 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
-- **Nothing to do.** No migration, and no setting changes.
+- No migration: the File type and its body's data type are added at the first boot.
+- An upload is kept in the site's file store under `files/`, which `/media/` never serves.
+  A CDN pointed straight at the store's root (`CROMBOLO_MEDIA_PUBLIC_URL`, or an S3 or
+  Azure public address) must not serve that prefix.
+
 
 ## v0.83.0 — 2026-11-27
 

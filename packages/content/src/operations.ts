@@ -83,7 +83,8 @@ export interface Refusal {
   errors?: DocumentValidationError[]
 }
 
-export type Done<T extends object = object> = { ok: true } & T
+/** A write that went ahead, and anything it warns of (story 450). */
+export type Done<T extends object = object> = { ok: true; warnings?: string[] } & T
 export type Result<T extends object = object> = Done<T> | Refusal
 
 /** Why each item of a selection cannot be written; any one of them stops the whole selection. */
@@ -145,6 +146,30 @@ export interface DocumentOperationsOptions {
    * expired — as the reason to give; anything else not a rule is thrown on.
    */
   refusalReason?(error: unknown): string | undefined
+  /**
+   * Story 450: what an item of its type must pass to be saved, beyond its
+   * properties' own rules, and what a save that passes warns of. A File's name
+   * and body are checked here.
+   */
+  checkItem?(item: ItemCheck): Promise<ItemCheckResult | undefined>
+}
+
+/** An item as a save is about to write it. */
+export interface ItemCheck {
+  key: string
+  contentTypeKey: string
+  /** Where it is going; undefined for a save, which leaves it where it is. */
+  parentKey: string | null | undefined
+  name: string
+  values: readonly DocumentValue[]
+}
+
+export interface ItemCheckResult {
+  /** Why it is refused, as a whole. */
+  refused?: string
+  /** Why a property is refused, shown on the property. */
+  errors?: DocumentValidationError[]
+  warnings?: string[]
 }
 
 export interface DomainAssignment {
@@ -541,6 +566,27 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
     errors,
   })
 
+  /** The item check's refusal, or what a save that passes warns of. */
+  const checked = async (
+    input: DocumentInput,
+    key: string,
+    contentTypeKey: string,
+    parentKey: string | null | undefined,
+  ): Promise<Refusal | { warnings?: string[] }> => {
+    if (!options.checkItem) return {}
+    const result = await options.checkItem({
+      key,
+      contentTypeKey,
+      parentKey,
+      name: input.variants[0]?.name ?? '',
+      values: input.values,
+    })
+    if (result?.refused) return refuse('invalid', 400, result.refused)
+    if (result?.errors && result.errors.length > 0) return validationRefusal(result.errors)
+    return result?.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}
+  }
+  const isRefusal = (value: unknown): value is Refusal => (value as { ok?: unknown }).ok === false
+
   return {
     async create(actor: Actor, input: DocumentInput): Promise<Result<{ key: string }>> {
       if (!(await permits(actor, 'create', input.parentKey ?? 'root'))) return forbidden()
@@ -556,6 +602,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
       if (misplaced) return refuse('invalid', 400, misplaced)
+      const check = await checked(input, input.key, input.contentTypeKey, input.parentKey)
+      if (isRefusal(check)) return check
       try {
         const userId = await userIdOf(actor)
         const created = await commit(
@@ -564,7 +612,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
           (doc) => [{ type: 'created', key: doc.key }],
         )
         changed()
-        return { ok: true, key: created.key }
+        return { ok: true, key: created.key, ...check }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -591,6 +639,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const unbased = revisionRefusal(actor, precondition)
       if (unbased) return unbased
+      const check = await checked(input, key, existing.contentTypeKey, undefined)
+      if (isRefusal(check)) return check
       const gate = gateFor(actor)
       if (!gate.skip) {
         const waiting = await options.approvals?.beforeSave(gate.who, key)
@@ -614,7 +664,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         if (!updated) return refuse('notFound', 404, NOT_FOUND)
         changed()
         if (!gate.skip) await options.approvals?.afterSave(gate.who, key)
-        return { ok: true, revision: updated.revision }
+        return { ok: true, revision: updated.revision, ...check }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -639,6 +689,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
       if (misplaced) return refuse('invalid', 400, misplaced)
+      const check = await checked(input, input.key, input.contentTypeKey, input.parentKey)
+      if (isRefusal(check)) return check
       const gate = gateFor(actor)
       if (!gate.skip) {
         const refusal = await options.approvals?.newPageRefusal(
@@ -661,7 +713,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         )
         if (!result.ok) return validationRefusal(result.errors)
         changed()
-        return { ok: true, key: result.document.key }
+        return { ok: true, key: result.document.key, ...check }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -690,6 +742,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const unbased = revisionRefusal(actor, precondition)
       if (unbased) return unbased
+      const check = await checked(input, key, existing.contentTypeKey, undefined)
+      if (isRefusal(check)) return check
       const gate = gateFor(actor)
       if (!gate.skip) {
         const refusal =
@@ -714,7 +768,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
         changed()
         await options.redirects?.commit(before)
         if (!gate.skip) await options.approvals?.afterDirectPublish(gate.who, key, 'published it')
-        return { ok: true, revision: result.document.revision }
+        return { ok: true, revision: result.document.revision, ...check }
       } catch (error) {
         return refusalFrom(error, options.refusalReason)
       }
@@ -1333,7 +1387,7 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
  * reaches anyone else only by its merge (story 380).
  */
 export function createWorkspaceOperations(
-  options: Pick<DocumentOperationsOptions, 'db' | 'repository' | 'refusalReason'>,
+  options: Pick<DocumentOperationsOptions, 'db' | 'repository' | 'refusalReason' | 'checkItem'>,
   workspace: { id: number; name: string },
 ): DocumentOperations {
   return createDocumentOperations({
@@ -1341,6 +1395,7 @@ export function createWorkspaceOperations(
     repository: { ...options.repository, workspace: workspace.id },
     events: workspaceAuditSink(workspace.name),
     refusalReason: options.refusalReason,
+    checkItem: options.checkItem,
   })
 }
 

@@ -358,7 +358,8 @@ describe('content types', () => {
     const atRoot = await h.json<{ items: Array<{ alias: string }> }>(
       `${V1}/document-type/allowed-at-root?skip=0&take=100`,
     )
-    expect(atRoot.items.map((i) => i.alias)).toEqual(['homePage'])
+    // A File may sit anywhere (story 450).
+    expect(atRoot.items.map((i) => i.alias)).toEqual(['homePage', 'fileItem'])
   })
 
   test('flipping a type to an element drops what a route needs, so the file stays valid', async () => {
@@ -510,7 +511,7 @@ describe('content types', () => {
     const allowed = await h.json<{ items: Array<{ alias: string }> }>(
       `${V1}/document-type/${parentKey}/allowed-children?skip=0&take=100`,
     )
-    expect(allowed.items.map((i) => i.alias)).toEqual(['textPage'])
+    expect(allowed.items.map((i) => i.alias)).toEqual(['textPage', 'fileItem'])
   })
 
   test('composes properties from another type', async () => {

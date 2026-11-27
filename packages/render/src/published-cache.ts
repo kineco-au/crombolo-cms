@@ -17,6 +17,8 @@ import {
   bareDictionaryWord,
   type ChoiceOption,
   type ChoiceSource,
+  FILE_CONTENT_TYPE_ALIAS,
+  fileSegment,
   keyFromReference,
   LIBRARY_FORM_PROPERTY,
   libraryFormId,
@@ -270,6 +272,23 @@ const EMPTY: CacheSnapshot = {
   dictionaryOutline: [],
   contentTypeAliases: new Map(),
   settingsFindings: [],
+}
+
+const isFileNode = (node: { contentTypeAlias: string }) =>
+  node.contentTypeAlias === FILE_CONTENT_TYPE_ALIAS
+
+/** A path as a File's segments are written, however the browser escaped it. Pure. */
+export function canonicalPath(pathname: string): string {
+  return pathname
+    .split('/')
+    .map((segment) => {
+      try {
+        return fileSegment(decodeURIComponent(segment))
+      } catch {
+        return segment
+      }
+    })
+    .join('/')
 }
 
 const normaliseRoute = (route: string) =>
@@ -549,6 +568,25 @@ export class PublishedCache {
     )
   }
 
+  /**
+   * The published File answering at a path with no hostname, read from the
+   * snapshot served now and never waiting for a build: what `file()` asks
+   * while a page renders (story 450).
+   */
+  fileAt(path: string): PublishedContent | undefined {
+    const found = this.#snapshot.byRoute.get(normaliseRoute(canonicalPath(path)))
+    return found && isFileNode({ contentTypeAlias: found.contentType.alias }) ? found : undefined
+  }
+
+  /** Every published File in the default culture's view, with its address (story 450). */
+  async files(): Promise<PublishedContent[]> {
+    const snapshot = await this.snapshot()
+    const view = this.#view(snapshot, null)
+    return [...(view?.byId.values() ?? [])].filter(
+      (content) => content.url !== '#' && content.contentType.alias === FILE_CONTENT_TYPE_ALIAS,
+    )
+  }
+
   async byRoute(route: string): Promise<PublishedContent | undefined> {
     const snapshot = await this.snapshot()
     return snapshot.byRoute.get(normaliseRoute(route))
@@ -603,8 +641,12 @@ export class PublishedCache {
     return best?.domain.isoCode ?? snapshot.defaultCulture
   }
 
-  async #resolve(host: string, pathname: string): Promise<ResolvedRequest | undefined> {
+  async #resolve(host: string, asked: string): Promise<ResolvedRequest | undefined> {
     const snapshot = await this.snapshot()
+    // A File's name may hold what a browser escapes its own way.
+    const canonical = canonicalPath(asked)
+    const pathname =
+      canonical !== asked && !snapshot.byRoute.has(normaliseRoute(asked)) ? canonical : asked
     const route = normaliseRoute(pathname)
     const best = this.#domainFor(snapshot, host, route)
     if (best) {
@@ -966,8 +1008,9 @@ export class PublishedCache {
       )
     }
 
+    // A File at the root is never the home page.
     const firstRootId = nodes
-      .filter((node) => node.parentId <= 0)
+      .filter((node) => node.parentId <= 0 && !isFileNode(node))
       .sort((a, b) => a.sortOrder - b.sortOrder)[0]?.id
     const { hideTopLevel } = (await source.loadUrlOptions?.()) ?? { hideTopLevel: true }
 
@@ -1007,7 +1050,13 @@ export class PublishedCache {
           ) ?? node.properties.find((p) => p.alias === URL_NAME_ALIAS && p.culture === null)
         segmentOf.set(
           node.id,
-          urlSegmentFor(nameIn(node), typeof override?.value === 'string' ? override.value : null),
+          // Story 450: a File's name is its address exactly, extension included.
+          isFileNode(node)
+            ? fileSegment(nameIn(node))
+            : urlSegmentFor(
+                nameIn(node),
+                typeof override?.value === 'string' ? override.value : null,
+              ),
         )
       }
 
@@ -1037,7 +1086,9 @@ export class PublishedCache {
           if (!parent || !segmentOf.has(parent.id)) return undefined
           segments.unshift(segmentOf.get(current.id) as string)
           if (parent.parentId <= 0) {
-            if (!hideTopLevel) segments.unshift(segmentOf.get(parent.id) as string)
+            // A folder File at the top level stays in its Files' paths (story 450).
+            if (!hideTopLevel || isFileNode(parent))
+              segments.unshift(segmentOf.get(parent.id) as string)
             break
           }
           current = parent
@@ -1165,7 +1216,12 @@ export class PublishedCache {
       }
       for (const siblings of view.childrenOf.values())
         siblings.sort((a, b) => a.sortOrder - b.sortOrder)
-      view.roots.sort((a, b) => a.sortOrder - b.sortOrder)
+      // A File at the root comes after the pages, so the first root is always a page.
+      view.roots.sort(
+        (a, b) =>
+          Number(a.contentType.alias === FILE_CONTENT_TYPE_ALIAS) -
+            Number(b.contentType.alias === FILE_CONTENT_TYPE_ALIAS) || a.sortOrder - b.sortOrder,
+      )
 
       // Pickers and links resolve against this culture's view.
       const context: ValueContext<PublishedContent, PublishedMedia> = {
@@ -1502,7 +1558,9 @@ export function contentForNode(
     id: node.id,
     name,
     contentTypeAlias: node.contentTypeAlias,
-    urlSegment: urlSegmentFor(name, typeof override?.value === 'string' ? override.value : null),
+    urlSegment: isFileNode(node)
+      ? fileSegment(name)
+      : urlSegmentFor(name, typeof override?.value === 'string' ? override.value : null),
     url,
     level: node.level,
     path: node.path,

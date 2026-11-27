@@ -145,7 +145,8 @@ Management API's (above, "Moving a change without the remote").
 - **A change bundle** is a private package like any site export: `package.json`, a
   `bundle.json` typed `change` with the one integrity hash over everything and the
   package's identity, `change.json`, and the media files it added or replaced under
-  `media/` (`@crombolo/transfer`'s `writeChangeBundle`, `readChangeBundle`). It carries
+  `media/`, a File's upload among them under its own `files/` key (story 450)
+  (`@crombolo/transfer`'s `writeChangeBundle`, `readChangeBundle`). It carries
   the change's identity, the changes it depends on, each file with its text before and
   after, and each page, media item or Library item with its values, names and
   publishing before and after, matched on another site by key. A page the change

@@ -2387,13 +2387,16 @@ files").
    `/css/`, `/scripts/`, `/health` and `/.well-known/crombolo-remote`. A file at
    one of these is left out and never answers.
 2. A file in `public/`.
-3. The generated `/robots.txt` and `/sitemap.xml`, which a file of that name
-   replaces, the site's declared routes, then its pages.
+3. A File in the content tree (story 450, "Files in the content tree" below).
+4. The generated `/robots.txt` and `/sitemap.xml`, which a file or a File of that
+   name replaces.
+5. The site's declared routes.
+6. Its pages.
 
 `crombolo components check` names a file that never answers, one that takes a
-route's address and one that replaces a generated file. It reads no database,
-so a file hiding a page is reported by the server instead, in its log as it
-starts.
+route's address and one that replaces a generated file. It reads no database
+for pages, so a file hiding a page is reported by the server instead, in its log
+as it starts.
 
 **What is served**
 
@@ -2432,6 +2435,105 @@ and only a path in that list can be served.
   `all`, and `api` answers `404`. A `web` node on its own disk gets them from a
   deploy, not from a bundle applied on another node.
 - **Range requests are not supported,** so a large video belongs in media.
+
+## Files in the content tree
+
+A **File** is a content item served at its name exactly, extension included
+(story 450): `llms.txt` at the root is `/llms.txt`, a verification file, a guide
+for agents at `/docs/agents.md`. Being content, it is edited, approved,
+scheduled, held in a workspace, kept in history and moved between sites as any
+page is, with no developer and no deploy. `public/` stays the developer's, for
+what belongs to the site's code.
+
+**The File type** is built in (`fileItem`), the same in every site. It has one
+field, its **body**: text written in the back office, or an uploaded file. It
+never has a view or a layout. The Create menu offers it at the root and under
+every page whatever a type lists as its children, since the server adds it to
+the allowed-at-root and allowed-children answers for documents; under a File
+only File is offered, and a page is refused there. Whoever may create content
+under a page may make one.
+
+**Its name is its address.** Kept as typed, never made a slug, it is one segment
+of the address: no `/`, `?`, `#` or `\`, and no leading dot except inside a
+`.well-known` File. A File with no extension is a **folder**: it holds Files,
+has no body, and answers nothing at its own address. A top-level folder stays in
+its Files' addresses, so `docs/agents.md` is `/docs/agents.md` even where the
+top level is left out of page addresses. Two items that would answer at one
+address are refused when saved, naming both. Addresses match whatever their
+case, as page addresses do. A File at the root is never the home page, and never
+in a menu built with `visibleOnly`, nor in the sitemap.
+
+**Kinds of File**, by extension; any other is refused, naming the list:
+
+| Extension | Served as | Body | Edited in |
+| --- | --- | --- | --- |
+| `.txt` | `text/plain; charset=utf-8` | text or upload | a text area |
+| `.md` | `text/markdown; charset=utf-8` | text or upload | the Markdown editor, with its preview |
+| `.json` | `application/json` | text or upload | the code editor, in JSON, checked well-formed |
+| `.webmanifest` | `application/manifest+json` | text or upload | the code editor, in JSON, checked well-formed |
+| `.xml` | `application/xml`, sandboxed | text or upload | the code editor, in XML, checked well-formed |
+| `.csv` | `text/csv; charset=utf-8` | text or upload | a text area, its first 20 rows as a table |
+| `.html` | `text/html; charset=utf-8`, sandboxed | text or upload | the code editor, in HTML |
+| `.svg` | `image/svg+xml`, sandboxed | text or upload | the code editor, in XML, with its image beside it |
+| `.pdf` | `application/pdf` | upload | the upload field |
+| `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ico` | their image type | upload | the upload field, with the image |
+
+Every answer carries `X-Content-Type-Options: nosniff`, and HTML, SVG and XML
+`Content-Security-Policy: sandbox`, as `public/` serves them (story 435), so
+nothing in them runs. The body field (`Crombolo.PropertyEditorUi.FileBody`)
+chooses its editor from the File's name and changes when it is renamed. A body
+of the other kind, text on an image or an upload of another type, is kept until
+the save, which is refused until the body is replaced. JSON and XML that aren't
+well-formed are refused naming the line and column, in the editor as you type and
+again on the server, so one is never published. The checks are one module,
+`@crombolo/backoffice-host/file-kinds`, that both run.
+
+**Where the bytes live.** A text body is the item's property value, in the
+database, so versions, workspaces and changes carry it as any text. An upload is
+at most 10 MB and goes to the site's file store (the media store's folder, S3 or
+Azure) under `files/<item key>/<version>/<name>`, and the value holds that key.
+Each version keeps its own object, so history and revert work; one no version
+names any more goes with the hourly version cleanup. `/media/` never serves the
+prefix and the store's public address is never given for it, so the only ways in
+are the File's own address and the Delivery API's file route, with their checks.
+A CDN put directly in front of the store's root must leave `files/` out. A bundle
+and a change carry an upload as a blob, as a media file, with `missing-blob` when
+it is not there.
+
+**Serving.** A published File comes from the published cache, with an ETag over
+its bytes, the Cache-Control a page of its type would have, and purge tags; a
+publish clears it. Public Access applies as to a page: a visitor who may not see
+it gets the login or error page at its address. Preview shows the draft's bytes as
+a browser would, `/<key>` or its address, never kept.
+
+**Something above it answers.** A File at an address the CMS or a `public/` file
+answers is saved, with a warning naming what wins, and is never served there. The
+server's log says so as it starts, and `crombolo components check` reports it from
+the site's database when it can read one. A File named `robots.txt` or
+`sitemap.xml` replaces the generated one, and a File wins over a route and a page.
+
+**Linking to one.** Content pickers and rich-text links choose a File as any
+item, and link to its address. A view links by path with `file()`, exported beside
+`asset()`:
+
+```tsx
+import { file } from '@crombolo/crombolo'
+
+export default () => <a href={file('/docs/agents.md')}>agents.md</a>
+```
+
+`file('/docs/agents.md')` answers that File's address while a published File
+answers there. Otherwise it keeps the path, and development logs that no File is
+there. The link names the path, not the item, so a File moved or renamed leaves it
+at the old path; the server's log names, as it starts, each `file()` path in a
+view that no File answers. The template editor's Insert menu has **A link to a
+file**: it picks a File from the content tree, and writes the link at the cursor
+and `file` into the view's imports.
+
+**A guide for agents.** The File the remote's `agentsGuide` names (story 370)
+says in its editor that coding agents read it as instructions. Anyone who edits
+it is writing instructions for those agents: page permissions apply, and a site
+that cares puts it under a workflow. Nothing more is required of it.
 
 ## Blocks
 

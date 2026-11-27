@@ -1057,6 +1057,26 @@
       }
     },
     {
+      "type": "propertyEditorSchema",
+      "name": "File body",
+      "alias": "Crombolo.FileBody",
+      "meta": {
+        "defaultPropertyEditorUiAlias": "Crombolo.PropertyEditorUi.FileBody"
+      }
+    },
+    {
+      "type": "propertyEditorUi",
+      "alias": "Crombolo.PropertyEditorUi.FileBody",
+      "name": "File body",
+      "element": "/crombolo-plugin/file-body.js",
+      "meta": {
+        "label": "File body",
+        "icon": "icon-document",
+        "group": "common",
+        "propertyEditorSchemaAlias": "Crombolo.FileBody"
+      }
+    },
+    {
       "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.ComponentsTree",
       "name": "Crombolo Components Tree",

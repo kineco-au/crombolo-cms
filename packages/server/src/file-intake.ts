@@ -6,7 +6,11 @@
  */
 import {
   type DocumentValue,
+  FILE_BODY_EDITOR_ALIAS,
+  FILE_UPLOAD_MAX_BYTES,
   FILE_VALUE_EDITORS,
+  type FileUpload,
+  fileObjectKey,
   IMAGE_CROPPER_EDITOR_ALIAS,
   toStoredUpload,
 } from '@crombolo/core'
@@ -23,19 +27,50 @@ const AUTO_FILL = {
 
 export class TemporaryFileMissingError extends Error {}
 
+/** A File's upload over the limit (story 450): the sender's to fix. */
+export class FileUploadTooLargeError extends TemporaryFileMissingError {}
+
 const temporaryIdOf = (value: unknown): string | undefined => {
   const id = (value as { temporaryFileId?: unknown } | null)?.temporaryFileId
   return typeof id === 'string' && id ? id : undefined
 }
 
 export function createFileIntake(store: MediaFileStore): ValueIntake {
-  return async (values, propertyTypes) => {
+  return async (values, propertyTypes, item) => {
     const editorOf = new Map(propertyTypes.map((p) => [p.alias, p.editorAlias]))
     const result: DocumentValue[] = [...values]
     const fills: DocumentValue[] = []
 
     for (const [index, value] of result.entries()) {
       const editor = editorOf.get(value.alias)
+      // Story 450: a File's upload is kept apart from media, by item and version.
+      if (editor === FILE_BODY_EDITOR_ALIAS) {
+        const temporaryId = temporaryIdOf(value.value)
+        if (!temporaryId) continue
+        const temporary = await store.temporary(temporaryId)
+        if (!temporary || !item)
+          throw new TemporaryFileMissingError(
+            'The upload has expired or does not exist; upload it again.',
+          )
+        if (temporary.size > FILE_UPLOAD_MAX_BYTES)
+          throw new FileUploadTooLargeError(
+            `The upload is ${megabytes(temporary.size)}; a File takes at most ${megabytes(FILE_UPLOAD_MAX_BYTES)}.`,
+          )
+        const key = fileObjectKey(item.key, item.version, temporary.fileName)
+        const placed = await store.placeAt(temporaryId, key)
+        if (!placed)
+          throw new TemporaryFileMissingError(
+            'The upload has expired or does not exist; upload it again.',
+          )
+        const stored: FileUpload = {
+          src: key,
+          name: temporary.fileName,
+          size: placed.bytes,
+          contentType: placed.contentType,
+        }
+        result[index] = { ...value, value: stored }
+        continue
+      }
       if (!editor || !FILE_VALUE_EDITORS.has(editor)) continue
       const temporaryId = temporaryIdOf(value.value)
       let placed: PlacedFile | undefined
@@ -82,3 +117,5 @@ export function createFileIntake(store: MediaFileStore): ValueIntake {
     ]
   }
 }
+
+const megabytes = (bytes: number) => `${Math.round((bytes / 1024 / 1024) * 10) / 10} MB`

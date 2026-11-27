@@ -31,7 +31,10 @@ const REVIEWED: Record<string, { count: number; why: string }> = {
   'packages/data/src/content-query.ts': { count: 1, why: "Shared's object types only" },
   'packages/data/src/overview.ts': { count: 1, why: "Shared's document type only" },
   'packages/data/src/repositories/changes.ts': { count: 1, why: 'filters workspace_id IS NULL' },
-  'packages/data/src/repositories/content-types.ts': { count: 15, why: 'types' },
+  'packages/data/src/repositories/content-types.ts': {
+    count: 16,
+    why: 'types; whether a parent is a File, which its own type key says alike in every copy',
+  },
   'packages/data/src/repositories/data-types.ts': { count: 3, why: 'data types' },
   'packages/data/src/repositories/document-listing.ts': {
     count: 2,
@@ -79,6 +82,10 @@ const REVIEWED: Record<string, { count: number; why: string }> = {
   'packages/server/src/change-transfer.ts': {
     count: 2,
     why: "types read by their type row; a parent compared with Shared's siblings is Shared's",
+  },
+  'packages/server/src/file-items.ts': {
+    count: 1,
+    why: "a File's own row and its parent's: name and type, which a workspace copy shares",
   },
   'packages/server/src/member-admin.ts': { count: 1, why: 'members' },
   'packages/server/src/seed/compile.ts': { count: 2, why: 'a seed, written before any workspace' },

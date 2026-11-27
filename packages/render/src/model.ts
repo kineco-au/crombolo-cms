@@ -7,7 +7,7 @@
  * ambient, so `model.value('title')` returns the current request's culture.
  */
 
-import type { FieldError, FormSubmissionState } from '@crombolo/core'
+import { FILE_CONTENT_TYPE_ALIAS, type FieldError, type FormSubmissionState } from '@crombolo/core'
 import type { RawHtml } from './html.ts'
 import type { MediaWithCrops } from './media.ts'
 import type { MenuItem } from './menus.ts'
@@ -120,8 +120,9 @@ export class PublishedContent<Properties = any> {
     this.#fallbackChain = init.languageFallback ?? []
   }
 
-  /** False when the page is marked `umbracoNaviHide`, so menus leave it out. */
+  /** False when the page is marked `umbracoNaviHide`, so menus leave it out; never a File (story 450). */
   get isVisible(): boolean {
+    if (this.contentType.alias === FILE_CONTENT_TYPE_ALIAS) return false
     const hidden = this.#read(NAVI_HIDE_ALIAS, {})
     return !(hidden === true || hidden === 1 || hidden === '1' || hidden === 'true')
   }

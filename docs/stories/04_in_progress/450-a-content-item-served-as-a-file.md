@@ -203,44 +203,44 @@ the story should say so, and decide whether more is needed.
 
 ## Acceptance criteria
 
-- [ ] **A File item** with a text body is created at the root as `llms.txt` and served at
+- [x] **A File item** with a text body is created at the root as `llms.txt` and served at
       `/llms.txt` as `text/plain`, its name kept exactly.
-- [ ] **The Create menu** offers File at the root and under any page, whatever its type
+- [x] **The Create menu** offers File at the root and under any page, whatever its type
       allows, and only File under a File. A File shows the icon for its extension, and a
       folder File the folder icon.
-- [ ] **A File under a page,** and a File inside a folder File, answer at their full
+- [x] **A File under a page,** and a File inside a folder File, answer at their full
       paths. A folder answers nothing at its own address.
-- [ ] **Each extension opens in its editor:** Markdown with preview, plain text, JSON, XML,
+- [x] **Each extension opens in its editor:** Markdown with preview, plain text, JSON, XML,
       HTML and SVG in the code editor (SVG with its image), CSV with a table, uploads with
       their preview. Renaming a File switches the editor, and asks for a new body when the
       kind changes.
-- [ ] **JSON, `.webmanifest`, XML and SVG** that aren't well-formed are refused on save,
+- [x] **JSON, `.webmanifest`, XML and SVG** that aren't well-formed are refused on save,
       naming the line and column, in the editor and on the server.
-- [ ] **An upload** (a PDF, an image) is served with its type. A text body for an image
+- [x] **An upload** (a PDF, an image) is served with its type. A text body for an image
       type is refused, and so is an upload over 10 MB.
-- [ ] **An upload is stored under `files/`** in the site's file store, never answered at
+- [x] **An upload is stored under `files/`** in the site's file store, never answered at
       `/media/…` or a store's public address, and reached only through the File's address
       and the Delivery API's file route. Each version keeps its own, and it moves between
       sites as a blob.
-- [ ] **An extension off the list** is refused, naming the list, and **two items at one
+- [x] **An extension off the list** is refused, naming the list, and **two items at one
       address** are refused, naming both.
-- [ ] **HTML, SVG and XML Files** are served sandboxed, and every File with `nosniff`.
-- [ ] **The order:** `public/` wins over a File, a File named `robots.txt` replaces the
+- [x] **HTML, SVG and XML Files** are served sandboxed, and every File with `nosniff`.
+- [x] **The order:** `public/` wins over a File, a File named `robots.txt` replaces the
       generated one, and a File wins over a route and a page. Saving a File that
       something above it answers warns, naming what wins, and `components check`
       reports it.
-- [ ] **Cached as a page** (ETag, cleared on publish), behind Public Access, previewed
+- [x] **Cached as a page** (ETag, cleared on publish), behind Public Access, previewed
       raw, scheduled, approved, held in a workspace, and moved between sites as a change.
-- [ ] **Pickers and links** choose a File and link to its address.
-- [ ] **A view links to a File by path:**
+- [x] **Pickers and links** choose a File and link to its address.
+- [x] **A view links to a File by path:**
   - `file('/llms.txt')` answers its address;
   - a path no File answers keeps its path and is logged in development;
   - the template editor's **A link to a file** inserts the link and its import for a
     File chosen from the tree.
-- [ ] **The Delivery API** lists Files with their address, type and size, and answers a
+- [x] **The Delivery API** lists Files with their address, type and size, and answers a
       File's bytes at `file?path=`, under the key and Public Access.
-- [ ] **The agents' guide File** says in its editor that agents read it as instructions.
-- [ ] **Tests:**
+- [x] **The agents' guide File** says in its editor that agents read it as instructions.
+- [x] **Tests:**
   - serving, the order, names and extensions, uploads, caching, the Delivery API, and
     the workspace;
   - the allowed-at-root and allowed-children answers, with File added for documents only;
@@ -249,8 +249,91 @@ the story should say so, and decide whether more is needed.
     well-formedness checks on the server;
   - on both dialects, if a migration is needed;
   - a browser journey: make `llms.txt`, preview it, publish it, open it.
-- [ ] **Docs:** `docs/rendering.md` (who answers at an address), `docs/delivery-api.md`,
+- [x] **Docs:** `docs/rendering.md` (who answers at an address), `docs/delivery-api.md`,
       `docs/changes.md` if relevant, and the release notes.
+
+## Built
+
+- **The type** (`packages/core/src/files.ts`, `packages/data/src/schema/built-in-content-types.ts`):
+  `FILE_TYPE`, a system content type with key `SYSTEM_CONTENT_TYPE_KEYS.File`, ensured at every
+  boot like the other built-ins, so no migration. Its alias is **`fileItem`**, not `file`: content
+  type aliases are unique whatever their case, and the File media type already has `File`. One
+  field, `body`, on the seeded "File body" data type (`Crombolo.FileBody`, editor UI
+  `Crombolo.PropertyEditorUi.FileBody`, Ntext). A text body is stored as the string; an upload as
+  `{ src, name, size, contentType }` with `src` under `files/` (`fileUploadOf`), which
+  `toEditorValue` hands the editor parsed. `FILE_KINDS` is the extension table, with content
+  type, text or upload, sandbox, editor and tree icon.
+- **Names, bodies and checks** (`packages/backoffice-host/plugin/file-kinds.js`, exported as
+  `@crombolo/backoffice-host/file-kinds`): `nameProblem`, `bodyProblem`, `wellFormedJson` and
+  `wellFormedXml` (small parsers that answer line and column), `editorFor`, `replaceNote`,
+  `csvRows`. The editor runs them as you type; the server's save runs the same module, so the
+  refusal is the same words. `tests/file-items.test.ts` holds its table to core's.
+- **The save** (`packages/content/src/operations.ts`): `checkItem`, a hook every create, save and
+  publish-on-save runs before writing, answering a refusal, property errors or warnings; a `Done`
+  result carries `warnings`, which the document handlers add as `Warning` notifications. The
+  server's (`createFileItemCheck`, `packages/server/src/file-items.ts`) checks the name (the
+  parent's for `.well-known`), the body (with a temporary upload's name and size), the siblings
+  and any published item at the address, and warns when the CMS or a `public/` file answers
+  there. `placementRefusal` lets a File go anywhere and only a File inside one.
+- **Uploads** (`file-intake.ts`, `media-files.ts`): the intake now receives the item's key and
+  the version being written, and places a File's upload with `MediaFileStore.placeAt` at
+  `files/<key>/<version>/<name>`, refusing one over 10 MB (`FileUploadTooLargeError`).
+  `MediaFileStore.key()` refuses the prefix, so `/media/` and `publicUrl` never reach it.
+  `removeUnnamedFileObjects` runs after the hourly version cleanup.
+- **Addresses** (`published-cache.ts`): a File's segment is its name (`fileSegment`); a File is
+  never the first root and sorts after the pages at the root; a top-level folder File stays in
+  its Files' paths with the top level hidden; `resolve` tries the path as a File's name is escaped
+  when the raw one misses. `isVisible` is false for a File, and the sitemap leaves it out (no
+  view). `fileAt(path)` reads the snapshot served now; `files()` lists them.
+- **Serving** (`server.ts`): `serveFileItem` in `siteFiles`, after `publicFiles.serve` and before
+  `siteRoutes.handle`; the generated robots and sitemap give way to a File. Preview answers the
+  draft's bytes, `/<key>` or by address; Public Access hands a refused visitor to `renderPage`
+  for the login or error page; a public answer goes through `cacheable` with the type's lifetime
+  and purge tags. `fileBodyOf` and `fileHeaders` (`nosniff`, sandbox) are shared with the
+  Delivery API. At start the log names each File something above it answers
+  (`unansweredFiles`) and each `file()` path in a view no File answers (`fileLinksIn`).
+- **`file()`** (`packages/render/src/assets.ts`, exported from `@crombolo/crombolo`): a resolver
+  the server sets, like `asset()`'s, answering a published File's URL by path, logging a miss once
+  in development.
+- **The Management API:** `Get{T}AllowedAtRoot` and `Get{T}ByIdAllowedChildren` add the File type
+  for documents, and answer only it for the File type. Tree items give a File its kind's icon, a
+  folder File `icon-folder`. `GET {pluginPath}/api/file-item/{key}` answers the address, what wins
+  there and whether it is the agents' guide; `…/body` the last saved bytes, for the upload's
+  preview.
+- **The editor** (`plugin/file-body.js`): `UmbFormControlMixin` over the dataset's name; the
+  back office's `umb-input-markdown` (preview), `uui-textarea`, `umb-code-editor` (json, xml, html)
+  and `umb-input-upload-field`, an SVG drawn beside its code, a CSV's first 20 rows as a table, the
+  sandbox note on HTML, the note to replace a body of the other kind, what wins at its address,
+  and the agents' guide note. No fork change: the Create menu, the insert menu's
+  `extraInserts` and the property editor are all reached through what the back office offers.
+- **The Insert menu** (`view-parts.js`, `tsx-editors.js`): "A link to a file" picks a File with
+  the document picker (filtered to the File type), reads its URL, and inserts
+  `<a href={file('…')}>name</a>`, adding `file` to the view's `@crombolo/crombolo` import or a
+  line of its own (`withNamedImport`).
+- **The Delivery API** (`api-delivery`): a File's `body` property is `{ path, contentType, size,
+  url }`; `GET v2/file?path=&host=` answers the bytes under the key, Public Access and preview,
+  through the new `fileBytes` port. Delivery routes treat a File at the root as never the home
+  page and keep a top-level folder in its Files' paths.
+- **Moving between sites:** a bundle's export lists a document's File upload in `blobKeys` and the
+  manifest's blobs, so `missing-blob` applies as for media; a change carries it among its media
+  (`carriedFilesIn`), read and written by its store key.
+- **`crombolo components check`** reports Files never answered, read from the site's database
+  when there is one (`fileClashes`, read-only).
+- **Tests:** `tests/file-items.test.ts` (serving, names, extensions, the order, uploads and
+  versions, caching, preview, Public Access, the workspace, the allowed-type answers, icons, the
+  Delivery API, bundles and changes, `file()`, the Insert entry, the editor's choices and checks,
+  the editor's endpoint, never-answered Files); the journey `tests/browser/file-items.browser.ts`.
+  No migration, so no dialect-specific test.
+
+### Not built, or built differently
+
+- **A move** is not checked for two items at one address: the check runs on a save, as the
+  story says; a File moved onto a taken address is refused at its next save.
+- **A store's public address:** the CMS never gives one for `files/`, and `/media/` refuses it. A
+  CDN an operator points straight at the store's root is outside the CMS; the release notes say to
+  leave `files/` out of it.
+- **Addresses match whatever their case**, as page addresses do, while a File's link keeps the
+  case it was named with.
 
 ## Out of scope
 

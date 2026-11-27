@@ -920,6 +920,14 @@
           "items": {
             "type": "object"
           }
+        },
+        {
+          "name": "fileClashes",
+          "type": "array",
+          "description": "published Files something above them always answers in place of, read from the site's database when there is one",
+          "items": {
+            "type": "object"
+          }
         }
       ],
       "errors": ["usage", "internal"],

@@ -2148,6 +2148,7 @@ crombolo components check
 - `orphanBlocks` (array of string)
 - `gaps` (array of object)
 - `publicClashes` (array of object)
+- `fileClashes` (array of object)
 
 **Fails with:** `usage`, `internal`.
 
