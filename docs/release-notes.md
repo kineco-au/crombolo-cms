@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.84.0 — 2026-11-28
+
 ### Features
 
 - **A content item served as a file (450).** A built-in **File** type puts a file such as

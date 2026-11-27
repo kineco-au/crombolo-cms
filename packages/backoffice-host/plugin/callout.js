@@ -22,9 +22,17 @@ export class CromboloCalloutElement extends LitElement {
     this.headline = ''
   }
 
+  // The role is the host's, so what is slotted in is part of what it announces.
+  updated() {
+    this.setAttribute(
+      'role',
+      (ICON[this.kind] ? this.kind : 'error') === 'error' ? 'alert' : 'status',
+    )
+  }
+
   render() {
     const kind = ICON[this.kind] ? this.kind : 'error'
-    return html`<div class="callout" role=${kind === 'error' ? 'alert' : 'status'}>
+    return html`<div class="callout">
       <uui-icon name=${ICON[kind]}></uui-icon>
       <div class="body">
         ${this.headline ? html`<strong class="headline">${this.headline}</strong>` : nothing}

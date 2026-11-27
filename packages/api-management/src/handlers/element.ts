@@ -292,7 +292,6 @@ export function registerElementHandlers(
     const input = toSaveDocument(key, body)
     const result = await operations.createAndPublish(actorOf(ctx), input, readCultures(body))
     if (!result.ok) return failureResponse('Could not create the element', result, input.values)
-    ctx.notifications.push({ message: 'Element published', category: 'Element', type: 'Success' })
     return created(`${ctx.url.origin}${API}/element/${result.key}`, result.key)
   })
 

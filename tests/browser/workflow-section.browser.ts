@@ -39,7 +39,8 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   await page.goto('/crombolo/section/approvals')
   const tabs = page.locator('umb-backoffice-header-sections uui-tab')
   const waiting = page.locator('crombolo-approvals-list')
-  await expect(waiting).toContainText('You have no changes waiting for approval', {
+  // With no workflow, it says there is none (and, to an administrator, where to make one).
+  await expect(waiting).toContainText('You have no approval workflows', {
     timeout: 30_000,
   })
   await expect(tabs.filter({ hasText: 'Approvals' })).toHaveCount(1)
@@ -72,7 +73,8 @@ test('Approvals counts what waits when no workflow is set up, and lists requests
   await page.locator('umb-confirm-modal').getByRole('button', { name: 'Delete' }).click()
   await expect(designer.getByText('Browser check')).toHaveCount(0)
   await page.goto('/crombolo/section/approvals')
-  await expect(waiting).toContainText('You have no changes waiting for approval', {
+  // With no workflow, it says there is none (and, to an administrator, where to make one).
+  await expect(waiting).toContainText('You have no approval workflows', {
     timeout: 30_000,
   })
 })
