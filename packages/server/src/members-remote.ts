@@ -757,8 +757,10 @@ export function createMembersSourceApi(
 ) {
   return {
     async status(principal: Principal): Promise<Response> {
-      if (!hasSection(principal, 'members')) return said(403, 'This user may not use Members.')
-      if (!source) return Response.json({ source: null }, { headers: noStore })
+      // Asked as every back office loads: someone without Members has nothing to show, and
+      // is told nothing of the other site, rather than refused.
+      if (!source || !hasSection(principal, 'members'))
+        return Response.json({ source: null }, { headers: noStore })
       const answer = await source.answering()
       return Response.json(
         {

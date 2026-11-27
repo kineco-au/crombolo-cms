@@ -156,6 +156,9 @@ describe('the first boot of a self-hosted site', () => {
       // 106 (story 447): a table of its own.
       sqlite.exec('DROP TABLE shared_link')
       sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSharedLinks'")
+      // 105 (story 445): a column on a table that stays.
+      sqlite.exec('ALTER TABLE member DROP COLUMN managed_by')
+      sqlite.exec("DELETE FROM migration_history WHERE name = 'AddMemberManager'")
       // 104 (stories 440, 441): a webhook's workflows.
       sqlite.exec('ALTER TABLE webhook DROP COLUMN workflows')
       sqlite.exec("DELETE FROM migration_history WHERE name = 'RenameWebhookEvents'")

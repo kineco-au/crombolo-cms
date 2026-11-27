@@ -39,7 +39,14 @@ import {
   renameWarning,
 } from '../packages/backoffice-host/plugin/members-source.js'
 import { dialectUnderTest } from './support/db.ts'
-import { BACKOFFICE, type Harness, ORIGIN, signedInServer, V1 } from './support/harness.ts'
+import {
+  BACKOFFICE,
+  type Harness,
+  ORIGIN,
+  signedInServer,
+  signInAsGroup,
+  V1,
+} from './support/harness.ts'
 
 const CLIENT = { id: 'crombolo-back-office-content-site', secret: 'a-content-site-secret-1' }
 const PLUGIN = `${BACKOFFICE}/crombolo/api`
@@ -363,6 +370,14 @@ describe(`members held by another site (${dialectUnderTest})`, () => {
       `${PLUGIN}/members-source`,
     )
     expect(status.answering).toBe(true)
+  }, 30_000)
+
+  test('someone without Members is told nothing of the other site, and the back office loads quietly', async () => {
+    const { content } = await sites()
+    const writer = await signInAsGroup(content, 'writer')
+    const asked = await writer.call(`${PLUGIN}/members-source`)
+    expect(asked.status).toBe(200)
+    expect(await asked.json()).toEqual({ source: null })
   }, 30_000)
 
   test('editing, disabling, adding and deleting a member changes it there at once, the person who did it audited', async () => {
