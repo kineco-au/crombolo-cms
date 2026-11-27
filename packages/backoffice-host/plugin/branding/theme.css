@@ -31,6 +31,18 @@
   --crombolo-cream: #fff7ea;
 
   /*
+   * The strong buttons' tones (`buttons.js`), each with white text: cocoa 12:1, the
+   * accent 5.3:1, and a deep green for publishing 6.2:1.
+   */
+  --crombolo-button-text: #fff;
+  --crombolo-button-cocoa: var(--crombolo-cocoa);
+  --crombolo-button-cocoa-hover: #3e2416;
+  --crombolo-button-accent: var(--crombolo-terracotta);
+  --crombolo-button-accent-hover: var(--crombolo-terracotta-hover);
+  --crombolo-button-positive: #3f6b3a;
+  --crombolo-button-positive-hover: #345a30;
+
+  /*
    * `light.css` routes default, selected and interactive-emphasis through the
    * violet-blue palette, so swapping the palette carries all of them at once.
    */

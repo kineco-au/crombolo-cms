@@ -8,7 +8,7 @@ import { loadManifestElement } from '@umbraco-cms/backoffice/extension-api'
 import { umbExtensionsRegistry } from '@umbraco-cms/backoffice/extension-registry'
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { settingsTabStyles } from './settings-tabs.js'
+import { settingsTabStyles, TAB_GAP } from './settings-tabs.js'
 
 /** Umbraco's search indexes screen, loaded as its own dashboard, which this tool overwrites, would be. */
 async function indexesScreen() {
@@ -41,7 +41,7 @@ export default class CromboloSearchToolElement extends UmbLitElement {
 
   render() {
     return html`
-      <uui-tab-group>
+      <uui-tab-group style=${TAB_GAP}>
         ${SEARCH_TABS.map(
           (tab) => html`<uui-tab
             label=${tab.label}

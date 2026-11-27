@@ -14,13 +14,7 @@ import {
   workspaceFacts,
   workspacesApi,
 } from './workspace-client.js'
-import {
-  deleteWorkspace,
-  here,
-  sharePanel,
-  VISIBILITY_HINT,
-  visibilityToggle,
-} from './workspace-switch.js'
+import { deleteWorkspace, here, sharePanel, visibilityToggle } from './workspace-switch.js'
 import {
   chosenView,
   chosenWorkspace,
@@ -377,7 +371,6 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
               )
             : html`<strong>${seenBy}</strong>`
         }
-        <span class="hint">${VISIBILITY_HINT}</span>
       </div>
       <div class="facts">
         ${workspaceFacts(view, members, changes.length, when).map(

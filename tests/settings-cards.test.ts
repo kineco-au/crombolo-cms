@@ -50,7 +50,7 @@ describe('the Settings landing page', () => {
     expect(titles(settingsCards(EVERYTHING))).toEqual({
       // URLs, redirects and relations are tabs of Content settings, first in Site.
       Site: ['Content settings', 'Search', 'Webhooks', 'Logs', 'Background jobs'],
-      People: ['Users and groups'],
+      Access: ['Users and groups'],
       Health: ['Service status', 'Caching'],
       History: ['Changes', 'Audit log'],
       // Story 238: after History, a developer's tool, then installing extensions.
@@ -63,7 +63,7 @@ describe('the Settings landing page', () => {
     // Story 429: Users has a card for whoever holds it.
     expect(settingsCards({ users: true })).toEqual([
       {
-        group: 'People',
+        group: 'Access',
         cards: [
           expect.objectContaining({ title: 'Users and groups', path: 'users/workspace/user-root' }),
         ],
@@ -173,7 +173,7 @@ describe('the Settings landing page', () => {
 
   test('every card we have words for names a group that is shown', () => {
     for (const words of Object.values(CARDS))
-      expect(['Site', 'People', 'Health', 'History', 'Developers', 'Extensions']).toContain(
+      expect(['Access', 'Site', 'Health', 'History', 'Developers', 'Extensions']).toContain(
         words.group,
       )
   })

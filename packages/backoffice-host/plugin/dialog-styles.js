@@ -45,6 +45,10 @@ dialog.crombolo-dialog button[data-primary] {
   border-color: transparent; background: var(--uui-color-positive, #0b8152); color: var(--uui-color-positive-contrast, #fff);
 }
 dialog.crombolo-dialog button[data-primary]:hover:not(:disabled) { background: var(--uui-color-positive-emphasis, #0a7148); color: var(--uui-color-positive-contrast, #fff); }
+dialog.crombolo-workspace-dialog label { display: grid; grid-template-columns: 12rem minmax(0, 1fr); align-items: start; column-gap: var(--uui-size-space-4, 16px); }
+dialog.crombolo-workspace-dialog label > span:first-child { padding-top: 7px; }
+dialog.crombolo-workspace-dialog label > input, dialog.crombolo-workspace-dialog label > textarea { min-width: 0; width: 100%; box-sizing: border-box; }
+dialog.crombolo-workspace-dialog label > [role='group'] { justify-self: start; }
 `
 
 /** Adds the dialogs' look to the page, once. */
@@ -58,9 +62,10 @@ export function useDialogStyles() {
 
 /**
  * A dialog on the page itself, titled and laid out as every other is, and opened. `parts`
- * are its content; one with `slot="actions"` joins its buttons, after Close.
+ * are its content; one with `slot="actions"` joins its buttons, after the one that closes
+ * it, `closeLabel`.
  */
-export function pageDialog(title, parts, className = '') {
+export function pageDialog(title, parts, className = '', closeLabel = 'Close') {
   useDialogStyles()
   const box = document.createElement('dialog')
   box.className = `crombolo-dialog ${className}`.trim()
@@ -70,7 +75,7 @@ export function pageDialog(title, parts, className = '') {
   const close = document.createElement('button')
   close.type = 'button'
   close.slot = 'actions'
-  close.textContent = 'Close'
+  close.textContent = closeLabel
   close.addEventListener('click', () => box.close())
   layout.append(close, ...parts)
   box.append(layout)

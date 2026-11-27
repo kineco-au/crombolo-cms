@@ -6,7 +6,8 @@
 import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/document'
 import { UmbElementMixin } from '@umbraco-cms/backoffice/element-api'
 import { css, html, LitElement, nothing, unsafeCSS } from '@umbraco-cms/backoffice/external/lit'
-import { decide, pageApproval } from './workflow-client.js'
+import { designerHref } from './approvals-words.js'
+import { approvalsActive, decide, pageApproval } from './workflow-client.js'
 import { drawGraph, GRAPH_STYLES } from './workflow-graph.js'
 import { APPROVAL_CHANGED } from './workflow-send.js'
 import { describeWhen } from './workflow-time.js'
@@ -39,6 +40,7 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
     _message: { state: true },
     _busy: { state: true },
     _comment: { state: true },
+    _mayDesign: { state: true },
   }
 
   #changed = (event) => {
@@ -69,9 +71,21 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
   }
 
   async #load() {
-    const result = await pageApproval(this._key)
+    const [result, active] = await Promise.all([pageApproval(this._key), approvalsActive()])
     this._data = result.ok ? result : undefined
     if (!result.ok) this._message = result.message
+    this._mayDesign = active.ok && active.mayDesign === true
+  }
+
+  /** The designer, at this page's workflow or a new one, for someone who may change them. */
+  #designLink(workflow) {
+    if (!this._mayDesign) return nothing
+    const href = workflow?.alias
+      ? `${designerHref()}?workflow=${encodeURIComponent(workflow.alias)}`
+      : designerHref()
+    return html`<a slot="header-actions" class="design" href=${href}
+      >${workflow ? 'Edit this workflow' : 'Create a workflow'}</a
+    >`
   }
 
   async #act(run) {
@@ -94,6 +108,7 @@ export default class CromboloWorkflowTabElement extends UmbElementMixin(LitEleme
     const { workflow, request, past, can } = this._data
     return html`
       <uui-box headline=${workflow ? `Workflow: ${workflow.name}` : 'Workflow'}>
+        ${this.#designLink(workflow)}
         ${
           !workflow
             ? html`<p class="lead">No workflow covers this page: it publishes as soon as someone who may publish does.</p>`

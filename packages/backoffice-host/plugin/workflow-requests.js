@@ -6,7 +6,13 @@
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { waitingLine } from './approvals-words.js'
+import {
+  CREATE_WORKFLOW,
+  designerHref,
+  EDIT_WORKFLOWS,
+  NO_WORKFLOWS,
+  waitingLine,
+} from './approvals-words.js'
 import { approvalsActive, requestList } from './workflow-client.js'
 import { describeWhen } from './workflow-time.js'
 
@@ -56,6 +62,8 @@ class CromboloApprovalsListElement extends UmbLitElement {
     _decided: { state: true },
     _inactive: { state: true },
     _waiting: { state: true },
+    _workflows: { state: true },
+    _mayDesign: { state: true },
   }
 
   connectedCallback() {
@@ -73,6 +81,8 @@ class CromboloApprovalsListElement extends UmbLitElement {
       approvalsActive(),
     ])
     this._inactive = active.ok && active.active !== true
+    this._workflows = active.ok ? active.workflows : undefined
+    this._mayDesign = active.ok && active.mayDesign === true
     if (this._inactive) {
       const waiting = await requestList({ pending: true, decided: false }, 0, 1)
       this._waiting = waiting.ok ? waiting.total : 0
@@ -157,13 +167,37 @@ class CromboloApprovalsListElement extends UmbLitElement {
     </uui-table>`
   }
 
+  #noWorkflows() {
+    if (this._workflows !== 0) return nothing
+    return html`<p class="none">
+      ${NO_WORKFLOWS}${
+        this._mayDesign
+          ? html`. <a href=${designerHref()} @click=${(e) => openInBackoffice(e, designerHref())}
+              >${CREATE_WORKFLOW}</a
+            >`
+          : nothing
+      }
+    </p>`
+  }
+
   render() {
     if (this._inactive)
       return html`<uui-box headline="Approvals">
-        <p>${waitingLine(this._waiting ?? 0)}</p>
+        ${this.#noWorkflows()}
+        ${this._waiting ? html`<p>${waitingLine(this._waiting)}</p>` : nothing}
       </uui-box>`
     const headline = listHeadline({ pending: this._pending, decided: this._decided })
-    return html`<uui-box headline=${headline}>
+    return html`${
+      this._mayDesign && this._workflows > 0
+        ? html`<p class="design">
+            <a href=${designerHref()} @click=${(e) => openInBackoffice(e, designerHref())}
+              >${EDIT_WORKFLOWS}</a
+            >
+          </p>`
+        : nothing
+    }
+      <uui-box headline=${headline}>
+      ${this.#noWorkflows()}
       ${this.#filters()}
       ${this._message ? html`<p role="alert">${this._message}</p>` : this.#table()}
       ${this.#pages()}
@@ -175,6 +209,8 @@ class CromboloApprovalsListElement extends UmbLitElement {
     small { margin-left: var(--uui-size-space-2); opacity: 0.8; }
     .filters { display: flex; gap: var(--uui-size-space-5); margin-bottom: var(--uui-size-space-4); }
     .row { cursor: pointer; }
+    .none { margin-top: 0; }
+    .design { margin: 0 0 var(--uui-size-space-4); text-align: right; }
     uui-pagination { display: block; margin-top: var(--uui-size-space-4); }
   `
 }

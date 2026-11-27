@@ -6,11 +6,12 @@
 import { UMB_DOCUMENT_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/document'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { describeSharing, fileEditorHref, readPageSharing } from './page-sharing.js'
+import { describeSharing, fileEditorHref, readPageSharing, sharingOptions } from './page-sharing.js'
 
 export default class CromboloPageSharingInfoElement extends UmbLitElement {
   static properties = {
     _said: { state: true },
+    _options: { state: true },
   }
 
   #unique
@@ -25,6 +26,7 @@ export default class CromboloPageSharingInfoElement extends UmbLitElement {
         readPageSharing(unique).then(
           (state) => {
             this._said = describeSharing(state)
+            this._options = sharingOptions(state, location.pathname)
           },
           () => {
             this._said = undefined
@@ -39,6 +41,7 @@ export default class CromboloPageSharingInfoElement extends UmbLitElement {
     return html`<umb-workspace-info-app-layout headline="Sharing">
       <div class="body">
         <p>${this._said.text}</p>
+        ${this._options ? html`<p class="options"><a href=${this._options.href}>${this._options.text}</a></p>` : nothing}
         ${
           this._said.files.length
             ? html`<ul>
@@ -59,6 +62,9 @@ export default class CromboloPageSharingInfoElement extends UmbLitElement {
     }
     p {
       margin: 0;
+    }
+    .options {
+      margin-top: var(--uui-size-space-3, 9px);
     }
     ul {
       margin: var(--uui-size-space-3, 9px) 0 0;

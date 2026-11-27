@@ -1069,6 +1069,44 @@
       "js": "/crombolo-plugin/branding/content-type-labels.js"
     },
     {
+      "type": "workspace",
+      "alias": "Crombolo.Workspace.ExtensionRoot",
+      "name": "Crombolo Extension Insights",
+      "overwrites": ["Umb.Workspace.ExtensionRoot"],
+      "element": "/crombolo-plugin/extension-insights.js",
+      "meta": { "entityType": "extension-root" }
+    },
+    {
+      "type": "workspaceView",
+      "alias": "Crombolo.WorkspaceView.MemberGroup.Info",
+      "name": "Crombolo Member Group Info",
+      "overwrites": ["Umb.WorkspaceView.Member.Info"],
+      "element": "/crombolo-plugin/member-group-info.js",
+      "weight": 300,
+      "meta": { "label": "#general_info", "pathname": "info", "icon": "icon-document" },
+      "conditions": [
+        { "alias": "Umb.Condition.WorkspaceAlias", "match": "Umb.Workspace.MemberGroup" }
+      ]
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.WebhookScreens",
+      "name": "Crombolo Webhook Screens",
+      "js": "/crombolo-plugin/webhook-screens.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.CreatedNotifications",
+      "name": "Crombolo Created Notifications",
+      "js": "/crombolo-plugin/created-notifications.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.ContentActions",
+      "name": "Crombolo Content Actions",
+      "js": "/crombolo-plugin/branding/content-actions.js"
+    },
+    {
       "type": "backofficeEntryPoint",
       "alias": "Crombolo.EntryPoint.SignIn",
       "name": "Crombolo Sign-in Button",

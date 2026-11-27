@@ -176,6 +176,13 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       // One tree over components/, in place of Templates and Partial Views.
       'backofficeEntryPoint:Crombolo.EntryPoint.ComponentsTree',
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentTypeLabels',
+      // Extension insights without Umbraco's header band; a member group's Info, its Id only.
+      'workspace:Crombolo.Workspace.ExtensionRoot',
+      'workspaceView:Crombolo.WorkspaceView.MemberGroup.Info',
+      // Webhooks' list and editor, a create's toast, and the content footer's toned buttons.
+      'backofficeEntryPoint:Crombolo.EntryPoint.WebhookScreens',
+      'backofficeEntryPoint:Crombolo.EntryPoint.CreatedNotifications',
+      'backofficeEntryPoint:Crombolo.EntryPoint.ContentActions',
       // The sign-in button, in place of Umbraco's "Sign in with Umbraco".
       'backofficeEntryPoint:Crombolo.EntryPoint.SignIn',
       'backofficeEntryPoint:Crombolo.EntryPoint.TemplatePicker',

@@ -35,6 +35,8 @@ export const el = (tag, attrs = {}, ...children) => {
 
 /** A dialog over the back office, closed with its own button. */
 const dialog = (title, ...body) => pageDialog(title, body, 'crombolo-workspace-dialog')
+/** One that makes something, dismissed with Cancel rather than Close. */
+const asking = (title, ...body) => pageDialog(title, body, 'crombolo-workspace-dialog', 'Cancel')
 
 const fieldLabel = (field) => field.split('|')[0].replace(/^@name/, 'Name')
 const shown = (value) =>
@@ -84,9 +86,6 @@ export function visibilityToggle(chosen, change = () => {}, disabled = false) {
   return group
 }
 
-/** What the two choices of who sees a workspace leave unsaid. */
-export const VISIBILITY_HINT = 'Its owner and the people it is shared with always see it.'
-
 /** The workspace a tab is in: the one chosen, or with one required, the person's own. */
 export const here = (mine) => tabWorkspace(mine)
 
@@ -107,12 +106,11 @@ export function newWorkspace() {
   })
   const visible = visibilityToggle('members')
   const status = el('p')
-  const box = dialog(
+  const box = asking(
     'New workspace',
-    el('label', {}, 'Name ', name),
-    el('label', {}, 'Description ', description),
-    el('label', {}, 'Who can see this workspace ', visible),
-    el('p', { class: 'hint' }, VISIBILITY_HINT),
+    el('label', {}, el('span', {}, 'Name'), name),
+    el('label', {}, el('span', {}, 'Description'), description),
+    el('label', {}, el('span', {}, 'Who can see this workspace'), visible),
     status,
     el(
       'button',
@@ -135,7 +133,7 @@ export function newWorkspace() {
           },
         },
       },
-      'Open it',
+      'Create',
     ),
   )
   name.focus()
@@ -182,7 +180,7 @@ export async function sharePanel(current, view) {
   dialog(
     `Share ${current.name}`,
     list,
-    el('label', {}, 'Add ', email),
+    el('label', {}, el('span', {}, 'Add'), email),
     el(
       'button',
       {
@@ -202,8 +200,7 @@ export async function sharePanel(current, view) {
       },
       'Share',
     ),
-    el('label', {}, 'Who can see this workspace ', visible),
-    el('p', { class: 'hint' }, VISIBILITY_HINT),
+    el('label', {}, el('span', {}, 'Who can see this workspace'), visible),
     status,
   )
   await fill()

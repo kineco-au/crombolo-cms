@@ -18,6 +18,14 @@
   --crombolo-night-surface: #2a211b;
   --crombolo-night-alt: #342922;
   --crombolo-night-header: #2b1d15;
+  /* The strong buttons, lighter so they stand off the night surfaces; white text on each. */
+  --crombolo-button-text: #fff;
+  --crombolo-button-cocoa: #8a5a3c;
+  --crombolo-button-cocoa-hover: #9b6747;
+  --crombolo-button-accent: #ad4f2c;
+  --crombolo-button-accent-hover: #bd5a35;
+  --crombolo-button-positive: #4c7f46;
+  --crombolo-button-positive-hover: #568d4f;
   --crombolo-cocoa-deep: #25160e;
   /* Terracotta light enough to read as text on the night surfaces (7.7:1 and up). */
   --crombolo-terracotta-light: #e8a688;

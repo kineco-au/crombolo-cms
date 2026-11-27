@@ -41,6 +41,16 @@ export const fileEditorHref = (path, base = backOffice()) =>
   `${base}/section/content/code/workspace/partial-view/edit/${encodeURIComponent(path.replace('.', '%dot%'))}`
 
 /**
+ * Where a page's sharing is chosen: its own Caching tab, when its type has one.
+ * `here` is the page's editor address. Pure.
+ */
+export const sharingOptions = (state, here) => {
+  if (state?.status !== 'shared' || !state.options?.keepFor) return undefined
+  const editor = here.split('/view/')[0]
+  return { text: 'Choose how long copies are kept', href: `${editor}/view/content/tab/caching` }
+}
+
+/**
  * The Info tab's words for a page: a headline sentence, and the files that
  * make it each member's, if any. Pure.
  */
@@ -63,7 +73,7 @@ export const describeSharing = (state) => {
     case 'shared': {
       const kept =
         state.keptFor === null || state.keptFor === undefined
-          ? 'shared with every visitor, though the site sets no time to keep copies'
+          ? 'shared with every visitor'
           : state.keptFor === 0
             ? 'shared with every visitor, but no copies are kept'
             : `kept for ${duration(state.keptFor)}${state.checkedWithoutRendering ? ', checked without rendering' : ''}`

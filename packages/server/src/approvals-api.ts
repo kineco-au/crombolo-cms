@@ -165,9 +165,9 @@ export async function handleApprovalsApi(
 
     // Whether Approvals and a page's Workflow tab show: a workflow, or a request still open.
     if (path === 'active' && request.method === 'GET') {
-      const active =
-        (await approvals.workflows()).length > 0 || (await approvals.inFlight(principal)).length > 0
-      return json({ active })
+      const workflows = (await approvals.workflows()).length
+      const active = workflows > 0 || (await approvals.inFlight(principal)).length > 0
+      return json({ active, workflows, mayDesign: mayDesignWorkflows(principal) })
     }
 
     const folderIn = (file: string | undefined) =>

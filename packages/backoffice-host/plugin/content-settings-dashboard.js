@@ -5,7 +5,7 @@
  */
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { settingsTabStyles } from './settings-tabs.js'
+import { settingsTabStyles, TAB_GAP } from './settings-tabs.js'
 import './addresses-dashboard.js'
 
 export const CONTENT_SETTINGS_TABS = [
@@ -39,7 +39,7 @@ export default class CromboloContentSettingsDashboardElement extends UmbLitEleme
 
   render() {
     return html`
-      <uui-tab-group>
+      <uui-tab-group style=${TAB_GAP}>
         ${CONTENT_SETTINGS_TABS.map(
           (tab) => html`<uui-tab
             label=${tab.label}

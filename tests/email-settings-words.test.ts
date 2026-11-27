@@ -41,7 +41,7 @@ describe('Settings → E-mail (story 340)', () => {
       summaryOf({ source: 'settings', provider: 'postmark', status: { available: true } }),
     ).toBe('E-mail is sent through Postmark.')
     expect(summaryOf({ source: 'none', status: { available: false, provider: 'log' } })).toContain(
-      "server's log",
+      'logged but not sent',
     )
     expect(summaryOf({ source: 'none', status: { available: false } })).toContain('not set up')
   })

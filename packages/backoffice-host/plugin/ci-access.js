@@ -7,6 +7,7 @@
 import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { CI_PERMISSIONS, providerName, trustApi } from './ci-access-words.js'
+import './callout.js'
 
 const EMPTY = {
   name: '',
@@ -124,7 +125,7 @@ export default class CromboloCiAccessElement extends UmbLitElement {
       </div>
       ${
         this._problems.length > 0
-          ? html`<ul class="problems" role="alert">${this._problems.map((p) => html`<li>${p}</li>`)}</ul>`
+          ? html`<crombolo-callout class="problems" headline="Not saved"><ul>${this._problems.map((p) => html`<li>${p}</li>`)}</ul></crombolo-callout>`
           : nothing
       }
       <div class="actions">
@@ -151,8 +152,7 @@ export default class CromboloCiAccessElement extends UmbLitElement {
       ${
         state.remoteEnabled
           ? nothing
-          : html`<div class="notice" role="status">
-              <p>Pull and push is disabled on this site.</p>
+          : html`<crombolo-callout class="notice" kind="info" headline="Pull and push is disabled on this site">
               <details>
                 <summary>How to enable it</summary>
                 <ol>
@@ -168,7 +168,7 @@ export default class CromboloCiAccessElement extends UmbLitElement {
                   </li>
                 </ol>
               </details>
-            </div>`
+            </crombolo-callout>`
       }
       ${this._draft ? this.#form() : nothing}
       <uui-box headline="Trusted CI jobs">
@@ -234,19 +234,12 @@ export default class CromboloCiAccessElement extends UmbLitElement {
     uui-box + uui-box {
       margin-top: var(--uui-size-layout-1);
     }
-    .notice p {
-      margin: 0;
-    }
-    .notice details {
-      margin-top: var(--uui-size-space-3);
-    }
     .notice summary {
       cursor: pointer;
     }
     .notice {
-      padding: var(--uui-size-space-4) var(--uui-size-space-5);
-      border-left: 4px solid var(--uui-color-warning);
-      background: color-mix(in srgb, var(--uui-color-warning) 12%, var(--uui-color-surface));
+      display: block;
+      margin-bottom: var(--uui-size-layout-1);
     }
     .intro {
       margin-top: 0;
@@ -278,7 +271,8 @@ export default class CromboloCiAccessElement extends UmbLitElement {
       margin-top: var(--uui-size-space-5);
     }
     .problems {
-      color: var(--uui-color-danger);
+      display: block;
+      margin-top: var(--uui-size-space-4);
     }
     .row-actions {
       display: flex;

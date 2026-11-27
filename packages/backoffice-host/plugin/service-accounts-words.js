@@ -4,8 +4,7 @@
  */
 
 export const HEADLINE = 'Service accounts'
-export const INTRO =
-  "Accounts that other systems and the site's own code use. Each signs in with a client id and its secret, and may do what its groups may."
+export const INTRO = 'Custom credentials for connecting external systems and services.'
 export const NONE = 'There are no service accounts yet.'
 export const SHOWN_ONCE =
   'Copy this secret now: it is not shown again. Give it to whatever signs in as this account.'

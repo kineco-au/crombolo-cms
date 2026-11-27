@@ -126,6 +126,13 @@ export default {
     runtimeModeProduction:
       'The code is locked on this site: its templates, stylesheets and scripts are changed where its files are kept.',
   },
+  // Settings → Caching: what reloading the in-memory cache does, in plain words.
+  nuCache: {
+    memoryCacheDescription:
+      'Rebuild the in-memory cache to force a refresh of cached content. This will not cause any system downtime. A cache refresh triggers a reload on all servers in the environment.',
+    databaseCacheDescription:
+      'This button lets you rebuild the database cache. Rebuilding can be slow.',
+  },
   defaultdialogs: {
     linkYourConfirm:
       'You are about to link your Crombolo and {0} accounts and you will be redirected to {0} to complete the process.',

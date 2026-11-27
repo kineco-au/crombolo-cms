@@ -63,6 +63,7 @@ import {
   switchValue,
   workflowSettings,
 } from './forms-workflows.js'
+import './callout.js'
 
 /** The form's own texts that can name a dictionary item. */
 const WORD_SETTINGS = ['messageOnSubmit', 'submitLabel', 'nextLabel', 'previousLabel']
@@ -1052,8 +1053,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
       ${this.#workflows()}
       ${
         this._problems.length > 0
-          ? html`<div class="problems" role="alert">
-              <p>This form was not saved:</p>
+          ? html`<crombolo-callout class="problems" headline="Not saved">
               <ul>
                 ${this._problems.map((problem) => {
                   const where = describeProblemPath(form, problem.path, this._workflowTypes)
@@ -1066,7 +1066,7 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
                   }${problem.message}</li>`
                 })}
               </ul>
-            </div>`
+            </crombolo-callout>`
           : nothing
       }`
   }
@@ -1252,8 +1252,6 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
       margin-top: var(--uui-size-layout-1, 24px);
     }
     .problems {
-      border-left: 3px solid var(--uui-color-danger, #d42054);
-      padding-left: var(--uui-size-space-4, 12px);
       margin-bottom: var(--uui-size-layout-1, 24px);
     }
     code {

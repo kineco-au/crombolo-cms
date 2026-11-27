@@ -9,6 +9,7 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { downloadFile } from './download.js'
 import { exportUrl, fetchPending, uploadSchema } from './schema-transfer-client.js'
 import { ACCEPT, describeImport } from './schema-transfer-words.js'
+import './callout.js'
 
 const changesPath = () =>
   `${(document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')}/section/settings/dashboard/changes`
@@ -126,7 +127,7 @@ export default class CromboloSchemaTransferElement extends UmbLitElement {
         ${this._problem ? html`<p class="problem" role="alert">${this._problem}</p>` : nothing}
         ${
           this._problems.length > 0
-            ? html`<ul class="problems">${this._problems.map((p) => html`<li>${p}</li>`)}</ul>`
+            ? html`<crombolo-callout class="problems" headline="Not imported"><ul>${this._problems.map((p) => html`<li>${p}</li>`)}</ul></crombolo-callout>`
             : nothing
         }
       </uui-box>
@@ -156,7 +157,8 @@ export default class CromboloSchemaTransferElement extends UmbLitElement {
       color: var(--uui-color-danger);
     }
     .problems {
-      margin: 0;
+      display: block;
+      margin-top: var(--uui-size-space-4, 12px);
       font-family: var(--uui-font-monospace, monospace);
       font-size: var(--uui-type-small-size);
     }

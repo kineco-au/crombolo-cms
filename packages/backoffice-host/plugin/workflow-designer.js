@@ -33,6 +33,7 @@ import {
   missingGroups,
   wouldLoop,
 } from './workflow-graph.js'
+import './callout.js'
 
 const ON_EDIT = {
   withdraw: 'Saving withdraws the request; the editor sends it again',
@@ -87,15 +88,62 @@ const select = (label, value, options, onChange, disabled) => html`<uui-select
 ></uui-select>`
 
 /** A labelled row, as every backoffice editor lays out a field. */
+/**
+ * A problem with a workflow in words that name its stage, rather than the file's path
+ * (`stage[0].approvers`). Pure.
+ */
+export function describeProblem(problem, workflow) {
+  const at = /^stage\[(\d+)\]\.(\w+)$/.exec(problem.path ?? '')
+  const stage = at ? workflow?.stages?.[Number(at[1])] : undefined
+  if (!at || !stage) {
+    if (problem.path === 'stage') return 'Add at least one stage.'
+    const said = problem.message ?? ''
+    return said ? `${said[0].toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? '' : '.'}` : ''
+  }
+  const name = stage.name || stage.alias
+  switch (at[2]) {
+    case 'approvers':
+      return `${name} needs at least one group to approve it.`
+    case 'alias':
+      return `Two stages have the alias "${stage.alias}": give one of them another.`
+    case 'next': {
+      const gone = /"([^"]+)"/.exec(problem.message ?? '')?.[1]
+      return `${name} leads to ${gone ? `"${gone}", ` : 'a stage '}which isn't a stage any more.`
+    }
+    case 'required':
+      return `${name}: at least one person must approve it.`
+    default:
+      return `${name}: ${problem.message}`
+  }
+}
+
+/** Which stage and field a problem is about, or undefined. Pure. */
+export const problemAt = (problem) => {
+  const at = /^stage\[(\d+)\]\.(\w+)$/.exec(problem.path ?? '')
+  return at ? { index: Number(at[1]), field: at[2] } : undefined
+}
+
+/** What the browser can see is wrong before asking the server. Pure. */
+export function localProblems(workflow) {
+  return (workflow?.stages ?? []).flatMap((stage, i) =>
+    (stage.approvers ?? []).length === 0
+      ? [{ path: `stage[${i}].approvers`, message: 'a stage needs an approver group' }]
+      : [],
+  )
+}
+
 const property = (
   label,
   description,
   editor,
   orientation = 'horizontal',
+  { mandatory = false, invalid = false } = {},
 ) => html`<umb-property-layout
   orientation=${orientation}
   label=${label}
   description=${description ?? ''}
+  ?mandatory=${mandatory}
+  ?invalid=${invalid}
 ><div slot="editor">${editor}</div></umb-property-layout>`
 
 export default class CromboloWorkflowDesignerElement extends UmbLitElement {
@@ -207,6 +255,14 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
   #touch() {
     this._editing = { ...this._editing }
     this._affected = undefined
+    // A stage given an approver group is no longer a problem; the rest wait for a save.
+    if (this._problems) {
+      const left = this._problems.filter((p) => {
+        const at = problemAt(p)
+        return !(at?.field === 'approvers' && this._editing.stages[at.index]?.approvers?.length)
+      })
+      this._problems = left.length > 0 ? left : undefined
+    }
   }
 
   #stage(alias) {
@@ -324,15 +380,31 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     })
   }
 
+  /** Shows what's wrong, opening the first stage it names. */
+  #show(problems) {
+    this._problems = problems
+    const first = problems.map(problemAt).find(Boolean)
+    const stage = first && this._editing.stages[first.index]
+    if (stage) {
+      this._tab = 'stages'
+      this._selected = stage.alias
+    }
+  }
+
   async #save(confirmed = false) {
     this._problems = undefined
+    const local = localProblems(this._editing)
+    if (local.length > 0) {
+      this.#show(local)
+      return
+    }
     if (!confirmed) {
       const preview = await previewWorkflow(
         this._originalAlias ?? this._editing.alias,
         this._editing,
       )
       if (!preview.ok) {
-        this._problems = preview.problems ?? [{ message: preview.message }]
+        this.#show(preview.problems ?? [{ message: preview.message }])
         return
       }
       if (preview.affected.length > 0) {
@@ -346,7 +418,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       this.#folder,
     )
     if (!saved.ok) {
-      this._problems = saved.problems ?? [{ message: saved.message }]
+      this.#show(saved.problems ?? [{ message: saved.message }])
       return
     }
     this._affected = undefined
@@ -412,7 +484,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       ${this.#readOnly()}
       ${
         items.length === 0
-          ? html`<p>No workflows yet, so a page publishes as soon as someone who may publish does.</p>`
+          ? html`<p>No workflows yet</p>`
           : html`<uui-table>
               <uui-table-head>
                 <uui-table-head-cell>Workflow</uui-table-head-cell>
@@ -469,10 +541,10 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
         ${tab('settings', 'Settings', 'icon-settings')}
         ${tab('stages', 'Stages', 'icon-mindmap')}
       </uui-tab-group>
-      ${this._message ? html`<uui-box class="notice"><p class="message">${this._message}</p></uui-box>` : nothing}
+      ${this._message ? html`<crombolo-callout class="notice" kind="warning"><p>${this._message}</p></crombolo-callout>` : nothing}
       ${
         this._problems
-          ? html`<uui-box class="notice" headline="Not saved"><ul class="problems">${this._problems.map((p) => html`<li>${p.path ? html`<code>${p.path}</code> ` : nothing}${p.message}</li>`)}</ul></uui-box>`
+          ? html`<crombolo-callout class="notice" headline="Not saved"><ul>${this._problems.map((p) => html`<li>${describeProblem(p, this._editing)}</li>`)}</ul></crombolo-callout>`
           : nothing
       }
       ${
@@ -535,6 +607,30 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     </uui-box>`
   }
 
+  /** Whether a save was refused, so empty required fields show as invalid. */
+  #hasProblems() {
+    return (this._problems ?? []).length > 0
+  }
+
+  /** Whether a refused save named this stage's `field`. */
+  #problemIn(stage, field) {
+    const index = this._editing.stages.indexOf(stage)
+    return (this._problems ?? []).some((p) => {
+      const at = problemAt(p)
+      return at?.index === index && at.field === field
+    })
+  }
+
+  /** This stage's problems with `field`, in words, under the field. */
+  #fieldProblems(stage, field) {
+    const index = this._editing.stages.indexOf(stage)
+    const mine = (this._problems ?? []).filter((p) => {
+      const at = problemAt(p)
+      return at && at.index === index && at.field === field
+    })
+    return mine.map((p) => html`<p class="field-problem">${describeProblem(p, this._editing)}</p>`)
+  }
+
   #renderStage(stage, editable) {
     const earlier = [...ancestors(this._editing.stages, stage.alias)]
     const requiredKind = typeof stage.required === 'number' ? 'number' : stage.required
@@ -558,6 +654,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
           else this.#touch()
         }}></uui-input>`,
         'vertical',
+        { mandatory: true, invalid: !stage.name?.trim() && this.#hasProblems() },
       )}
       ${property(
         'Alias',
@@ -570,8 +667,9 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
             this.#own.add(stage)
             this.#renameStage(stage, e.target.value)
           }}
-        ></crombolo-alias-input>`,
+        ></crombolo-alias-input>${this.#fieldProblems(stage, 'alias')}`,
         'vertical',
+        { mandatory: true, invalid: this.#problemIn(stage, 'alias') },
       )}
       ${property(
         'Approved by',
@@ -596,8 +694,14 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
                 : stage.approvers.filter((a) => a !== g.alias)
               this.#touch()
             }}>${g.name}</uui-checkbox>`,
-        )}</div>`,
+        )}</div>${this.#fieldProblems(stage, 'approvers')}`,
         'vertical',
+        {
+          mandatory: true,
+          invalid:
+            this.#problemIn(stage, 'approvers') ||
+            (this.#hasProblems() && stage.approvers.length === 0),
+        },
       )}
       ${property(
         'How many must approve',
@@ -626,7 +730,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
                 this.#touch()
               }}></uui-input>`
             : nothing
-        }`,
+        }${this.#fieldProblems(stage, 'required')}`,
         'vertical',
       )}
       ${property(
@@ -657,7 +761,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
       this.#touch()
     }
     return html`<div class="settings">
-      ${readOnlyWords('Workflows', this._list.readOnlyBecause) ? html`<uui-box class="notice">${this.#readOnly()}</uui-box>` : nothing}
+      ${readOnlyWords('Workflows', this._list.readOnlyBecause) ? html`<crombolo-callout class="notice" kind="warning">${this.#readOnly()}</crombolo-callout>` : nothing}
       <uui-box headline="Workflow">
         ${property(
           'Name',
@@ -667,6 +771,8 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
               w.alias = kebabAlias(e.target.value) || 'new-workflow'
             set('name')(e.target.value)
           }}></uui-input>`,
+          'horizontal',
+          { mandatory: true, invalid: !w.name?.trim() && this.#hasProblems() },
         )}
         ${property(
           'Alias',
@@ -680,6 +786,8 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
               set('alias')(e.target.value)
             }}
           ></crombolo-alias-input>`,
+          'horizontal',
+          { mandatory: true, invalid: !w.alias?.trim() && this.#hasProblems() },
         )}
         ${property(
           'Covers the pages under',
@@ -767,7 +875,7 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
     .checks { display: flex; flex-direction: column; gap: var(--uui-size-space-2); }
     .hint { margin-top: 0; color: var(--uui-color-text-alt); }
     .message { margin: 0; color: var(--uui-color-warning-emphasis, #9e7300); }
-    .problems { color: var(--uui-color-danger); margin: 0; }
+    .field-problem { color: var(--uui-color-danger); margin: var(--uui-size-space-2) 0 0; }
     .not-saved { color: var(--uui-color-danger); }
     .affected { border: 1px solid var(--uui-color-warning); }
     ${unsafeCSS(GRAPH_STYLES)}

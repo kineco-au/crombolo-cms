@@ -14,10 +14,16 @@ export const settingsTabStyles = css`
     background: none;
     border-bottom: 1px solid var(--uui-color-border);
     --uui-tab-divider: transparent;
-    --uui-tab-group-gap: var(--uui-size-space-5);
     --uui-tab-padding-horizontal: 0;
     --uui-tab-text: var(--uui-color-text-alt);
     --uui-tab-text-hover: var(--uui-color-text);
     --uui-tab-text-active: var(--uui-color-interactive-emphasis);
   }
 `
+
+/**
+ * The gap between the tabs. UUI's tab group reads it only from its own inline style,
+ * and only in pixels, to work out how wide its tabs are: set any other way it counts
+ * none, and the last tab is cut off.
+ */
+export const TAB_GAP = '--uui-tab-group-gap: 18px'

@@ -13,7 +13,7 @@ export const SIDEBAR_APPS = {
   code: 'Crombolo.SectionSidebarMenu.Code',
 }
 
-export const GROUPS = ['Site', 'People', 'Health', 'History', 'Developers', 'Extensions', 'Other']
+export const GROUPS = ['Access', 'Site', 'Health', 'History', 'Developers', 'Extensions', 'Other']
 
 /** Our words for each tool, by the alias of its dashboard or menu item. */
 export const CARDS = {
@@ -49,14 +49,14 @@ export const CARDS = {
   },
   // Story 429: a section of its own, opened from here.
   'Umb.Section.Users': {
-    group: 'People',
+    group: 'Access',
     title: 'Users and groups',
-    description: 'The people who use the back office, and what each group may do',
+    description: "Manage the site's users and user groups",
   },
   'Crombolo.Dashboard.ServiceAccounts': {
-    group: 'People',
+    group: 'Access',
     title: 'Service accounts',
-    description: "Accounts that other systems and the site's own code use",
+    description: 'Custom credentials for connecting external systems and services',
   },
   'Umb.Dashboard.HealthCheck': {
     group: 'Health',
@@ -66,7 +66,7 @@ export const CARDS = {
   'Umb.Dashboard.PublishedStatus': {
     group: 'Health',
     title: 'Caching',
-    description: 'The published cache visitors are served from, and rebuilding it',
+    description: 'View or rebuild the content caches',
   },
   'Crombolo.Dashboard.Changes': {
     group: 'History',
@@ -92,8 +92,7 @@ export const CARDS = {
   'Crombolo.Dashboard.TrustedSigners': {
     group: 'Developers',
     title: 'Trusted signers',
-    description:
-      'The keys and builds whose site bundles this site applies: yours, other sites, and CI',
+    description: 'The identities trusted to apply site bundles',
   },
   'Crombolo.Dashboard.Schema': {
     group: 'Developers',
@@ -232,6 +231,14 @@ export function crumbsFor({ tree, title } = {}) {
  * @param {{ alias: string, label?: string, entityType?: string }[]} advanced
  * @param {string | undefined} entityType
  */
+/** An advanced tool's title section, from its card's words, or undefined. Pure. */
+export function advancedTool(advanced, entityType) {
+  if (typeof entityType !== 'string') return undefined
+  const item = advanced.find((m) => typeof m.entityType === 'string' && entityType === m.entityType)
+  const card = item && CARDS[item.alias]
+  return card ? { heading: card.title, description: card.description } : undefined
+}
+
 export function advancedToolTitle(advanced, entityType) {
   if (typeof entityType !== 'string') return undefined
   const item = advanced.find(

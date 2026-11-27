@@ -78,7 +78,7 @@ export function summaryOf(view) {
       : "E-mail is set by the site's configuration, but can't be sent. The server's log says why."
   if (view.status?.available) return `E-mail is sent through ${name}.`
   if (view.status?.provider === 'log')
-    return "E-mail is written to the server's log, not sent, until a provider is set up."
+    return 'Email is logged but not sent until a provider is configured here'
   return 'E-mail is not set up, so nothing can be sent.'
 }
 

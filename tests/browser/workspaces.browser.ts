@@ -92,7 +92,7 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   await dialog.locator('input[name="name"]').fill('Spring sale')
   await dialog.locator('textarea[name="description"]').fill('The spring prices')
   await dialog.getByRole('button', { name: 'Admins and Editors', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Open it' }).click()
+  await dialog.getByRole('button', { name: 'Create' }).click()
   await expect(switchButton(page)).toContainText('Spring sale')
   // In it, its colour is the dot beside its name, and the strip is as it was.
   await expect(switchButton(page).locator('.dot')).toHaveAttribute(
@@ -201,7 +201,7 @@ test('a fresh load straight into an editor reads and saves the page in the works
   await controlButton(page, 'New workspace').click()
   const dialog = page.locator('dialog.crombolo-workspace-dialog')
   await dialog.locator('input[name="name"]').fill('Slow start')
-  await dialog.getByRole('button', { name: 'Open it' }).click()
+  await dialog.getByRole('button', { name: 'Create' }).click()
   await expect(switchButton(page)).toContainText('Slow start')
 
   // What sets up the workspace and the page's revision arrives late, as on a slow network.

@@ -23,6 +23,7 @@ import { aliasToPath, pathFolderName } from '@umbraco-cms/backoffice/utils'
 import { UmbViewController } from '@umbraco-cms/backoffice/view'
 import {
   ADVANCED_MENU,
+  advancedTool,
   advancedToolTitle,
   CARDS,
   CODE_MENU,
@@ -182,6 +183,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
                   api?.setup?.(element, info)
                   this.#showing(tree, {
                     title: tree ? undefined : advancedToolTitle(this.#advanced(), entityType),
+                    tool: tree ? undefined : advancedTool(this.#advanced(), entityType),
                   })
                 },
               }
@@ -290,6 +292,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
           title: this.#label(manifest),
           // The landing card's words for it, where there are any.
           tool: {
+            alias: manifest.alias,
             heading: CARDS[manifest.alias]?.title ?? this.#label(manifest),
             description: CARDS[manifest.alias]?.description ?? this.#description(manifest),
           },
@@ -391,7 +394,7 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
               description=${this._tool.description ?? ''}></crombolo-settings-title>`
           : nothing
       }
-      ${this._routes ? html`<umb-router-slot .routes=${this._routes}></umb-router-slot>` : nothing}
+      ${this._routes ? html`<umb-router-slot data-tool=${this._tool?.alias ?? ''} .routes=${this._routes}></umb-router-slot>` : nothing}
     </umb-section-main>`
     // Both trees stay in the page, the one not in use hidden, as Umbraco's own
     // Settings keeps its menus. A tree taken out and put back breaks: the trees
@@ -421,6 +424,16 @@ export class CromboloSettingsSectionElement extends UmbLitElement {
     UmbTextStyles,
     SPLIT_STYLES,
     css`
+      /*
+       * Service status: an Info count, which Umbraco draws in the default colour (the
+       * theme's terracotta), in neutral grey, so only real warnings look like them.
+       */
+      umb-router-slot[data-tool='Umb.Dashboard.HealthCheck'] {
+        --uui-color-default: var(--uui-color-text-alt, #515054);
+        --uui-color-default-emphasis: var(--uui-color-text, #1b1b1b);
+        --uui-color-default-standalone: var(--uui-color-text-alt, #515054);
+        --uui-color-default-contrast: var(--uui-color-surface, #fff);
+      }
       :host {
         flex: 1 1 auto;
         height: 100%;

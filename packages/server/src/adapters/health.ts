@@ -351,13 +351,13 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
     const live = await liveNodes(db, { seenWithinMs: LIVE_WITHIN_MS })
     if (live.length === 0) return [result('Warning', 'No server has reported in the last minute.')]
     const at = now()
+    const latest = await latestCheckpoint(db)
     const results = live.map((node) =>
       result(
         'Info',
         `${node.nodeId}${node.role ? ` (${node.role})` : ''} runs Crombolo ${node.cromboloVersion ?? 'of an unknown release'} with schema ${node.version ?? '?'} revision ${node.revision ?? '?'}, last seen ${ago(node.lastSeen, at)}${node.servedCheckpoint === null ? '' : `, serving published content as of change ${node.servedCheckpoint} of ${latest}`}.`,
       ),
     )
-    const latest = await latestCheckpoint(db)
     const since = new Map<string, Date>()
     for (const node of live)
       if (node.servedCheckpoint !== null && node.servedCheckpoint < latest) {

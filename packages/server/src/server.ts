@@ -93,6 +93,7 @@ import {
 import {
   appendCacheInstruction,
   byActor,
+  ContentTypeRepository,
   currentAuditContext,
   type Db,
   DomainRepository,
@@ -5784,8 +5785,23 @@ export async function createServer(
       file.startsWith(views) ? `/${file.slice(views.length)}` : file,
     )
     const lifetime = pageLifetime(result)
+    // Where its sharing is chosen: its own "Keep copies for", once its type has Caching.
+    const types = new ContentTypeRepository(db)
+    const type = await types.byAlias(content.contentType.alias)
+    const hasKeepFor = async (
+      t: Awaited<ReturnType<typeof types.byKey>>,
+      seen = new Set<string>(),
+    ): Promise<boolean> => {
+      if (!t || seen.has(t.key)) return false
+      seen.add(t.key)
+      if (t.properties.some((p) => p.alias === CACHE_KEEP_FOR_ALIAS)) return true
+      for (const c of t.compositions)
+        if (await hasKeepFor(await types.byKey(c.contentTypeKey), seen)) return true
+      return false
+    }
     return Response.json({
       status: personal || result.personal ? 'notShared' : 'shared',
+      options: { keepFor: await hasKeepFor(type) },
       keptFor: lifetime === undefined ? null : lifetime === 'none' ? 0 : lifetime.maxAge,
       checkedWithoutRendering:
         publishedValidator && validatorFor(caching, [content.contentType.alias]) === 'published',

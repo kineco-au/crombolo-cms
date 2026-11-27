@@ -52,7 +52,6 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     _notice: { state: true },
     _busy: { state: true },
     _copied: { state: true },
-    _mine: { state: true },
     _me: { state: true },
   }
 
@@ -65,7 +64,6 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     this._busy = false
     this._copied = false
     /** "Add my key" chosen: the form shows the steps to make one. */
-    this._mine = false
     this._me = ''
     this.consumeContext(UMB_CURRENT_USER_CONTEXT, (user) => {
       this.observe(user?.currentUser, (current) => {
@@ -74,12 +72,12 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     })
   }
 
-  #addMine() {
-    this._mine = true
+  /** Opening "Add my own key" readies the form for it, unless something is typed there. */
+  #mineOpened(event) {
+    if (!event.target.open) return
+    const draft = this._draft
+    if (draft.name || draft.publicKey || draft.source) return
     this._draft = { ...EMPTY, kind: 'user', name: this._me ? `${this._me}'s key` : '' }
-    this.updateComplete.then(() =>
-      this.renderRoot.querySelector('uui-box.add')?.scrollIntoView({ behavior: 'smooth' }),
-    )
   }
 
   /** The steps to make a key of your own, shown when adding yours. */
@@ -132,7 +130,6 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
   #add() {
     const draft = this._draft
     return this.#run(async () => {
-      this._mine = false
       await call(
         '',
         'POST',
@@ -239,9 +236,8 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     const set = (patch) => {
       this._draft = { ...this._draft, ...patch }
     }
-    return html`<uui-box class="add" headline=${this._mine ? 'Add my key' : 'Add a trusted signer'}>
+    return html`<uui-box class="add" headline="Add a trusted signer">
       <div class="form">
-        ${this._mine ? this.#steps() : nothing}
         <uui-select
           label="What it is"
           .options=${Object.entries(KINDS).map(([value, name]) => ({
@@ -292,14 +288,8 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
     if (!this._items) return html`<uui-loader></uui-loader>`
     return html`
       <uui-box headline="Trusted signers">
-        <uui-button
-          slot="header-actions"
-          look="primary"
-          label="Add my key"
-          @click=${() => this.#addMine()}></uui-button>
         <p class="intro">
-          A site bundle is applied here only when one of these signed it. In production that is
-          required; elsewhere an unsigned one is applied, with a warning.
+          These trusted signers may apply a site bundle in a production environment.
         </p>
         ${this._problem ? html`<p class="problem" role="alert">${this._problem}</p>` : nothing}
         ${this._notice ? html`<p class="notice" role="status">${this._notice}</p>` : nothing}
@@ -311,6 +301,10 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
           )}
         </ul>
       </uui-box>
+      <details class="mine" @toggle=${(e) => this.#mineOpened(e)}>
+        <summary><uui-icon name="icon-info"></uui-icon> Add my own key</summary>
+        <div class="mine-body">${this.#steps()}</div>
+      </details>
       ${this.#form()}
     `
   }
@@ -321,8 +315,45 @@ export default class CromboloTrustedSignersElement extends UmbLitElement {
       padding: var(--uui-size-layout-1);
       max-width: 72rem;
     }
-    uui-box + uui-box {
+    uui-box + uui-box,
+    uui-box + details,
+    details + uui-box {
       margin-top: var(--uui-size-layout-1);
+    }
+    details.mine {
+      border: 1px solid var(--uui-color-border);
+      border-left: 4px solid var(--uui-color-default, #3544b1);
+      border-radius: var(--uui-border-radius);
+      background: var(--uui-color-surface);
+    }
+    details.mine summary {
+      display: flex;
+      align-items: center;
+      gap: var(--uui-size-space-3);
+      padding: var(--uui-size-space-4) var(--uui-size-space-5);
+      cursor: pointer;
+      font-weight: 700;
+      list-style: none;
+    }
+    details.mine summary::-webkit-details-marker {
+      display: none;
+    }
+    details.mine summary::after {
+      content: '▸';
+      margin-left: auto;
+      transition: transform 120ms;
+    }
+    details.mine[open] summary::after {
+      transform: rotate(90deg);
+    }
+    details.mine uui-icon {
+      color: var(--uui-color-default, #3544b1);
+    }
+    .mine-body {
+      padding: 0 var(--uui-size-space-5) var(--uui-size-space-4);
+    }
+    .mine-body ol {
+      margin: 0;
     }
     .intro,
     .hint,

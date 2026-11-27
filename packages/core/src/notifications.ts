@@ -17,6 +17,13 @@ export function notificationsHeaderValue(messages: readonly EventMessage[]): str
   return JSON.stringify(messages)
 }
 
+/**
+ * The same messages again on an answer naming a generated resource. The back office
+ * rebuilds such an answer keeping only `X-` headers, so `Umb-Notifications` never
+ * reaches its toasts: a create's "created" was lost. The plugin shows this one instead.
+ */
+export const CREATED_NOTIFICATIONS_HEADER = 'X-Crombolo-Notifications'
+
 export function applyNotifications(
   headers: Headers,
   method: string,
@@ -25,4 +32,6 @@ export function applyNotifications(
   if (method.toUpperCase() === 'GET') return
   if (messages.length === 0) return
   headers.set(NOTIFICATIONS_HEADER, notificationsHeaderValue(messages))
+  if (headers.has('Umb-Generated-Resource'))
+    headers.set(CREATED_NOTIFICATIONS_HEADER, notificationsHeaderValue(messages))
 }

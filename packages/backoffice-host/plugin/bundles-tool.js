@@ -5,7 +5,7 @@
  */
 import { css, html } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { settingsTabStyles } from './settings-tabs.js'
+import { settingsTabStyles, TAB_GAP } from './settings-tabs.js'
 
 /** The tabs, in order: each one's segment, its label, and its view. */
 export const BUNDLE_TABS = [
@@ -33,7 +33,7 @@ export default class CromboloBundlesToolElement extends UmbLitElement {
 
   render() {
     return html`
-      <uui-tab-group>
+      <uui-tab-group style=${TAB_GAP}>
         ${BUNDLE_TABS.map(
           (tab) => html`<uui-tab
             label=${tab.label}

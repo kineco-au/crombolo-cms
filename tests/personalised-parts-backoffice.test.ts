@@ -141,6 +141,8 @@ describe('a page’s Info panel', () => {
     const home = await make('Home', 'page')
     expect(await sharing(h, home)).toEqual({
       status: 'shared',
+      // Its type has no Caching tab, so the Info panel offers no link to one.
+      options: { keepFor: false },
       keptFor: 300,
       checkedWithoutRendering: true,
       memberFiles: [],
