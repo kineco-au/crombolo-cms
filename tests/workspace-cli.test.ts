@@ -258,6 +258,32 @@ describe('workspaces from the command line', () => {
     expect(pulled.applied.length).toBeGreaterThan(0)
   }, 180_000)
 
+  test('shared names Shared: listed first, read and checked, and refused what only a workspace does (story 447)', () => {
+    const listed = json<Listed>(siteA(), 'workspace', 'list')
+    expect(listed.items[0]).toMatchObject({ key: 'shared', name: 'Shared' })
+    const rendered = json<{ where: string; status: string; html: string }>(
+      siteA(),
+      'workspace',
+      'render',
+      'shared',
+      '/',
+      '--html',
+    )
+    expect(rendered.where).toBe('Crombolo › local (shared)')
+    expect(rendered.status).toBe('ok')
+    const checked = json<{ ok: boolean; pages: Array<{ url: string }> }>(
+      siteA(),
+      'workspace',
+      'check',
+      'shared',
+    )
+    expect(checked.pages.map((p) => p.url)).toContain('/')
+    expect(json<{ items: unknown[] }>(siteA(), 'workspace', 'errors', 'shared').items).toEqual([])
+    const discarded = cli(siteA(), ['workspace', 'discard', 'shared', '--yes'])
+    expect(discarded.code).not.toBe(0)
+    expect(discarded.out + discarded.err).toContain('Shared cannot be discarded')
+  }, 120_000)
+
   test('a site with workspaces off refuses the workspace commands by name', () => {
     const run = cli(siteA(), ['workspace', 'list'], false)
     expect(run.code).not.toBe(0)

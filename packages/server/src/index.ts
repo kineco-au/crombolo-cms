@@ -121,6 +121,7 @@ export * from './live-reload.ts'
 export * from './log-expressions.ts'
 export * from './log-viewer.ts'
 export * from './logging.ts'
+export { changesOnlyTheSites, MANAGED_MEMBER, mayChange } from './managed-members.ts'
 export { MANAGED_OUTSIDE, managedHref } from './managed-users.ts'
 export * from './marketplace.ts'
 export * from './media-files.ts'
@@ -138,6 +139,21 @@ export {
   MEMBER_RESET_HOURS,
   type ResetLinkOutcome,
 } from './member-reset.ts'
+export {
+  ACTING_FOR_HEADER,
+  actingForPrincipal,
+  actingForValue,
+  createMembersClient,
+  createMembersSource,
+  createRemoteMemberGroupPort,
+  createRemoteMemberPort,
+  type MembersSource,
+  MembersSourceError,
+  memberBody,
+  membersSourceFor,
+  notAnswering,
+  readActingFor,
+} from './members-remote.ts'
 export * from './middleware.ts'
 export * from './models-builder.ts'
 export * from './no-nodes.ts'
@@ -145,6 +161,7 @@ export * from './oembed.ts'
 export * from './outbound-address.ts'
 export * from './owner-jobs.ts'
 export * from './ports.ts'
+export { PREVIEW_STAND_IN_KEY, previewGroupKeys, previewStandIn } from './preview-visitor.ts'
 export * from './principal.ts'
 export * from './provenance.ts'
 export * from './rate-limit.ts'
@@ -181,6 +198,7 @@ export * from './site-data.ts'
 export * from './site-events.ts'
 export * from './site-file.ts'
 export { createSiteMembers, shapeProblem } from './site-members.ts'
+export { createRemoteSiteMembers } from './site-members-remote.ts'
 export * from './site-public.ts'
 export * from './site-queries.ts'
 export * from './site-replace.ts'

@@ -234,8 +234,11 @@ describe(`a site bundle staged as a change (${dialectUnderTest})`, () => {
 
     const pruned = await s.stage(bundle, 'source=ci&into=CI&base=now&check=true&prune=true')
     expect(pruned.body.pages).toContainEqual({ key: about, name: 'About', action: 'delete' })
-    const listed = (await (await s.h.call(WORKSPACES)).json()) as { items: unknown[] }
-    expect(listed.items).toEqual([])
+    const listed = (await (await s.h.call(WORKSPACES)).json()) as {
+      items: Array<{ shared?: boolean }>
+    }
+    // Story 447: Shared is listed first; no workspace was staged.
+    expect(listed.items.filter((w) => !w.shared)).toEqual([])
   }, 60_000)
 
   test('a checkout with no database is staged as its files: a definition changed, no page touched', async () => {
@@ -421,8 +424,11 @@ describe(`a staged change needing what the site lacks (story 403, ${dialectUnder
         '\\"Gig\\" needs the document type \\"event\\", which this site does not have.',
       )
     }
-    const listed = (await (await s.h.call(WORKSPACES)).json()) as { items: unknown[] }
-    expect(listed.items).toEqual([])
+    const listed = (await (await s.h.call(WORKSPACES)).json()) as {
+      items: Array<{ shared?: boolean }>
+    }
+    // Story 447: Shared is listed first; no workspace was staged.
+    expect(listed.items.filter((w) => !w.shared)).toEqual([])
   }, 60_000)
 
   test('a block element type the site lacks is refused too', async () => {

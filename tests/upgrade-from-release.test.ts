@@ -14,7 +14,7 @@ import {
   readLedger,
   readState,
   STATE_CONTENT_APPLIED,
-  STATE_WEBHOOK_EVENT_NAMES,
+  STATE_SHARED_LINKS,
   seedIdentity,
 } from '@crombolo/data'
 import { summariseUpgrades, VERSION } from '@crombolo/server'
@@ -172,10 +172,12 @@ describe('upgrading from the previous release', () => {
       'AddServiceAccountSecrets',
       'AddMemberPasswordReset',
       'RenameWebhookEvents',
+      'AddMemberManager',
+      'AddSharedLinks',
     ])
-    expect(await readState(db)).toBe(STATE_WEBHOOK_EVENT_NAMES)
+    expect(await readState(db)).toBe(STATE_SHARED_LINKS)
     const summary = summariseUpgrades(await readLedger(db), VERSION)
-    expect(summary.lastUpgrade).toMatchObject({ release: '0.82.0', steps: 55 })
+    expect(summary.lastUpgrade).toMatchObject({ release: '0.83.0', steps: 57 })
   })
 
   test('the Changes dashboard reports the version, the install and the last upgrade', async () => {

@@ -110,6 +110,7 @@ import { logger } from './logging.ts'
 import { MediaFileStore } from './media-files.ts'
 import { mediaStoreFromEnvironment } from './media-store.ts'
 import { unknownClaimProperties } from './member-claims.ts'
+import { membersSourceFor } from './members-remote.ts'
 import { createNodeOperations } from './node-operations.ts'
 import { OutboundRefused, pinnedFetch } from './outbound-address.ts'
 import {
@@ -128,6 +129,7 @@ import { siteBackOfficeProblems } from './site-backoffice.ts'
 import { apiUserPrincipal, createSiteContent, userPrincipalByKey } from './site-content.ts'
 import { SITE_EVENT_JOB, siteEventJob, siteEventProblems } from './site-events.ts'
 import { createSiteMembers, unknownMemberGroups } from './site-members.ts'
+import { createRemoteSiteMembers } from './site-members-remote.ts'
 import { createSiteQueries, queryProblems } from './site-queries.ts'
 import { createSiteServices } from './site-services.ts'
 import { recordCacheLookup, startTelemetry, tracedDb, tracedEmail } from './telemetry.ts'
@@ -1050,18 +1052,22 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     throw new Error(
       `The config's members.actAs names "${config.members.actAs}", which is no API user's client id.`,
     )
-  const noGroups = await unknownMemberGroups(db, config.members?.groups)
+  // Story 444: another site holds the members, and its groups are its own to check.
+  const membersSource = membersSourceFor(config)
+  const noGroups = membersSource ? [] : await unknownMemberGroups(db, config.members?.groups)
   if (noGroups.length > 0)
     throw new Error(
       `The config's members.groups names ${noGroups.map((g) => `"${g}"`).join(', ')}, which is no member group.`,
     )
-  const siteMembersFor = createSiteMembers({
-    db,
-    nodeState: schema.nodeState,
-    nodeId: schema.nodeId,
-    actAs: config.members?.actAs,
-    groups: config.members?.groups,
-  })
+  const siteMembersFor = membersSource
+    ? createRemoteSiteMembers({ db, source: membersSource, groups: config.members?.groups })
+    : createSiteMembers({
+        db,
+        nodeState: schema.nodeState,
+        nodeId: schema.nodeId,
+        actAs: config.members?.actAs,
+        groups: config.members?.groups,
+      })
   const siteServicesFor = createSiteServices({
     db,
     cache,
@@ -1245,6 +1251,8 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
     bundleMediaFolders: () => bundleMediaFolders,
     poller,
     siteServicesFor,
+    /** Story 444: the site that holds this site's members, when another does. */
+    membersSource,
     jobs,
     wake,
     workerWatch,

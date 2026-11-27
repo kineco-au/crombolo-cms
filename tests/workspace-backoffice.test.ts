@@ -384,7 +384,10 @@ describe(`workspaces in the back office, on the server (${dialectUnderTest})`, (
     const shown = await send(h, 'PATCH', `${WORKSPACES}/${sale.key}`, { visibility: 'editors' })
     expect(await shown.json()).toMatchObject({ visibility: 'editors' })
     const listed = await writer.json<{ items: Array<{ key: string; member: boolean }> }>(WORKSPACES)
-    expect(listed.items).toEqual([expect.objectContaining({ key: sale.key, member: false })])
+    expect(listed.items).toEqual([
+      expect.objectContaining({ key: 'shared', shared: true }),
+      expect.objectContaining({ key: sale.key, member: false }),
+    ])
     expect((await writer.call(`${WORKSPACES}/${sale.key}/changes`)).status).toBe(200)
     expect((await save(writer, home, 'Mine', sale.key)).status).toBe(404)
     expect(

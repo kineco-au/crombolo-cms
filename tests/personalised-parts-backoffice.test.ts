@@ -1,12 +1,14 @@
 /**
  * Story 264: the back office shows whether a page's copies are shared and
  * why not, notes a view that shows the signed-in member, inserts a part with
- * its import, offers starters for a personalised and an interactive part, and
- * lets a user who can open Members preview as one.
+ * its import, offers starters for a personalised and an interactive part.
+ * Story 443: anyone who previews sees the page signed out or as a member of
+ * chosen groups, never as a real member.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { memberMayOpen } from '@crombolo/core'
 import {
   AuditLog,
   ComponentRepository,
@@ -15,11 +17,19 @@ import {
   SYSTEM_MEMBER_TYPE,
 } from '@crombolo/data'
 import {
+  createSiteMembers,
+  formSigningSecret,
+  PREVIEW_STAND_IN_KEY,
+  previewGroupKeys,
+  previewStandIn,
+  withSiteWrites,
+} from '@crombolo/server'
+import {
   describeSharing,
   duration,
   fileEditorHref,
 } from '../packages/backoffice-host/plugin/page-sharing.js'
-import { visitorLabel } from '../packages/backoffice-host/plugin/preview-member.js'
+import { STAND_IN_NOTE, visitorLabel } from '../packages/backoffice-host/plugin/preview-member.js'
 import {
   componentName,
   importFor,
@@ -48,7 +58,7 @@ alias = "page"
 name = "Page"
 allow-at-root = true
 allow-children = ["page"]
-components = ["page", "greeted"]
+components = ["page", "greeted", "visitor"]
 default-component = "page"
 `
 
@@ -73,6 +83,24 @@ export default ({ model }) => <Layout><h1>{model.name}</h1></Layout>
     join(root, 'components', 'greeted.tsx'),
     `import { usePage } from '@crombolo/crombolo'
 export default () => <p>{usePage().member ? 'Welcome back' : 'Welcome'}</p>
+`,
+  )
+  writeFileSync(
+    join(root, 'components', 'visitor.tsx'),
+    `import { site } from '@crombolo/crombolo/server'
+export default async function Visitor({ member }) {
+  const found = member ? await site().members.get(member.key) : undefined
+  const seen = member && {
+    key: member.key,
+    name: member.name,
+    username: member.username,
+    email: member.email,
+    roles: member.roles,
+    properties: member.properties ?? null,
+    found: found?.isOk() ? 'found' : found?.message,
+  }
+  return <pre>{JSON.stringify(seen ?? 'signed out')}</pre>
+}
 `,
   )
   const h = await signedInServer({
@@ -229,10 +257,137 @@ describe('the create menu', () => {
   })
 })
 
-describe('previewing as a member', () => {
-  async function withMember() {
+describe('previewing as a member of a group', () => {
+  const PATH = '/crombolo/crombolo/api/preview-member'
+  const choose = (h: Harness, groups: unknown) =>
+    h.call(PATH, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ groups }),
+    })
+  const cookieOf = (response: Response) =>
+    (response.headers.getSetCookie()[0] ?? '').split(';')[0] as string
+  const preview = (h: Harness, key: string, cookie: string) =>
+    h.server
+      .fetch(
+        new Request(`${ORIGIN}/${key}`, {
+          headers: { cookie: `${h.cookie()}; UMB_PREVIEW=preview; ${cookie}` },
+        }),
+      )
+      .then((r) => r.text())
+  const read = (h: Harness, cookie: string) =>
+    h.server
+      .fetch(new Request(`${ORIGIN}${PATH}`, { headers: { cookie: `${h.cookie()}; ${cookie}` } }))
+      .then((r) => r.json() as Promise<Record<string, unknown>>)
+  const SIGNED_OUT = 'crombolo-preview-member='
+  const seen = (html: string) => {
+    const text = /<pre>(.*?)<\/pre>/s.exec(html)?.[1] ?? ''
+    return JSON.parse(text.replaceAll('&quot;', '"').replaceAll('&#x27;', "'"))
+  }
+
+  async function withGroups() {
     const s = await site()
-    const created = await s.h.post(`${V1}/member`, {
+    const group = async (name: string) =>
+      (await s.h.post(`${V1}/member-group`, { name })).headers.get(
+        'umb-generated-resource',
+      ) as string
+    const staff = await group('Staff')
+    const friends = await group('Friends')
+    return { ...s, staff, friends }
+  }
+
+  test('lists the groups by name, and renders the draft for a stand-in in the chosen ones', async () => {
+    const { h, make, staff, friends } = await withGroups()
+    const page = await make('Visited', 'visitor')
+    expect(await h.json<Record<string, unknown>>(PATH)).toEqual({
+      groups: [
+        { key: friends, name: 'Friends' },
+        { key: staff, name: 'Staff' },
+      ],
+      chosen: null,
+    })
+    const chosen = await choose(h, [staff, friends])
+    expect(chosen.status).toBe(200)
+    expect(await chosen.json()).toMatchObject({
+      chosen: {
+        groups: [
+          { key: staff, name: 'Staff' },
+          { key: friends, name: 'Friends' },
+        ],
+      },
+    })
+    const cookie = cookieOf(chosen)
+    expect(cookie).toStartWith('crombolo-preview-member=g%3A')
+    expect(seen(await preview(h, page, cookie))).toEqual({
+      key: PREVIEW_STAND_IN_KEY,
+      name: 'Preview member',
+      username: '',
+      email: '',
+      roles: ['Staff', 'Friends'],
+      properties: null,
+      found: 'There is no such member.',
+    })
+    expect(await read(h, cookie)).toMatchObject({
+      chosen: { groups: [{ name: 'Staff' }, { name: 'Friends' }] },
+    })
+
+    const signedOut = await choose(h, [])
+    expect(await signedOut.json()).toMatchObject({ chosen: null })
+    expect(seen(await preview(h, page, cookieOf(signedOut)))).toBe('signed out')
+  })
+
+  test('shows a protected page whatever the groups, and the live site never reads the choice', async () => {
+    const { h, make, staff } = await withGroups()
+    const open = await make('Open', 'greeted')
+    const home = await make('Home', 'page')
+    const secret = await make('Secret', 'greeted', home)
+    await new PublicAccessRepository(h.server.db).save({
+      nodeKey: secret,
+      loginNodeKey: home,
+      errorNodeKey: home,
+      memberGroupNames: ['Staff'],
+      memberUserNames: [],
+    })
+    const cookie = cookieOf(await choose(h, [staff]))
+    expect(await preview(h, secret, cookie)).toContain('Welcome back')
+    expect(await preview(h, secret, SIGNED_OUT)).toContain('<p>Welcome</p>')
+
+    const live = await h.server.fetch(
+      new Request(`${ORIGIN}/`, { headers: { cookie: `${h.cookie()}; ${cookie}` } }),
+    )
+    expect(await live.text()).toContain('<p>Welcome</p>')
+    expect(open).toBeDefined()
+  })
+
+  test('is open to a user without Members, and the cookie is that user’s alone', async () => {
+    const { h, make, staff } = await withGroups()
+    const page = await make('Visited', 'visitor')
+    const writer = await signInAsGroup(h, 'writer')
+    const listed = await writer.json<{ groups: unknown[] }>(PATH)
+    expect(listed.groups).toHaveLength(2)
+    const chosen = await choose(writer, [staff])
+    expect(chosen.status).toBe(200)
+    const cookie = cookieOf(chosen)
+    expect(seen(await preview(writer, page, cookie)).roles).toEqual(['Staff'])
+    expect(seen(await preview(h, page, cookie))).toBe('signed out')
+  })
+
+  test('names a renamed group as it is now, drops a deleted one, and is signed out with none left', async () => {
+    const { h, make, staff, friends } = await withGroups()
+    const page = await make('Visited', 'visitor')
+    const cookie = cookieOf(await choose(h, [staff, friends]))
+    expect((await h.put(`${V1}/member-group/${staff}`, { name: 'Employees' })).status).toBe(200)
+    expect(seen(await preview(h, page, cookie)).roles).toEqual(['Employees', 'Friends'])
+    expect((await h.call(`${V1}/member-group/${friends}`, { method: 'DELETE' })).status).toBe(200)
+    expect(seen(await preview(h, page, cookie)).roles).toEqual(['Employees'])
+    expect((await h.call(`${V1}/member-group/${staff}`, { method: 'DELETE' })).status).toBe(200)
+    expect(seen(await preview(h, page, cookie))).toBe('signed out')
+  })
+
+  test('reads a cookie naming a real member as signed out', async () => {
+    const { h, make } = await withGroups()
+    const page = await make('Visited', 'visitor')
+    const created = await h.post(`${V1}/member`, {
       memberType: { id: SYSTEM_MEMBER_TYPE.key },
       email: 'ada@example.test',
       username: 'ada',
@@ -242,59 +397,84 @@ describe('previewing as a member', () => {
       values: [],
       variants: [{ culture: null, segment: null, name: 'Ada' }],
     })
-    expect(created.status).toBe(201)
-    return { ...s, member: created.headers.get('umb-generated-resource') as string }
-  }
-  const PATH = '/crombolo/crombolo/api/preview-member'
-
-  test('renders the draft as the chosen member, and records the choice', async () => {
-    const { h, make, member } = await withMember()
-    const greeted = await make('Greeted', 'greeted')
-    const chosen = await h.call(PATH, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ member }),
-    })
-    expect(chosen.status).toBe(200)
-    expect(await chosen.json()).toEqual({ allowed: true, member: { key: member, name: 'Ada' } })
-    const cookie = (chosen.headers.getSetCookie()[0] ?? '').split(';')[0] as string
-    expect(cookie).toStartWith('crombolo-preview-member=')
-
-    const preview = (extra: string) =>
-      h.server.fetch(
-        new Request(`${ORIGIN}/${greeted}`, {
-          headers: { cookie: `${h.cookie()}; UMB_PREVIEW=preview; ${extra}` },
-        }),
-      )
-    expect(await (await preview(cookie)).text()).toContain('Welcome back')
-    const signedOut = await h.call(PATH, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ member: null }),
-    })
-    expect(await signedOut.json()).toEqual({ allowed: true, member: null })
-    const cleared = (signedOut.headers.getSetCookie()[0] ?? '').split(';')[0] as string
-    expect(await (await preview(cleared)).text()).toContain('<p>Welcome</p>')
-
-    const { items } = await new AuditLog(h.server.db).query({}, { skip: 0, take: 50 })
-    expect(items.some((e) => e.action === 'preview as' && e.entityKey === member)).toBe(true)
+    const member = created.headers.get('umb-generated-resource') as string
+    const user = (await h.json<{ id: string }>(`${V1}/user/current`)).id
+    const key = `deferred|${await formSigningSecret(h.server.db)}`
+    const signature = new Bun.CryptoHasher('sha256', key)
+      .update(`preview-member|${member}|${user}`)
+      .digest('base64url')
+    const old = `crombolo-preview-member=${encodeURIComponent(`${member}.${signature}`)}`
+    expect(seen(await preview(h, page, old))).toBe('signed out')
+    expect(await read(h, old)).toMatchObject({ chosen: null })
+    expect(previewGroupKeys(member)).toEqual([])
+    expect(previewGroupKeys(`g:${member.toUpperCase()},`)).toEqual([member.toLowerCase()])
+    const chosen = await choose(h, [member])
+    expect(chosen.status).toBe(404)
+    expect(((await chosen.json()) as { message: string }).message).toBe(
+      'One of those member groups no longer exists.',
+    )
+    expect((await choose(h, 'Staff')).status).toBe(400)
   })
 
-  test('is refused to a user who cannot open Members', async () => {
-    const { h, member } = await withMember()
-    const writer = await signInAsGroup(h, 'writer')
-    expect(await writer.json<Record<string, unknown>>(PATH)).toEqual({
-      allowed: false,
-      member: null,
+  test('records each switch in the audit log, with the group names', async () => {
+    const { h, staff, friends } = await withGroups()
+    await choose(h, [staff, friends])
+    await choose(h, [])
+    const { items } = await new AuditLog(h.server.db).query({}, { skip: 0, take: 50 })
+    const switches = items.filter((e) => e.action.startsWith('preview '))
+    expect(switches.map((e) => [e.action, e.detail])).toEqual(
+      expect.arrayContaining([
+        ['preview as groups', 'Staff, Friends'],
+        ['preview signed out', null],
+      ]),
+    )
+    expect(items.some((e) => e.action === 'preview as')).toBe(false)
+  })
+
+  test('the stand-in is in its groups and nobody else: what it writes as itself is refused', async () => {
+    const { h, staff } = await withGroups()
+    const stand = previewStandIn(['Staff'])
+    expect(stand).toEqual({
+      key: PREVIEW_STAND_IN_KEY,
+      name: 'Preview member',
+      username: '',
+      email: '',
+      roles: ['Staff'],
     })
-    const refused = await writer.call(PATH, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ member }),
-    })
-    expect(refused.status).toBe(403)
+    const rule = { memberGroupNames: ['staff'], memberUserNames: [''] }
+    expect(memberMayOpen(rule, { username: stand.username, groups: stand.roles })).toBe(true)
+    expect(
+      memberMayOpen(
+        { memberGroupNames: ['Friends'], memberUserNames: [] },
+        {
+          username: '',
+          groups: stand.roles,
+        },
+      ),
+    ).toBe(false)
+
+    const members = createSiteMembers({
+      db: h.server.db,
+      nodeState: h.server.schema.nodeState,
+      groups: { selfService: ['Staff'] },
+    })(async () => ({ kind: 'member', ...stand }))
+    const inRoute = <T>(run: () => T) =>
+      withSiteWrites({ via: 'route POST /x', source: 'request' }, run)
+    const refused = [
+      await inRoute(() => members.me()),
+      await inRoute(() => members.update(stand.key, { name: 'Changed' })),
+      await inRoute(() => members.addToGroups(stand.key, ['Staff'])),
+    ]
+    expect(refused.map((r) => (r.isOk() ? 200 : r.status))).toEqual([403, 404, 404])
+    expect(staff).toBeDefined()
+  })
+
+  test('the switch words who the page is shown to, and what a stand-in cannot show', () => {
     expect(visitorLabel(null)).toBe('Signed out')
-    expect(visitorLabel({ name: 'Ada' })).toBe('As Ada')
+    expect(visitorLabel({ groups: [{ name: 'Staff' }, { name: 'Friends' }] })).toBe(
+      'A member of Staff, Friends',
+    )
+    expect(STAND_IN_NOTE).toContain('look the member up')
     expect(ORIGIN).toBeDefined()
   })
 })

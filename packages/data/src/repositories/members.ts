@@ -50,6 +50,8 @@ export interface MemberRecord extends MemberIdentity {
   contentTypeKey: string
   contentTypeAlias: string
   contentTypeIcon: string | null
+  /** Story 445: the API client that keeps this member, or null for the site's own. */
+  managedBy: string | null
 }
 
 export interface MemberCredentials extends MemberRecord {
@@ -67,6 +69,8 @@ export interface MemberIdentityInput {
   passwordConfig?: string | null
   /** Group **keys**; the membership table stores node ids. */
   groupKeys?: readonly string[]
+  /** Story 445: on a create only, the API client that keeps the member. */
+  managedBy?: string | null
 }
 
 export interface MemberFilter {
@@ -121,6 +125,7 @@ interface MemberRow {
   last_login_date: unknown
   last_lockout_date: unknown
   last_password_change_date: unknown
+  managed_by: string | null
   type_key: string
   type_alias: string
   type_icon: string | null
@@ -194,6 +199,7 @@ export class MemberRepository {
       contentTypeKey: normaliseUuid(String(row.type_key)),
       contentTypeAlias: String(row.type_alias),
       contentTypeIcon: row.type_icon,
+      managedBy: row.managed_by ?? null,
     }
   }
 
@@ -295,6 +301,7 @@ export class MemberRepository {
         is_locked_out: this.#db.dialect.boolValue(identity.isLockedOut) as boolean | number,
         is_approved: this.#db.dialect.boolValue(identity.isApproved) as boolean | number,
         last_password_change_date: identity.passwordHash ? DbDate.toDb(now) : null,
+        managed_by: identity.managedBy ?? null,
       })
       .execute()
     await this.#writeGroups(node.id, identity.groupKeys ?? [])
@@ -343,7 +350,18 @@ export class MemberRepository {
     return this.byKey(key)
   }
 
-  /** Records a successful sign-in, clearing whatever failures came before it. */
+  /** Story 445: clears a member's manager, so they are the site's own. False when none. */
+  async clearManager(key: string): Promise<boolean> {
+    const node = await this.#nodes.byKey(key)
+    if (!node || node.objectType !== ObjectTypes.Member) return false
+    await this.#db.q
+      .updateTable('member')
+      .set({ managed_by: null })
+      .where('node_id', '=', node.id)
+      .execute()
+    return true
+  }
+
   /**
    * Replaces an imported hash with argon2id after a successful sign-in. The
    * password is the same, so the security stamp and change date stand.
@@ -415,6 +433,7 @@ export class MemberRepository {
     return true
   }
 
+  /** Records a successful sign-in, clearing whatever failures came before it. */
   async recordLogin(key: string): Promise<void> {
     const node = await this.#nodes.byKey(key)
     if (!node) return

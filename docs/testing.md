@@ -627,7 +627,9 @@ file, a known admin password (`tests/browser/serve.ts`). It is not part of
 site also gets an "Every editor" content type, generated at startup with a
 property for every built-in data type, and a view that renders a crop of its
 image picker. The suite shares that one site, so every test names what it
-creates uniquely.
+creates uniquely. Beside it, `serve.ts` boots a second site at `127.0.0.1` on the next
+port, whose members the first holds (story 444, `members-elsewhere.browser.ts`): a
+different host, so the two sites' sign-in cookies stay apart.
 
 | Spec                          | What it drives                                                                                                                                                                                                                                                                                                                                          |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

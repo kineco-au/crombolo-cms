@@ -278,7 +278,7 @@ describe("a page's access", () => {
       type: 'customer',
     })
 
-    expect(await pageAccess(db, members)).toMatchObject({ rule: 'none', groups: [] })
+    expect(await pageAccess(ports, members)).toMatchObject({ rule: 'none', groups: [] })
     const needsPages = await refusal(
       setPageAccess(ports, operations, actor, members, { groups: ['Subscribers'] }),
     )
@@ -311,16 +311,16 @@ describe("a page's access", () => {
     })
     expect(byMember).toMatchObject({ groups: [], members: ['ana'], loginPage: { key: signIn } })
 
-    expect(await pageAccess(db, inside)).toMatchObject({
+    expect(await pageAccess(ports, inside)).toMatchObject({
       rule: 'ancestor',
       protectedBy: { path: '/Home/Members' },
       members: ['ana'],
     })
 
-    const cleared = await clearPageAccess(db, operations, actor, members)
+    const cleared = await clearPageAccess(ports, operations, actor, members)
     expect(cleared.changed).toBe(true)
     expect(cleared.access.rule).toBe('none')
-    expect((await clearPageAccess(db, operations, actor, members)).changed).toBe(false)
+    expect((await clearPageAccess(ports, operations, actor, members)).changed).toBe(false)
   })
 
   test('a group a page names is removed only when confirmed', async () => {

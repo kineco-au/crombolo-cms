@@ -595,12 +595,20 @@ describe(`backoffice users signing in through a provider (${process.env.CROMBOLO
     })
     expect(code.status).toBe(403)
 
-    // Without a session, authorize sends the browser to the login page, which offers the provider.
+    // Without a session, authorize sends the browser to the login page, which with one
+    // way in goes straight to the provider (story 446), and shows it after a refusal.
     const backOffice = server.config.backOfficePath
     const authorize = `${security}/authorize?client_id=umbraco-back-office&redirect_uri=${encodeURIComponent(`http://localhost${backOffice}/oauth_complete`)}&response_type=code&code_challenge=abc&code_challenge_method=S256`
     const toLogin = await visit(authorize)
     const loginUrl = new URL(toLogin.headers.get('location') as string)
-    const loginPage = await (await visit(`${loginUrl.pathname}${loginUrl.search}`)).text()
+    const straight = await visit(`${loginUrl.pathname}${loginUrl.search}`)
+    expect(straight.status).toBe(303)
+    expect(straight.headers.get('location')).toBe(
+      `${security}/external/fake?returnUrl=${encodeURIComponent(authorize)}`,
+    )
+    const loginPage = await (
+      await visit(`${loginUrl.pathname}${loginUrl.search}&externalLoginError=Refused`)
+    ).text()
     expect(loginPage).toContain('disable-local-login')
     expect(loginPage).toContain('Fake')
     expect(loginPage).toContain(`${security}/external/fake?returnUrl=`)

@@ -57,10 +57,13 @@ export function registerMemberGroupHandlers(
     const body = ((await ctx.request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (!name) return problemResponse(problemDetails({ title: 'A name is required', status: 400 }))
-    const result = await groups.create({
-      key: typeof body.id === 'string' && body.id ? body.id : undefined,
-      name,
-    })
+    const result = await groups.create(
+      {
+        key: typeof body.id === 'string' && body.id ? body.id : undefined,
+        name,
+      },
+      ctx.principal,
+    )
     if (result.status !== 'ok' || !result.key) return statusResponse(result.status)
     // The toast the backoffice shows, as for every other type it saves.
     ctx.notifications.push({
@@ -75,7 +78,7 @@ export function registerMemberGroupHandlers(
     const body = ((await ctx.request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (!name) return problemResponse(problemDetails({ title: 'A name is required', status: 400 }))
-    const status = await groups.rename(ctx.params.id as string, name)
+    const status = await groups.rename(ctx.params.id as string, name, ctx.principal)
     if (status === 'ok')
       ctx.notifications.push({
         message: 'Member group saved',
@@ -86,7 +89,7 @@ export function registerMemberGroupHandlers(
   })
 
   router.handle('DeleteMemberGroupById', async (ctx) =>
-    statusResponse(await groups.remove(ctx.params.id as string)),
+    statusResponse(await groups.remove(ctx.params.id as string, ctx.principal)),
   )
 
   router.handle('GetItemMemberGroup', async (ctx) => Response.json(await groups.items(keysOf(ctx))))

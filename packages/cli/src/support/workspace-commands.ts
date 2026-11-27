@@ -22,7 +22,8 @@ export async function onSite<T>(
   const site = flags['include-private'] ? includingPrivate(opened) : opened
   try {
     const chosen = workspace ? await workspaceNamed(site, workspace) : undefined
-    const where = site.where(chosen?.name)
+    // Story 447: Shared is named as the site itself is.
+    const where = site.where(chosen?.key === 'shared' ? undefined : chosen?.name)
     io.say(`  ${where}`)
     const result = await work(site, chosen)
     return { where, ...result }

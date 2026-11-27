@@ -23,7 +23,7 @@ import { API_CLIENT_ID_PREFIX } from './config.ts'
 /** The settings that name an API client, in the words the screen says them in. */
 export interface ServiceAccountSettings {
   content?: { actAs?: string }
-  members?: { actAs?: string }
+  members?: { actAs?: string; managedBy?: readonly string[]; actorsFrom?: readonly string[] }
   users?: { managedBy: readonly string[] }
   groups?: { managedBy: readonly string[] }
 }
@@ -34,6 +34,12 @@ export function serviceAccountUses(config: ServiceAccountSettings): (clientId: s
     ...(config.content?.actAs === clientId ? ["Changes pages for the site's own code"] : []),
     ...(config.members?.actAs === clientId
       ? ['Reads and changes members for background jobs']
+      : []),
+    ...(config.members?.managedBy?.includes(clientId)
+      ? ["Keeps this site's members from a directory up to date"]
+      : []),
+    ...(config.members?.actorsFrom?.includes(clientId)
+      ? ["Manages this site's members from another site, saying who for"]
       : []),
     ...(config.users?.managedBy.includes(clientId) ? ["Keeps this site's users up to date"] : []),
     ...(config.groups?.managedBy.includes(clientId) ? ["Keeps this site's groups up to date"] : []),

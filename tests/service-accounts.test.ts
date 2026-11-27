@@ -220,12 +220,17 @@ describe(`service accounts (${dialectUnderTest})`, () => {
     const h = await server()
     const made = await account(h)
     h.server.config.content = { actAs: made.clientId }
-    h.server.config.members = { ...h.server.config.members, actAs: made.clientId }
+    h.server.config.members = {
+      ...h.server.config.members,
+      actAs: made.clientId,
+      managedBy: [made.clientId],
+    }
 
     const shown = await h.json<Account>(`${API}/${made.key}`)
     expect(shown.usedFor).toEqual([
       "Changes pages for the site's own code",
       'Reads and changes members for background jobs',
+      "Keeps this site's members from a directory up to date",
     ])
 
     for (const [path, method] of [

@@ -15,6 +15,7 @@ import {
   corsPolicy,
   createDeliveryApi,
   fillPreviewUrl,
+  hasValidApiKey,
   isPreflight,
   memberAuthorizationEnabled,
   preflightResponse,
@@ -94,6 +95,7 @@ import {
   byActor,
   currentAuditContext,
   type Db,
+  DomainRepository,
   ExternalLoginRepository,
   ensureFormLibraryTypes,
   ensureKeyValue,
@@ -105,12 +107,15 @@ import {
   latestContentVersionId,
   listLibraryForms,
   MediaAccessRepository,
+  MemberRepository,
   PublicAccessRepository,
   RedirectRepository,
   readLedger,
   readReport,
   readUrlOptions,
   readWorkflows,
+  SHARED_WORKSPACE_KEY,
+  SharedLinkRepository,
   SingleUseTokens,
   searchProvidersOf,
   TransferRunRepository,
@@ -202,6 +207,7 @@ import {
   groupsManaged,
   listeningBodyLimit,
   loadConfig,
+  replacedLinkSetting,
   type ServerRole,
   usersManaged,
   VERSION,
@@ -271,6 +277,13 @@ import {
   readPreviewToken,
   signPreviewToken,
 } from './preview-tokens.ts'
+import {
+  chosenGroups,
+  previewGroupKeys,
+  previewGroups,
+  previewGroupsValue,
+  previewStandIn,
+} from './preview-visitor.ts'
 import { principalOf } from './principal.ts'
 import { provenanceProblem } from './provenance.ts'
 import { createRemote, may, type RestartOutcome } from './remote.ts'
@@ -309,7 +322,7 @@ import { inSchemaPlace, type SchemaPlace } from './workspace-schema-dir.ts'
 
 export { PREVIEW_COOKIE }
 
-/** The member a back-office user previews as (story 264). */
+/** The groups a back-office user previews as a member of (story 443). */
 export const PREVIEW_MEMBER_COOKIE = 'crombolo-preview-member'
 
 import { ACTIONS_PATH, type SiteRoute } from '@crombolo/common'
@@ -328,7 +341,19 @@ import {
   viteOutDir,
 } from './islands.ts'
 import { createMaintenanceApi } from './maintenance-api.ts'
+import { createMemberManagerApi } from './managed-members.ts'
 import { managedGroupHref, managedHref } from './managed-users.ts'
+import { localMemberLookup } from './member-admin.ts'
+import { linkMembersByProperty } from './member-links.ts'
+import {
+  ACTING_FOR_HEADER,
+  createMembersSourceApi,
+  deliveryMembersOff,
+  memberAuthOff,
+  membersKeptAt,
+  membersSourceResponse,
+  readActingFor,
+} from './members-remote.ts'
 import {
   hasMiddleware,
   isSitePath,
@@ -353,13 +378,37 @@ import {
 } from './server-events.ts'
 import { createServiceAccountsApi, serviceAccountUses } from './service-accounts.ts'
 import { AttemptLimiter, createSetupRoutes } from './setup.ts'
+import {
+  lookOnly,
+  onlyLooks,
+  readSharedAccess,
+  readSharedHandoff,
+  SHARED_HANDOFF_ISSUER,
+  SHARED_HANDOFF_PARAM,
+  SHARED_LINK_PARAM,
+  type SharedAccess,
+  sharedCookie,
+  sharedCookieOf,
+  signSharedAccess,
+  signSharedHandoff,
+} from './shared-access.ts'
 import { createSharedCheck } from './shared-check.ts'
+import {
+  createSiteGate,
+  notSignedIn,
+  privateAnswer,
+  ROBOTS_DISALLOW_ALL,
+  sameHostProblem,
+  siteSeenRequest,
+  withoutBackOfficeCookies,
+} from './site-access.ts'
 import {
   matchSiteBackOfficeRoute,
   SITE_BACKOFFICE_OWNER,
   sectionClashes,
 } from './site-backoffice.ts'
 import { createSiteBackOfficeBuild } from './site-backoffice-build.ts'
+import { userPrincipalByKey } from './site-content.ts'
 import { siteSearchFor } from './site-search.ts'
 import {
   genericStatusPage,
@@ -407,7 +456,7 @@ import {
   OWN_WORKSPACE,
   onOrigin,
   pageSitePath,
-  WORKSPACE_HEADER,
+  workspaceHeaderOf,
   workspaceOriginOf,
 } from './workspaces.ts'
 
@@ -695,6 +744,40 @@ export async function createServer(
   // The socket's peer for each request in flight, which only `Bun.serve` knows;
   // a request that came some other way (a test) has none.
   const peers = new WeakMap<Request, string>()
+  // Story 446: a site open only to its back-office users, checked on every role.
+  const closed = config.siteAccess === 'users'
+  const signedInToSite = createSiteGate({
+    auth,
+    names,
+    applicationUrl: config.applicationUrl || undefined,
+    refused: (request) =>
+      log.warning('Refused a signed-in {method} {path} from another site', {
+        method: request.method,
+        path: new URL(request.url).pathname,
+      }),
+  })
+  if (closed) {
+    const problem = sameHostProblem(
+      config.applicationUrl,
+      (await new DomainRepository(db).all()).map((domain) => domain.domainName),
+    )
+    if (problem) log.warning('{problem}', { problem })
+  }
+  // Story 447: the setting CROMBOLO_LINK_MAX_DAYS replaced, read for one release.
+  {
+    const replaced = replacedLinkSetting()
+    if (replaced) log.warning('{replaced}', { replaced })
+  }
+  // The request a site request came as, before the back office's cookies were taken
+  // from it: crombolo's own preview reads them, and the site's code never does.
+  const siteRequestAsked = new AsyncLocalStorage<Request>()
+  /** The request as the site's code is given it, the socket's peer kept. */
+  const forSite = (request: Request): Request => {
+    const seen = siteSeenRequest(request, names)
+    const peer = peers.get(request)
+    if (seen !== request && peer) peers.set(seen, peer)
+    return seen
+  }
   const clientAddress = (request: Request): ClientAddress => ({
     ipAddress: peers.get(request) ?? null,
     forwardedFor: request.headers.get('x-forwarded-for'),
@@ -817,6 +900,19 @@ export async function createServer(
           config.backofficeIdentityProviders.find((p) => p.oidc.id === identity.exchangedThrough)
             ?.oidc.name ?? identity.exchangedThrough,
         ...(identity.exchangedActor ? { actor: identity.exchangedActor } : {}),
+      }
+    // Story 444: a service account trusted to say whom it acts for, and the person it names.
+    const actingFor =
+      context &&
+      principal.viaClient !== undefined &&
+      config.members?.actorsFrom?.includes(principal.viaClient)
+        ? readActingFor(request.headers.get(ACTING_FOR_HEADER))
+        : undefined
+    if (context && actingFor)
+      context.actingFor = {
+        userKey: normaliseUuid(principal.id),
+        account: principal.name,
+        actor: actingFor,
       }
     if (context && principal.viewingAs)
       context.viewing = {
@@ -1155,6 +1251,7 @@ export async function createServer(
     db,
     config,
     email: () => email,
+    membersSource: core.membersSource,
     authenticate,
     people,
     bundles: bundleAdmin,
@@ -1193,12 +1290,15 @@ export async function createServer(
       })
     },
   })
-  const members = createMemberAuth(db, config, {
+  const ownMembers = createMemberAuth(db, config, {
     nodeState: schema.nodeState,
     nodeId: schema.nodeId,
     log: (message) => log.warning('Member sign-in: {message}', { message }),
     email: () => email,
   })
+  // Story 444: another site holds the members, so none signs in, registers or resets here.
+  const membersSource = core.membersSource
+  const members = membersSource ? memberAuthOff(ownMembers, membersSource.source) : ownMembers
   const caching = resolveCacheSettings(config.cache)
   // Story 259: `check` with checks answered by rendering costs a render a floor, where `published` costs none.
   if (
@@ -1267,13 +1367,13 @@ export async function createServer(
     return expected.length === given.length && timingSafeEqual(expected, given)
   }
   const MEMBER_VARY = 'X-Crombolo-Member'
-  // Story 264: the member a user previews as, signed with their key so it is theirs alone.
-  const signPreviewMember = (member: string, user: string) =>
-    `${member}.${signDeferred(`preview-member|${member}|${user}`)}`
+  // Story 443: the groups a user previews as, signed with their key so the choice is theirs alone.
+  const signPreviewMember = (choice: string, user: string) =>
+    `${choice}.${signDeferred(`preview-member|${choice}|${user}`)}`
   const readPreviewMember = (value: string | undefined, user: string) => {
-    const [member, signature] = (value ?? '').split('.')
-    if (!member || !signature) return undefined
-    return verifyDeferred(`preview-member|${member}|${user}`, signature) ? member : undefined
+    const [choice, signature] = (value ?? '').split('.')
+    if (!choice || !signature) return undefined
+    return verifyDeferred(`preview-member|${choice}|${user}`, signature) ? choice : undefined
   }
   const notedMemberFiles = new Set<string>()
   /** Development: why a page is rendered for each member, once per page. */
@@ -1317,11 +1417,14 @@ export async function createServer(
     ACTION_FLASH_COOKIE,
   ]
   const deliveryPrefix = DELIVERY_API_PREFIX
-  const deliveryMembers = createDeliveryMemberSecurity({
+  const ownDeliveryMembers = createDeliveryMemberSecurity({
     db,
     settings: deliverySettings,
     members,
   })
+  const deliveryMembers = membersSource
+    ? deliveryMembersOff(ownDeliveryMembers, membersSource.source)
+    : ownDeliveryMembers
   for (const problem of deliveryMembers.problems)
     log.warning('Delivery API: {problem}', { problem })
   // Story 196: who may read a protected media file, and the back office's permissions for media.
@@ -1339,7 +1442,15 @@ export async function createServer(
             : undefined
         }
       : undefined,
-    principal: (request) => authenticate(request),
+    // The request as it came, before the back office's cookies were hidden from the site.
+    principal: (request) => authenticate(siteRequestAsked.getStore() ?? request),
+    ...(membersSource
+      ? {
+          memberGroups: async () => (await membersSource.groups()).map((g) => g.name),
+          memberName: async (key: string) =>
+            (await membersSource.members.byKey(key))?.variants[0]?.name,
+        }
+      : {}),
     onChange: (key) => mediaCache.drop([key]),
     nodeId: schema.nodeId,
     bundleFolders: () =>
@@ -1353,51 +1464,68 @@ export async function createServer(
   const mediaAccessPath = `${paths.pluginPath}/api/media-access`
   const pageSharingPath = `${paths.pluginPath}/api/page-sharing`
   const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const UUID_PATH = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i
   const previewMemberPath = `${paths.pluginPath}/api/preview-member`
 
   /**
-   * Which member this user previews as (story 264): `GET` says, and whether
-   * they may choose; `PUT` with `{ member }` chooses one, or none with null.
-   * Only a user who can open Members may, and each choice is in the audit log.
+   * Which groups this user previews as a member of (story 443): `GET` lists the
+   * groups and the choice; `PUT` with `{ groups }` chooses, none for signed out.
+   * Anyone who may preview may, and each choice is in the audit log.
    */
+  /** Story 444: the groups are the other site's, when it holds the members, kept for a minute. */
+  const memberGroupsNamed = () => (membersSource ? membersSource.groups() : previewGroups(db))
+
   async function choosePreviewMember(request: Request, principal: Principal) {
-    const allowed = hasSection(principal, 'members')
-    if (request.method === 'GET') {
-      const chosen = allowed ? await previewMember(request, principal) : undefined
-      return Response.json(
-        { allowed, member: chosen ? { key: chosen.key, name: chosen.name } : null },
-        { headers: { 'cache-control': 'no-store' } },
-      )
+    let groups: Awaited<ReturnType<typeof memberGroupsNamed>>
+    try {
+      groups = await memberGroupsNamed()
+    } catch (error) {
+      const answered = membersSourceResponse(error)
+      if (answered) return answered
+      throw error
     }
+    const answer = (chosen: Array<{ key: string; name: string }>, headers: HeadersInit = {}) =>
+      Response.json(
+        { groups, chosen: chosen.length > 0 ? { groups: chosen } : null },
+        { headers: { 'cache-control': 'no-store', ...headers } },
+      )
+    if (request.method === 'GET')
+      return answer(chosenGroups(previewMemberGroupKeys(request, principal), groups))
     if (request.method !== 'PUT') return new Response('Method Not Allowed', { status: 405 })
-    if (!allowed) return new Response('Forbidden', { status: 403 })
-    const body = (await request.json().catch(() => ({}))) as { member?: unknown }
-    const key = typeof body.member === 'string' ? body.member : null
-    const chosen = key ? await members.byKey(key) : undefined
-    if (key && !chosen)
-      return Response.json({ message: 'That member could not be found.' }, { status: 404 })
+    const body = (await request.json().catch(() => ({}))) as { groups?: unknown }
+    if (!Array.isArray(body.groups) || body.groups.some((key) => typeof key !== 'string'))
+      return Response.json(
+        { message: 'Say which groups to preview as, or none for signed out.' },
+        { status: 400 },
+      )
+    const keys = [...new Set((body.groups as string[]).map((key) => key.toLowerCase()))]
+    const chosen = chosenGroups(keys, groups)
+    if (chosen.length < keys.length)
+      return Response.json(
+        { message: 'One of those member groups no longer exists.' },
+        { status: 404 },
+      )
+    const names = chosen.map((g) => g.name).join(', ')
     await recordAudit(db, {
       category: 'member',
-      action: chosen ? 'preview as' : 'preview signed out',
+      action: chosen.length > 0 ? 'preview as groups' : 'preview signed out',
       source: 'request',
       userKey: principal.id,
       userName: principal.name,
-      entityType: chosen ? 'member' : null,
-      entityKey: chosen?.key ?? null,
-      entityName: chosen?.name ?? null,
+      entityType: chosen.length > 0 ? 'memberGroup' : null,
+      entityName: chosen.length > 0 ? names : null,
+      detail: chosen.length > 0 ? names : null,
       ...clientAddress(request),
     })
-    const cookie = chosen
-      ? serializeCookie({
-          name: PREVIEW_MEMBER_COOKIE,
-          value: signPreviewMember(chosen.key, principal.id),
-          secure: config.secureCookies,
-        })
-      : expireCookie(PREVIEW_MEMBER_COOKIE, config.secureCookies)
-    return Response.json(
-      { allowed, member: chosen ? { key: chosen.key, name: chosen.name } : null },
-      { headers: { 'set-cookie': cookie, 'cache-control': 'no-store' } },
-    )
+    const cookie =
+      chosen.length > 0
+        ? serializeCookie({
+            name: PREVIEW_MEMBER_COOKIE,
+            value: signPreviewMember(previewGroupsValue(keys), principal.id),
+            secure: config.secureCookies,
+          })
+        : expireCookie(PREVIEW_MEMBER_COOKIE, config.secureCookies)
+    return answer(chosen, { 'set-cookie': cookie })
   }
   for (const problem of previewProblems(deliverySettings))
     log.warning('Delivery API: {problem}', { problem })
@@ -1706,6 +1834,7 @@ export async function createServer(
     contentEvents,
     nudgeEvents: () => wake('events'),
     operations: core.operations,
+    membersSource,
     cache,
     previewInApp: appPreview,
     schema,
@@ -1762,7 +1891,7 @@ export async function createServer(
     onError: (error) => {
       const answered = busyResponse(error)
       if (answered) apiLog.warn('A write gave up waiting for another: {error}', { error })
-      return answered
+      return answered ?? membersSourceResponse(error)
     },
     onNotImplemented: config.development
       ? (operation, request) => notImplemented.record(operation, request)
@@ -1775,7 +1904,7 @@ export async function createServer(
     // Story 375: a request in a workspace, with the workspace held while it runs.
     // Story 395: outside a named one, schema is refused and what is not served is not offered.
     scope: async (request, principal, operation) => {
-      const named = request.headers.get(WORKSPACE_HEADER)?.trim()
+      const named = workspaceHeaderOf(request)
       const view = named && named.toLowerCase() !== OWN_WORKSPACE ? undefined : await servedView(db)
       if (view && isSchemaWrite(operation.operationId, request.method)) return schemaInWorkspace()
       const scope = await workspaceScope(request, principal, operation)
@@ -1915,6 +2044,18 @@ export async function createServer(
     uses: () => serviceAccountUses(config),
   })
   const usersManagedPath = `${paths.pluginPath}/api/users-managed`
+  const memberManagerApi = createMemberManagerApi(db)
+  const membersSourceApi = createMembersSourceApi(
+    db,
+    membersSource,
+    () => managementDeps.memberGroups,
+  )
+  const membersSourcePath = `${paths.pluginPath}/api/members-source`
+  const memberGroupRules = new RegExp(`^${paths.pluginPath}/api/member-groups/([^/]+)/rules$`)
+  const memberLinkPath = `${paths.pluginPath}/api/members/link`
+  const memberResetLink = new RegExp(
+    `^${paths.pluginPath}/api/members/([0-9a-fA-F-]{36})/reset-link$`,
+  )
   // Story 409: editing paused and resumed by a request, for the back office's banner too.
   const maintenancePath = `${paths.pluginPath}/api/maintenance`
   const maintenanceApi = createMaintenanceApi({
@@ -1997,6 +2138,7 @@ export async function createServer(
     open: (workspace, principal, path, request, asAdministrator) =>
       workspaceOpenUrl(workspace, principal, path, request, asAdministrator),
     links: () => workspaceLinks,
+    shared: () => sharedRoutes,
   })
   // Story 386: a workspace's diff, conflicts and checks, for the command line.
   /**
@@ -2236,7 +2378,9 @@ export async function createServer(
         'crombolo.node.role': config.role,
       },
       async (span) => {
-        const response = await inWorkspaceSite(request, () => answer(request))
+        const answered = await inWorkspaceSite(request, () => answer(request))
+        // Story 446: a closed site's every answer is the browser's alone, and never indexed.
+        const response = closed ? privateAnswer(answered) : answered
         // Readers are answered from the previous cache while it rebuilds (story
         // 175), so a change is in it before the request that made it is answered.
         if (request.method !== 'GET' && request.method !== 'HEAD' && cache.stale)
@@ -2296,6 +2440,17 @@ export async function createServer(
     // Umbraco's Delivery API, below the backoffice path but served wherever the
     // site is, from the published cache: it scales with rendering.
     if (deliveryApi && pathname.startsWith(`${deliveryPrefix}/`)) {
+      // Story 446: on a closed site, its key or a signed-in user.
+      if (
+        closed &&
+        !isPreflight(request) &&
+        !hasValidApiKey(deliverySettings, request) &&
+        !(await signedInToSite(request))
+      ) {
+        // Story 447: or Shared's cookie, with its rights.
+        const refusal = await sharedRefusal(request, { api: true })
+        if (refusal) return refusal
+      }
       const response = await inSpan('delivery api', {}, () => deliveryApi.handle(request))
       if (response) return response
     }
@@ -2318,6 +2473,27 @@ export async function createServer(
       }
     }
 
+    // Story 447: a way into Shared in the address, swapped for its cookie.
+    if (!workspaceSiteScope.getStore() && carriesSharedWayIn(request, url))
+      return swapForSharedCookie(request, url)
+    if (closed && !workspaceSiteScope.getStore()) {
+      if (pathname === '/robots.txt')
+        return new Response(ROBOTS_DISALLOW_ALL, {
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        })
+      if (!(await signedInToSite(request)) && !(await previewLinkOpens(request, url))) {
+        const refusal = await sharedRefusal(request)
+        if (refusal) return refusal
+      }
+    }
+    // Story 446: the site's code is never shown the back office's cookies.
+    const seen = forSite(request)
+    return siteRequestAsked.run(request, () => siteRoute(seen, url))
+  }
+
+  /** Everything the site answers: its member routes, actions, scripts, media and pages. */
+  async function siteRoute(request: Request, url: URL): Promise<Response> {
+    const { pathname } = url
     if (pathname.startsWith(`${MEMBER_ROUTE_PREFIX}/`)) {
       const response = await members.handle(
         request,
@@ -2466,7 +2642,7 @@ export async function createServer(
 
   /** Links a member makes for someone else to look at the workspace's site. */
   const workspaceLinks = {
-    maxDays: () => config.workspaceLinkMaxDays,
+    maxDays: () => config.links.maxDays,
     async make(
       workspace: { id: number; key: string },
       principal: Principal,
@@ -2517,7 +2693,7 @@ export async function createServer(
     }
     const link = await new WorkspaceLinkRepository(db).byId(access.link)
     if (!link || link.workspaceId !== workspace.id || link.withdrawnAt) return undefined
-    if (link.expiresAt.getTime() <= Date.now() || config.workspaceLinkMaxDays <= 0) return undefined
+    if (link.expiresAt.getTime() <= Date.now() || config.links.maxDays <= 0) return undefined
     // A link goes with its maker, when they leave the workspace.
     return workspace.ownerKey === link.madeBy || workspace.memberKeys.includes(link.madeBy)
       ? workspace
@@ -2564,6 +2740,180 @@ export async function createServer(
     return (await stillAllowed(access)) ? access : undefined
   }
 
+  // ---------------------------------------------------------------- Shared's way in (story 447)
+
+  /** The person `open` was asked by, at the site's own address: a single-use hand-off. */
+  async function sharedOpenUrl(
+    principal: Principal,
+    path: string,
+    request: Request,
+  ): Promise<string | undefined> {
+    const standing = await previewUser(db, { key: principal.id })
+    if (!standing) return undefined
+    const token = signSharedHandoff(previewSecret, {
+      user: standing.id,
+      stamp: standing.stamp,
+      id: crypto.randomUUID(),
+      expires: Date.now() + WORKSPACE_HANDOFF_SECONDS * 1000,
+    })
+    const url = onOrigin(path, workspaceOriginOf(SHARED_WORKSPACE_KEY, request, config))
+    if (!url) return undefined
+    url.searchParams.set(SHARED_HANDOFF_PARAM, token)
+    return url.toString()
+  }
+
+  /** Whether someone may still make or keep a way into Shared: Content, approved and not locked out. */
+  async function mayLookAtShared(userKey: string) {
+    const principal = await userPrincipalByKey(db, userKey)
+    return principal && hasSection(principal, 'content') ? principal : undefined
+  }
+
+  const sharedLinks = new SharedLinkRepository(db)
+  const sharedRoutes = {
+    render: (path: string) => renderForCheck(sharedRenderer, path),
+    check: (since: string | undefined, all: boolean) => sharedCheck.check(since, all),
+    open: sharedOpenUrl,
+    links: {
+      async make(principal: Principal, days: number, writes: boolean, request: Request) {
+        const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')
+        const link = await sharedLinks.make({
+          madeBy: principal.id,
+          secretHash: linkSecretHash(secret),
+          writes,
+          expiresAt: new Date(Date.now() + days * 86_400_000),
+        })
+        const url = onOrigin('/', workspaceOriginOf(SHARED_WORKSPACE_KEY, request, config)) as URL
+        url.searchParams.set(SHARED_LINK_PARAM, secret)
+        return {
+          id: link.id,
+          url: url.toString(),
+          secret,
+          writes,
+          expiresAt: link.expiresAt.toISOString(),
+        }
+      },
+      list: (madeBy?: string) => sharedLinks.list(madeBy),
+      byId: (id: number) => sharedLinks.byId(id),
+      withdraw: (id: number) => sharedLinks.withdraw(id),
+    },
+  }
+
+  /**
+   * What a Shared access lets its holder do while whoever it came from still may: write,
+   * for an administrator's, or a link one made so; look, for anyone else's.
+   */
+  async function sharedRights(access: SharedAccess): Promise<{ writes: boolean } | undefined> {
+    if ('user' in access) {
+      const standing = await previewUser(db, { id: access.user })
+      if (standing?.stamp !== access.stamp) return undefined
+      const user = await db.q
+        .selectFrom('user_account')
+        .select('key')
+        .where('id', '=', access.user)
+        .executeTakeFirst()
+      const principal = user ? await mayLookAtShared(String(user.key)) : undefined
+      return principal ? { writes: principal.isAdmin } : undefined
+    }
+    const link = await sharedLinks.byId(access.link)
+    if (!link || link.withdrawnAt) return undefined
+    if (link.expiresAt.getTime() <= Date.now() || config.links.maxDays <= 0) return undefined
+    // A link goes with its maker's Content section, and with them.
+    const maker = await mayLookAtShared(link.madeBy)
+    return maker ? { writes: link.writes && maker.isAdmin } : undefined
+  }
+
+  /** The address's hand-off or link swapped for the cookie, and the address cleaned. */
+  async function swapForSharedCookie(request: Request, url: URL): Promise<Response> {
+    const handoff = url.searchParams.get(SHARED_HANDOFF_PARAM)
+    const linked = url.searchParams.get(SHARED_LINK_PARAM)
+    const clean = new URL(url)
+    clean.searchParams.delete(SHARED_HANDOFF_PARAM)
+    clean.searchParams.delete(SHARED_LINK_PARAM)
+    const headers = new Headers({
+      location: `${clean.pathname}${clean.search}`,
+      'cache-control': PRIVATE_NO_STORE,
+      'referrer-policy': 'no-referrer',
+    })
+    let access: SharedAccess | undefined
+    if (handoff) {
+      const claims = readSharedHandoff(previewSecret, handoff)
+      const standing = claims ? await previewUser(db, { id: claims.user }) : undefined
+      if (
+        claims &&
+        standing?.stamp === claims.stamp &&
+        (await new SingleUseTokens(db).use(
+          SHARED_HANDOFF_ISSUER,
+          claims.id,
+          new Date(claims.expires),
+        ))
+      )
+        access = {
+          workspace: SHARED_WORKSPACE_KEY,
+          user: claims.user,
+          stamp: claims.stamp,
+          expires: Date.now() + WORKSPACE_COOKIE_SECONDS * 1000,
+        }
+    } else if (linked) {
+      const link = await sharedLinks.bySecretHash(linkSecretHash(linked))
+      if (link)
+        access = {
+          workspace: SHARED_WORKSPACE_KEY,
+          link: link.id,
+          expires: Math.min(link.expiresAt.getTime(), Date.now() + WORKSPACE_COOKIE_SECONDS * 1000),
+        }
+      if (access && (await sharedRights(access)) && link) {
+        const maker = await userPrincipalByKey(db, link.madeBy)
+        await recordAudit(db, {
+          category: 'content',
+          action: 'LinkUsed',
+          source: 'request',
+          userKey: null,
+          userName: null,
+          entityType: 'Workspace',
+          entityKey: SHARED_WORKSPACE_KEY,
+          entityName: 'Shared',
+          detail: `A link to Shared made by ${maker?.name ?? link.madeBy} was used`,
+          ...clientAddress(request),
+        })
+      }
+    }
+    if (access && (await sharedRights(access))) {
+      headers.append(
+        'set-cookie',
+        sharedCookie(signSharedAccess(previewSecret, access), config.secureCookies),
+      )
+      // On the site's own host, a workspace's cookie would answer in Shared's place.
+      if (!workspaceHostsOf())
+        headers.append('set-cookie', accessCookie(null, config.secureCookies))
+    }
+    return new Response(null, { status: 303, headers })
+  }
+
+  /**
+   * Story 447: what a closed site answers someone not signed in, given Shared's cookie:
+   * nothing, to let them in, or why not. Read only by the site's gate.
+   */
+  async function sharedRefusal(
+    request: Request,
+    options: { api?: boolean } = {},
+  ): Promise<Response | undefined> {
+    const cookie = sharedCookieOf(request)
+    const access = cookie ? readSharedAccess(previewSecret, cookie) : undefined
+    const rights = access ? await sharedRights(access) : undefined
+    if (!rights) return notSignedIn(request, paths.backOfficePath, options)
+    if (onlyLooks(request.method)) return undefined
+    if (!rights.writes) return lookOnly()
+    // A cookie-carried write from another site is refused, as a session's is.
+    if (!isSameOrigin(request, config.applicationUrl || undefined))
+      return notSignedIn(request, paths.backOfficePath, { api: true })
+    return undefined
+  }
+
+  /** Whether an address carries a way into Shared to be swapped for its cookie. */
+  const carriesSharedWayIn = (request: Request, url: URL) =>
+    onlyLooks(request.method) &&
+    (url.searchParams.has(SHARED_HANDOFF_PARAM) || url.searchParams.has(SHARED_LINK_PARAM))
+
   /**
    * A request on a workspace's host, or with a workspace's cookie on the site's
    * own: answered from that workspace's site, to a member or a link's holder, and
@@ -2587,6 +2937,8 @@ export async function createServer(
     const hosts = workspaceHostsOf()
     const named = hosts?.parse(url.host)
     if (hosts && !named) return next()
+    // Story 447: Shared's way in is swapped for its cookie at the site's own address.
+    if (!named && carriesSharedWayIn(request, url)) return next()
     const handoff = url.searchParams.get(WORKSPACE_HANDOFF_PARAM)
     const linked = url.searchParams.get(WORKSPACE_LINK_PARAM)
     const header = request.headers.get(WORKSPACE_LINK_HEADER)
@@ -2819,6 +3171,42 @@ export async function createServer(
     }
   }
 
+  /** The editor a site request comes from, read from the request as it was asked (story 446). */
+  const editorOf = (request: Request) => authenticate(siteRequestAsked.getStore() ?? request)
+
+  /** A site's own file or script, which a page loads, rather than a page. */
+  const isSiteAsset = (pathname: string): boolean =>
+    generatedScripts.has(pathname) ||
+    pathname === ISLAND_LOADER_PATH ||
+    pathname === DEFERRED_LOADER_PATH ||
+    pathname === DEFERRED_PATH ||
+    pathname.startsWith(`${ISLANDS_PATH}/`) ||
+    pathname === FORM_SCRIPT_PATH ||
+    pathname === BUNDLE_SCRIPT_PATH ||
+    pathname.startsWith('/css/') ||
+    pathname.startsWith('/scripts/') ||
+    pathname.startsWith('/media/') ||
+    publicFiles.has(pathname)
+
+  /**
+   * Whether a preview link opens a request on a closed site (story 446): its first
+   * use, then its one page and what that page loads, for as long as the link may.
+   */
+  async function previewLinkOpens(request: Request, url: URL): Promise<boolean> {
+    if (
+      (request.method === 'GET' || request.method === 'HEAD') &&
+      url.searchParams.has(PREVIEW_LINK_PARAM)
+    )
+      return true
+    if (!readCookie(request, PREVIEW_LINK_COOKIE)) return false
+    const link = await linkedPreview(request)
+    if (!link) return false
+    if (isSiteAsset(url.pathname)) return true
+    const byKey = UUID_PATH.exec(url.pathname)?.[1]
+    const key = byKey ?? (await cache.resolve(url.host, url.pathname))?.content.key
+    return key !== undefined && normaliseUuid(key) === normaliseUuid(link.document)
+  }
+
   /** What a chain is carrying through one request (story 210). */
   interface ChainRun {
     original: URL
@@ -2850,7 +3238,7 @@ export async function createServer(
         remainingMs:
           config.middlewareTimeoutMs > 0 ? config.middlewareTimeoutMs : Number.POSITIVE_INFINITY,
       },
-      preview: Boolean(readCookie(request, PREVIEW_COOKIE) && (await authenticate(request))),
+      preview: Boolean(readCookie(request, PREVIEW_COOKIE) && (await editorOf(request))),
       personal: false,
       routed: false,
     }
@@ -3023,6 +3411,8 @@ export async function createServer(
     // as do e-mail settings (story 340) and schema imports (story 342).
     if (bundleInstallPaths.has(pathname) || pathname.startsWith(`${jobsPath}/`)) return
     if (selfAudited.some((path) => pathname.startsWith(path))) return
+    // Story 448: a reset link writes its own entry, naming the member.
+    if (memberResetLink.test(pathname) || pathname === memberLinkPath) return
     const principal = await authenticate(request)
     if (!principal) return
     const plan = pluginAuditPlan(request.method, pathname.slice(prefix.length))
@@ -3078,7 +3468,7 @@ export async function createServer(
       return pageSharing(request, key, principal)
     }
 
-    // Non-contract, Members: which member a preview renders as (story 264).
+    // Non-contract, signed in: which groups a preview renders as a member of (story 443).
     if (pathname === previewMemberPath) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
@@ -3226,7 +3616,7 @@ export async function createServer(
     if (bundles && pathname.startsWith(bundles.basePath)) {
       const principal = await authenticate(request)
       if (!principal) return new Response('Unauthorized', { status: 401 })
-      const answered = await bundles.handle(request, url, principal, siteRoutes.invoke)
+      const answered = await bundles.handle(forSite(request), url, principal, siteRoutes.invoke)
       if (answered) return answered
     }
 
@@ -3242,7 +3632,7 @@ export async function createServer(
         if (!found.route) return new Response('Not Found', { status: 404 })
         return siteRoutes.invoke(
           { route: found.route as SiteRoute, owner: SITE_BACKOFFICE_OWNER },
-          request,
+          forSite(request),
           url,
           found.params,
           { checks: false, extra: { principal }, site: siteServicesFor.asUser(principal) },
@@ -3550,8 +3940,33 @@ export async function createServer(
       )
     }
 
+    // Story 445: who keeps a member, and the member handed back to the site by them.
+    const manager = new RegExp(`^${paths.pluginPath}/api/members/([^/]+)/manager$`).exec(pathname)
+    if (manager) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const key = decodeURIComponent(manager[1] as string)
+      // Story 444: who keeps a member is the other site's to say, when it holds them.
+      return membersSource
+        ? membersSourceApi.manager(request, principal, key)
+        : memberManagerApi.handle(request, principal, key)
+    }
+
+    // Story 444: where members are kept and whether it answers; a group's rules here.
+    if (pathname === membersSourcePath && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return membersSourceApi.status(principal)
+    }
+    const rules = memberGroupRules.exec(pathname)
+    if (rules && request.method === 'GET') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      return membersSourceApi.groupRules(principal, decodeURIComponent(rules[1] as string))
+    }
+
     // Story 432: the identity providers a member signs in with, to whoever holds Members; the
-    // provider's id for them only to Sensitive data.
+    // provider's id for them only to Sensitive data. Story 448: as the site that holds them knows them.
     const signIns = new RegExp(
       `^${paths.pluginPath}/api/members/([0-9a-fA-F-]{36})/sign-ins$`,
     ).exec(pathname)
@@ -3560,20 +3975,99 @@ export async function createServer(
       if (!principal) return new Response('Unauthorized', { status: 401 })
       if (!hasSection(principal, 'members')) return new Response('Forbidden', { status: 403 })
       const sensitive = hasAccessToSensitiveData(principal.groups ?? [])
-      const memberLogins = externalLoginProvider('member', '')
-      const providers = new Map(config.memberIdentityProviders.map((p) => [p.oidc.id, p.oidc.name]))
-      const items = (await new ExternalLoginRepository(db).forOwner(signIns[1] as string))
-        .filter((login) => login.loginProvider.startsWith(memberLogins))
-        .map((login) => {
-          const id = login.loginProvider.slice(memberLogins.length)
-          return {
-            provider: id,
-            name: providers.get(id) ?? id,
-            declared: providers.has(id),
-            ...(sensitive ? { subject: login.providerKey } : {}),
-          }
-        })
-      return Response.json({ items }, { headers: { 'cache-control': 'no-store' } })
+      const key = signIns[1] as string
+      try {
+        const found = membersSource
+          ? await membersSource.members.signIns(key)
+          : await localMemberLookup(db, config, () => email).signIns(key)
+        const items = found.map(({ subject, ...login }) => ({
+          ...login,
+          ...(sensitive && subject !== undefined ? { subject } : {}),
+        }))
+        return Response.json({ items }, { headers: { 'cache-control': 'no-store' } })
+      } catch (error) {
+        const answered = membersSourceResponse(error)
+        if (answered) return answered
+        throw error
+      }
+    }
+
+    // Story 448: a member's reset link, sent by this site's mail to its reset page, or handed
+    // back where it can't send: for the site whose members this one holds, through its account.
+    // Story 448: `crombolo members link` for the site whose members this one holds, run here
+    // against this site's members and its member identity providers, each link audited.
+    if (pathname === memberLinkPath && request.method === 'POST') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const said = (status: number, message: string) =>
+        Response.json({ message }, { status, headers: { 'cache-control': 'no-store' } })
+      if (!hasSection(principal, 'members')) return said(403, 'This user may not use Members.')
+      if (membersSource) return said(404, membersKeptAt(membersSource.source))
+      const asked = (await request.json().catch(() => ({}))) as Record<string, unknown> | null
+      const provider = typeof asked?.provider === 'string' ? asked.provider.trim() : ''
+      const property = typeof asked?.property === 'string' ? asked.property.trim() : ''
+      if (!provider || !property)
+        return said(400, 'Name the member identity provider and the property holding their id.')
+      const outcome = await linkMembersByProperty(db, {
+        provider,
+        property,
+        declared: config.memberIdentityProviders.map((p) => p.oidc.id),
+        source: 'request',
+        dryRun: asked?.dryRun === true,
+        user: { key: principal.id, name: principal.name },
+      })
+      return Response.json(outcome, { headers: { 'cache-control': 'no-store' } })
+    }
+
+    const resetLink = memberResetLink.exec(pathname)
+    if (resetLink && request.method === 'POST') {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      const answer = (status: number, message: string, code?: string) =>
+        Response.json(
+          { message, ...(code ? { code } : {}) },
+          { status, headers: { 'cache-control': 'no-store' } },
+        )
+      if (!hasSection(principal, 'members')) return answer(403, 'This user may not use Members.')
+      if (membersSource) return answer(404, membersKeptAt(membersSource.source))
+      const key = normaliseUuid(resetLink[1] as string)
+      const member = await new MemberRepository(db).byKey(key)
+      if (!member) return answer(404, 'There is no such member.')
+      const outcome = await members.sendResetLink(
+        {
+          key,
+          name: member.name || member.username,
+          email: member.email,
+          username: member.username,
+        },
+        { origin: new URL(request.url).origin },
+      )
+      if ('refused' in outcome)
+        return outcome.refused === 'provider'
+          ? answer(
+              403,
+              'They sign in only through an identity provider, so have no password to reset.',
+              'signs-in-through-provider',
+            )
+          : answer(
+              409,
+              `${config.siteName} has no page for setting a password: set members.resetPasswordPage there.`,
+              'unavailable',
+            )
+      await recordAudit(db, {
+        category: 'member',
+        action: 'SendPasswordReset',
+        source: 'request',
+        userKey: principal.id,
+        userName: principal.name,
+        entityType: 'Member',
+        entityKey: key,
+        ...clientAddress(request),
+      })
+      return Response.json(
+        { sent: outcome.sent, ...(outcome.sent ? {} : { link: outcome.link }) },
+        { headers: { 'cache-control': 'no-store' } },
+      )
     }
 
     // Whether what `schema/` holds can be changed here, for the views that say so (story 289).
@@ -4681,6 +5175,25 @@ export async function createServer(
     }
 
     if (pathname === `${paths.backOfficePath}/login`) {
+      // Story 446: one way in goes straight there; one that came back refused stays here.
+      const only = config.allowLocalLogin ? undefined : config.backofficeIdentityProviders
+      if (
+        backofficeExternal &&
+        only?.length === 1 &&
+        request.method === 'GET' &&
+        !url.searchParams.has('externalLoginError') &&
+        !url.searchParams.has('flow')
+      )
+        return new Response(null, {
+          status: 303,
+          headers: {
+            location: backofficeExternal.startUrl(
+              (only[0] as (typeof only)[number]).oidc.id,
+              localReturnUrl(url.searchParams.get('returnUrl')) ?? paths.backOfficePath,
+            ),
+            'cache-control': 'no-store',
+          },
+        })
       const { importmap } = collectManifests(paths, await readyExtensions())
       return backOfficePage(
         renderLoginShell(paths, importmap, {
@@ -4918,21 +5431,19 @@ export async function createServer(
    * draft of the page it resolves to.
    */
   async function renderPreview(request: Request, pathname: string, host: string) {
-    const editor = readCookie(request, PREVIEW_COOKIE) ? await authenticate(request) : undefined
+    const editor = readCookie(request, PREVIEW_COOKIE) ? await editorOf(request) : undefined
     // Story 368: else a used preview link, for its one page.
     const link = editor ? undefined : await linkedPreview(request)
     const principal = editor ?? link?.principal
     if (!principal) return undefined
-    const byKey = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(
-      pathname,
-    )
+    const byKey = UUID_PATH.exec(pathname)
     const key = byKey?.[1] ?? (await cache.resolve(host, pathname))?.content.key
     if (!key) return undefined
     if (link && normaliseUuid(key) !== normaliseUuid(link.document)) return undefined
     const culture = link ? link.culture : new URL(request.url).searchParams.get('culture')
     const draft = await draftModel(key, culture, principal)
     if (!draft) return undefined
-    // The previewing editor is the visitor: signed out, or a member they chose (story 264).
+    // The visitor: signed out, or a stand-in member of groups the editor chose (story 443).
     const member = link ? undefined : await previewMember(request, principal)
     return renderer.renderModel(draft.content, draft.culture, {
       ...(await pageRequest(request)),
@@ -4949,7 +5460,7 @@ export async function createServer(
     return {
       origin: publicOrigin(request, config),
       url: request.url,
-      headers: request.headers,
+      headers: withoutBackOfficeCookies(request.headers, names),
       seo: await seo.siteDefaults(),
       signal: request.signal,
     }
@@ -5215,15 +5726,26 @@ export async function createServer(
     })
   }
 
+  /** The group keys this user's preview cookie names; none when it is another user's. */
+  function previewMemberGroupKeys(request: Request, principal: Principal) {
+    return previewGroupKeys(
+      readPreviewMember(readCookie(request, PREVIEW_MEMBER_COOKIE), principal.id),
+    )
+  }
+
   /**
-   * The member a preview renders as (story 264): the one this user chose, while
-   * they can still open Members. The cookie names the user too, so it is
-   * nobody else's.
+   * The member a preview renders as (story 443): a stand-in in the groups this
+   * user chose that still exist, named as they are now; signed out with none.
    */
   async function previewMember(request: Request, principal: Principal) {
-    const chosen = readPreviewMember(readCookie(request, PREVIEW_MEMBER_COOKIE), principal.id)
-    if (!chosen || !hasSection(principal, 'members')) return undefined
-    return members.byKey(chosen)
+    const keys = previewMemberGroupKeys(request, principal)
+    if (keys.length === 0) return undefined
+    const groups = await memberGroupsNamed().catch((error: unknown) => {
+      if (membersSourceResponse(error)) return []
+      throw error
+    })
+    const chosen = chosenGroups(keys, groups)
+    return chosen.length > 0 ? previewStandIn(chosen.map((g) => g.name)) : undefined
   }
 
   /**
@@ -5701,6 +6223,8 @@ export async function createServer(
         if (live && pathname === LIVE_EVENTS_PATH) bunServer.timeout(request, 0)
         const hubAt = contractPathFor(paths.backOfficePath, pathname) ?? pathname
         if (hubAt === hubPath || hubAt === previewHubPath) {
+          if (closed && !(await signedInToSite(request)))
+            return notSignedIn(request, paths.backOfficePath, { api: true })
           const principal = await authenticate(request)
           const hub = hubAt === hubPath ? events : previewHub
           return hub.upgrade(request, bunServer, principal?.id)

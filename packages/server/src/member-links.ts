@@ -47,6 +47,8 @@ export async function linkMembersByProperty(
     dryRun?: boolean
     /** Called after each page, for progress. */
     progress?: (done: number, total: number) => void
+    /** Story 448: who asked, where a request did, so each link is audited as theirs. */
+    user?: { key: string; name: string }
   },
 ): Promise<MemberLinkOutcome> {
   const state = await currentSchemaState(db)
@@ -90,6 +92,7 @@ export async function linkMembersByProperty(
           category: 'member',
           action: 'Link',
           source: options.source,
+          ...(options.user ? { userKey: options.user.key, userName: options.user.name } : {}),
           entityType: 'Member',
           entityKey: key,
           entityName: member.name,

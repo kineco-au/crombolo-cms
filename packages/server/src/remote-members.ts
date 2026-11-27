@@ -15,19 +15,20 @@ import {
   clearPageAccess,
   groupsOf,
   listMembers,
-  MemberAdminError,
+  type MemberAdminError,
   type MemberChange,
   type MemberPorts,
+  memberAdminErrorOf,
   memberChangeAction,
   newGroup,
   newMember,
   pageAccess,
   removeGroup,
   removeMember,
+  sendMemberResetLink,
   setPageAccess,
   showMember,
 } from './member-admin.ts'
-import type { createMemberResetLinks } from './member-reset.ts'
 
 interface Problem {
   code: string
@@ -44,8 +45,6 @@ export interface MemberRouteOptions {
   problem(status: number, body: Problem): Response
   /** A refusal when the site's remote access level takes no changes. */
   levelRefusal(): Response | undefined
-  /** Story 282: a member's reset link, sent or handed back; absent, not offered. */
-  resetLinks?: ReturnType<typeof createMemberResetLinks>
 }
 
 const KEY = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
@@ -56,6 +55,7 @@ const STATUS: Record<MemberAdminError['kind'], [number, string]> = {
   usage: [400, 'bad-request'],
   conflict: [409, 'conflict'],
   invalid: [400, 'invalid'],
+  unavailable: [503, 'unavailable'],
 }
 
 const body = async (request: Request): Promise<Record<string, unknown>> => {
@@ -100,8 +100,9 @@ export function createMemberRoutes(options: MemberRouteOptions) {
   const { db, problem } = options
   const noSection = (what: string) =>
     problem(403, { code: 'forbidden', title: `You may not ${what} here` })
-  const refused = (error: unknown): Response => {
-    if (!(error instanceof MemberAdminError)) throw error
+  const refused = (thrown: unknown): Response => {
+    const error = memberAdminErrorOf(thrown)
+    if (!error) throw thrown
     const [status, code] = STATUS[error.kind]
     return problem(status, {
       code,
@@ -187,12 +188,17 @@ export function createMemberRoutes(options: MemberRouteOptions) {
     const level = options.levelRefusal()
     if (level) return level
     if (method === 'POST' && !name) {
-      const made = await newGroup(ports, text((await body(request)).name) ?? '')
+      const made = await newGroup(ports, text((await body(request)).name) ?? '', principal)
       await audited(principal, request, 'Create', 'MemberGroup', made.key)
       return Response.json(made, { status: 201 })
     }
     if (method === 'DELETE' && name) {
-      const gone = await removeGroup(ports, name, url.searchParams.get('confirmed') === 'true')
+      const gone = await removeGroup(
+        ports,
+        name,
+        url.searchParams.get('confirmed') === 'true',
+        principal,
+      )
       await audited(principal, request, 'Delete', 'MemberGroup', gone.key)
       return Response.json(gone)
     }
@@ -206,7 +212,8 @@ export function createMemberRoutes(options: MemberRouteOptions) {
     key: string,
   ) {
     const method = request.method
-    if (method === 'GET') return Response.json(await pageAccess(db, key))
+    const ports = await options.ports()
+    if (method === 'GET') return Response.json(await pageAccess(ports, key))
     const level = options.levelRefusal()
     if (level) return level
     const actor = userActor(principal, {
@@ -221,11 +228,10 @@ export function createMemberRoutes(options: MemberRouteOptions) {
         ...(text(asked.loginPage) ? { loginPage: text(asked.loginPage) } : {}),
         ...(text(asked.noAccessPage) ? { noAccessPage: text(asked.noAccessPage) } : {}),
       }
-      return Response.json(
-        await setPageAccess(await options.ports(), operations, actor, key, input),
-      )
+      return Response.json(await setPageAccess(ports, operations, actor, key, input))
     }
-    if (method === 'DELETE') return Response.json(await clearPageAccess(db, operations, actor, key))
+    if (method === 'DELETE')
+      return Response.json(await clearPageAccess(ports, operations, actor, key))
     return new Response(null, { status: 405 })
   }
 
@@ -241,7 +247,7 @@ export function createMemberRoutes(options: MemberRouteOptions) {
       what: string,
     ): Promise<Response | undefined> {
       const reset = /^members\/([^/]+)\/reset-link$/.exec(what)
-      if (reset && options.resetLinks) {
+      if (reset) {
         if (principal.ci)
           return problem(403, {
             code: 'ci-cannot-change-people',
@@ -253,14 +259,11 @@ export function createMemberRoutes(options: MemberRouteOptions) {
         const level = options.levelRefusal()
         if (level) return level
         try {
-          const found = await showMember(
+          const { member: found, outcome } = await sendMemberResetLink(
             await options.ports(),
             principal,
             decodeURIComponent(reset[1] as string),
-          )
-          const outcome = await options.resetLinks.sendResetLink(
-            { key: found.key, name: found.name, email: found.email, username: found.login },
-            { origin: url.origin },
+            url.origin,
           )
           if ('refused' in outcome)
             return problem(outcome.refused === 'provider' ? 403 : 503, {
@@ -272,10 +275,7 @@ export function createMemberRoutes(options: MemberRouteOptions) {
             })
           await audited(principal, request, 'SendPasswordReset', 'Member', found.key)
           // A link is handed back only when it could not be sent.
-          return Response.json({
-            sent: outcome.sent,
-            ...(outcome.sent ? {} : { link: outcome.link }),
-          })
+          return Response.json(outcome)
         } catch (error) {
           return refused(error)
         }

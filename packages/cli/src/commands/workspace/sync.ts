@@ -13,7 +13,7 @@ export default class WorkspaceSync extends BaseCommand {
     effects: 'idempotent',
     cardinality: 'single',
     outputFields: [whereField, { name: 'conflicts', type: 'array', items: { type: 'string' } }],
-    errors: ['usage', 'auth', 'not_found'],
+    errors: ['usage', 'auth', 'not_found', 'refused'],
   } as const
 
   async run() {

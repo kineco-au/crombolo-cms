@@ -1,7 +1,17 @@
-import { bootstrapDatabase, linkMembersByProperty } from '@crombolo/server'
+import {
+  actingForPrincipal,
+  bootstrapDatabase,
+  linkMembersByProperty,
+  type MemberLinkOutcome,
+  type MembersSource,
+  memberAdminErrorOf,
+  membersSourceFor,
+} from '@crombolo/server'
 import { Flags } from '@oclif/core'
 import { BaseCommand } from '../../base.ts'
 import { CliError } from '../../errors.ts'
+import { signedInPerson } from '../../support/acting.ts'
+import { OPERATOR } from '../../support/people.ts'
 import { siteConfig } from '../../support/site.ts'
 
 /** Members here linked to an identity provider from a property they hold (story 432). */
@@ -44,6 +54,9 @@ export default class MembersLink extends BaseCommand {
   async run() {
     const { flags } = await this.parse(MembersLink)
     const config = await siteConfig()
+    // Story 448: where another site holds the members (444), the link runs there.
+    const elsewhere = membersSourceFor(config)
+    if (elsewhere) return this.linkThere(elsewhere, flags)
     const { db } = await bootstrapDatabase(config)
     try {
       const outcome = await linkMembersByProperty(db, {
@@ -53,23 +66,51 @@ export default class MembersLink extends BaseCommand {
         source: 'cli',
         dryRun: flags['dry-run'],
       })
-      if (!outcome.declared)
-        this.say(
-          `  warning  this site declares no member provider "${flags.provider}": the links are kept, and used once it does`,
-        )
-      for (const held of outcome.held)
-        this.say(
-          `  refused  ${held.member}: its ${flags.property} is the ${flags.provider} id of ${held.heldBy} already`,
-        )
-      this.say(
-        `  ${flags['dry-run'] ? 'would link' : 'linked'} ${outcome.linked}, ${outcome.already} linked already, ${outcome.empty} with no ${flags.property}, ${outcome.held.length} refused`,
-      )
-      if (flags['dry-run'] || outcome.linked === 0) this.changedNothing = true
+      this.report(outcome, flags, 'this site')
       return outcome
     } catch (error) {
       throw error instanceof CliError ? error : new CliError('unavailable', String(error))
     } finally {
       await db.close()
+    }
+  }
+
+  /** The report of a link, here or on the site that holds the members. */
+  private report(
+    outcome: MemberLinkOutcome,
+    flags: { provider: string; property: string; 'dry-run': boolean },
+    where: string,
+  ): void {
+    if (!outcome.declared)
+      this.say(
+        `  warning  ${where} declares no member provider "${flags.provider}": the links are kept, and used once it does`,
+      )
+    for (const held of outcome.held)
+      this.say(
+        `  refused  ${held.member}: its ${flags.property} is the ${flags.provider} id of ${held.heldBy} already`,
+      )
+    this.say(
+      `  ${flags['dry-run'] ? 'would link' : 'linked'} ${outcome.linked}, ${outcome.already} linked already, ${outcome.empty} with no ${flags.property}, ${outcome.held.length} refused`,
+    )
+    if (flags['dry-run'] || outcome.linked === 0) this.changedNothing = true
+  }
+
+  private async linkThere(
+    source: MembersSource,
+    flags: { provider: string; property: string; 'dry-run': boolean },
+  ): Promise<MemberLinkOutcome> {
+    try {
+      const outcome = await source.members.link(
+        { provider: flags.provider, property: flags.property, dryRun: flags['dry-run'] },
+        actingForPrincipal(signedInPerson() ?? OPERATOR),
+      )
+      this.auditedElsewhere = true
+      this.report(outcome, flags, source.source)
+      return outcome
+    } catch (thrown) {
+      const error = memberAdminErrorOf(thrown)
+      if (!error) throw thrown
+      throw new CliError(error.kind === 'unavailable' ? 'unavailable' : 'refused', error.message)
     }
   }
 }

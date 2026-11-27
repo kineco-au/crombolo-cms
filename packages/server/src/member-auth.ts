@@ -117,7 +117,7 @@ export interface MemberAuth {
    * error page for one who is signed in but not allowed.
    */
   decide(content: PublishedContent, member: RequestMember | undefined): Promise<AccessDecision>
-  /** A member by key, as a page sees them, for previewing as them (story 264). */
+  /** A member by key, as a page sees them: for a route called with a member's token. */
   byKey(key: string): Promise<RequestMember | undefined>
   /**
    * Handles the member endpoints, or undefined when the path is not one. `caller` is the
@@ -338,6 +338,8 @@ export function createMemberAuth(
               return asAccount(created)
             },
             setGroups: async (account, groups) => {
+              // Story 445: a member a directory keeps has their groups from it alone.
+              if ((await members.byKey(account.key))?.managedBy) return
               await members.setGroups(account.key, await groupKeysFor(groups))
             },
             setProperties: (account, identity, provider) =>

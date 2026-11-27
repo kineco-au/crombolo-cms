@@ -69,6 +69,7 @@ import { mediaMemberGrantsMigration } from './media-member-grants.ts'
 import { mediaMemberUploadsMigration } from './media-member-uploads.ts'
 import { mediaPermissionsMigration } from './media-permissions.ts'
 import { mediaTreeOrderMigration } from './media-tree-order.ts'
+import { memberManagerMigration } from './member-manager.ts'
 import { memberPasswordResetMigration } from './member-password-reset.ts'
 import { memberPropertyTypeMigration } from './member-property-type.ts'
 import { membersMigration } from './members.ts'
@@ -87,6 +88,7 @@ import { servedChangesMigration } from './served-changes.ts'
 import { serverRoleMigration } from './server-role.ts'
 import { serviceAccountSecretsMigration } from './service-account-secrets.ts'
 import { sessionViewAsMigration } from './session-view-as.ts'
+import { sharedLinksMigration } from './shared-links.ts'
 import { sinceVersionMigration } from './since-version.ts'
 import { singleUseTokenMigration } from './single-use-token.ts'
 import { siteSearchMigration } from './site-search.ts'
@@ -223,4 +225,6 @@ export const cromboloPlan = new MigrationPlan([
   serviceAccountSecretsMigration,
   memberPasswordResetMigration,
   webhookEventNamesMigration,
+  memberManagerMigration,
+  sharedLinksMigration,
 ])

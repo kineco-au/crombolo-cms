@@ -32,6 +32,7 @@ import {
   DocumentRepository,
   NodeRepository,
   type NodeSchemaState,
+  SHARED_WORKSPACE_KEY,
   UserRepository,
   type Workspace,
   WorkspaceFileRepository,
@@ -41,13 +42,28 @@ import {
 import { recordAudit } from './adapters/audit.ts'
 import type { WorkspaceMerging } from './node-operations.ts'
 import { originOf } from './seo.ts'
-import { pageVerdict, type WorkspaceChecks, type WorkspaceRendered } from './workspace-checks.ts'
+import type { SharedCheckResult } from './shared-check.ts'
+import {
+  type PageResult,
+  pageVerdict,
+  type WorkspaceChecks,
+  type WorkspaceRendered,
+} from './workspace-checks.ts'
 import { workspaceMarks } from './workspace-marks.ts'
 import type { WorkspaceSchema } from './workspace-schema.ts'
 
 export const WORKSPACE_HEADER = 'crombolo-workspace'
 
 const held = new AsyncLocalStorage<Workspace>()
+
+/**
+ * The workspace a request's header names: undefined for none, and for `shared`, which is
+ * the same as none (story 447).
+ */
+export function workspaceHeaderOf(request: Request): string | undefined {
+  const named = request.headers.get(WORKSPACE_HEADER)?.trim()
+  return named && named.toLowerCase() !== SHARED_WORKSPACE_KEY ? named : undefined
+}
 
 /** The workspace the request being answered works in; undefined for Shared. */
 export const currentWorkspace = (): Workspace | undefined => held.getStore()
@@ -133,7 +149,7 @@ export function createWorkspaceScope(db: Db, settings: WorkspaceScopeOptions | (
     principal: Principal | undefined,
     operation: { operationId: string },
   ) => {
-    const key = request.headers.get(WORKSPACE_HEADER)?.trim()
+    const key = workspaceHeaderOf(request)
     const pages = WORKSPACE_OPERATIONS.has(operation.operationId)
     if (options.locked?.() && pages && request.method !== 'GET')
       return lockedRefusal(options.editedAt?.())
@@ -377,6 +393,75 @@ const viewOf = (workspace: Workspace, principal: Principal, conflicts = 0): Work
 })
 
 type Client = { ipAddress: string | null; forwardedFor: string | null }
+
+/** Story 447: Shared as the workspace routes answer it, first in their list. */
+export const SHARED_VIEW = {
+  key: SHARED_WORKSPACE_KEY,
+  name: 'Shared',
+  shared: true,
+  visibility: 'editors',
+  description: 'What the site holds and serves.',
+  member: false,
+  ownerKey: null,
+  memberKeys: [],
+  mine: false,
+  personal: false,
+  conflicted: false,
+  conflicts: 0,
+  staged: false,
+  state: 'open',
+  mergedAt: null,
+  createdAt: null,
+  updatedAt: null,
+} as const
+
+/** Why Shared does not answer a workspace's route (story 447), by the route. */
+export const SHARED_REFUSALS: Record<string, string> = {
+  rename: 'Shared cannot be renamed: it is what the site holds.',
+  discard: 'Shared cannot be discarded or deleted: it is what the site holds.',
+  members: 'Shared has no members: everyone who may use workspaces may read it.',
+  merge: 'Shared is not merged: it is what workspaces are merged into.',
+  update: 'Shared is not brought up to date: it is what workspaces are brought up to.',
+  conflicts: 'Shared has no conflicts of its own: a conflict is a workspace’s, with Shared.',
+  pending: 'Shared has nothing waiting to go: what it holds is the site.',
+  'site-files':
+    'Shared’s own code is not carried here: change it in a workspace, and it arrives when that is merged.',
+  files:
+    'Shared’s files are not a workspace’s changes: `crombolo changes` lists what changed them.',
+  change: 'Shared is not taken as a change: stage a workspace, or apply a change made elsewhere.',
+  marks: 'Shared marks nothing: a mark is what a workspace changed of it.',
+}
+
+/** A link to Shared as its routes answer it. */
+export interface SharedLinkView {
+  id: number
+  madeBy: string
+  writes: boolean
+  createdAt: Date
+  expiresAt: Date
+  withdrawnAt: Date | null
+}
+
+/** What the workspace routes ask of Shared (story 447). */
+export interface SharedRoutes {
+  /** One of Shared's pages, as the site serves it. */
+  render(path: string): Promise<WorkspaceRendered>
+  /** Shared's own check (story 406). */
+  check(since: string | undefined, all: boolean): Promise<SharedCheckResult | undefined>
+  /** A single-use way in at the site's own address, for the person asking. */
+  open(principal: Principal, path: string, request: Request): Promise<string | undefined>
+  links: {
+    make(
+      principal: Principal,
+      days: number,
+      writes: boolean,
+      request: Request,
+    ): Promise<{ id: number; url: string; expiresAt: string; writes: boolean }>
+    list(madeBy?: string): Promise<SharedLinkView[]>
+    byId(id: number): Promise<SharedLinkView | undefined>
+    withdraw(id: number): Promise<boolean>
+  }
+}
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const refused = (message: string, status: number) => json({ message }, status)
@@ -750,6 +835,8 @@ export function createWorkspacesApi(
       >
       withdraw(workspaceId: number, id: number): Promise<boolean>
     }
+    /** Story 447: Shared, answering the same routes under the key `shared`. */
+    shared?: () => SharedRoutes | undefined
   },
 ) {
   const workspaces = new WorkspaceRepository(db)
@@ -757,7 +844,7 @@ export function createWorkspacesApi(
   const audit = (
     by: Principal,
     action: string,
-    workspace: Workspace,
+    workspace: { key: string; name: string },
     detail: string,
     client: Client,
   ) =>
@@ -847,6 +934,143 @@ export function createWorkspacesApi(
       (await workspaces.conflictCounts([workspace.id])).get(workspace.id) ?? 0,
     )
 
+  /** A page Shared rendered that failed, kept with its errors under the key `shared`. */
+  const noteShared = async (pages: readonly Pick<PageResult, 'ok' | 'url' | 'error'>[]) => {
+    const checks = options.checks?.()
+    for (const page of pages)
+      if (!page.ok && page.url)
+        await checks?.note(
+          { key: SHARED_WORKSPACE_KEY },
+          page.url,
+          page.error ?? 'It did not render.',
+        )
+  }
+
+  /**
+   * Story 447: Shared, under the key `shared`: read as the site serves it, looked at by
+   * `open` and links, and refused, with why, whatever only a workspace does.
+   */
+  async function sharedRoute(
+    request: Request,
+    principal: Principal,
+    sub: string | undefined,
+    member: string | undefined,
+    body: () => Promise<Record<string, unknown>>,
+    client: Client,
+  ): Promise<Response> {
+    const shared = options.shared?.()
+    const method = request.method
+    const query = new URL(request.url).searchParams
+    const no = (why: keyof typeof SHARED_REFUSALS | string) =>
+      refused(SHARED_REFUSALS[why] ?? 'There is nothing here.', SHARED_REFUSALS[why] ? 400 : 404)
+    if (!sub) {
+      if (method === 'GET') return json(SHARED_VIEW)
+      if (method === 'PATCH') return no('rename')
+      if (method === 'DELETE') return no('discard')
+      return new Response(null, { status: 405 })
+    }
+    if (sub in SHARED_REFUSALS && sub !== 'rename' && sub !== 'discard') return no(sub)
+    if (!shared) return refused('There is nothing here.', 404)
+    if (sub === 'changes' && !member && method === 'GET') return json({ items: [] })
+    if (sub === 'diff' && !member && method === 'GET')
+      // Shared is its own base, and what a merge into it would change is nothing.
+      return json({
+        against: query.get('against') === 'base' ? 'base' : 'shared',
+        pages: [],
+        pending: [],
+        files: [],
+      })
+    if (sub === 'render' && !member && method === 'GET') {
+      const path = query.get('path') ?? '/'
+      const rendered = await shared.render(path)
+      const verdict = pageVerdict(rendered)
+      if (!verdict.ok) await noteShared([{ ok: false, url: path, error: verdict.says }])
+      return json(rendered)
+    }
+    if ((sub === 'pages' && method === 'GET') || (sub === 'check' && method === 'POST')) {
+      if (member) return refused('There is nothing here.', 404)
+      const asked = sub === 'check' ? await body() : {}
+      const since =
+        (typeof asked.since === 'string' ? asked.since : query.get('since')) || undefined
+      const all = asked.all === true || query.get('all') === 'true'
+      const checked = await shared.check(since, all)
+      if (!checked) return refused('There is no such change.', 404)
+      await noteShared(checked.pages)
+      if (sub === 'check') return json(checked)
+      return json({
+        items: query.get('failing') === 'true' ? checked.pages.filter((p) => !p.ok) : checked.pages,
+      })
+    }
+    if (sub === 'errors' && !member && method === 'GET') {
+      const checks = options.checks?.()
+      const since = query.get('since') ? new Date(query.get('since') as string) : undefined
+      const items = checks
+        ? await checks.errors(
+            { key: SHARED_WORKSPACE_KEY },
+            since && !Number.isNaN(since.getTime()) ? since : undefined,
+          )
+        : []
+      return json({ items })
+    }
+    if (sub === 'open' && !member && method === 'POST') {
+      const asked = await body()
+      const path = asked.path === undefined || asked.path === null ? '/' : asked.path
+      if (!isSitePath(path)) return refused('Give a path on the site, such as /about.', 400)
+      const url = await shared.open(principal, path, request)
+      return url ? json({ url }) : refused('You may not open it.', 403)
+    }
+    if (sub === 'links') {
+      const links = shared.links
+      const viewed = (l: SharedLinkView) => ({
+        id: l.id,
+        madeBy: l.madeBy,
+        writes: l.writes,
+        createdAt: l.createdAt.toISOString(),
+        expiresAt: l.expiresAt.toISOString(),
+        withdrawn: l.withdrawnAt !== null,
+      })
+      // An administrator sees and withdraws every link to Shared; anyone else, their own.
+      if (!member && method === 'GET')
+        return json({
+          items: (await links.list(principal.isAdmin ? undefined : principal.id)).map(viewed),
+        })
+      if (!member && method === 'POST') {
+        const most = options.links?.().maxDays() ?? 0
+        if (most <= 0) return refused('This site makes no links: CROMBOLO_LINK_MAX_DAYS is 0.', 403)
+        const asked = await body()
+        const days = typeof asked.days === 'number' ? asked.days : most
+        if (!(days > 0) || days > most)
+          return refused(`A link lasts at most ${most} day(s) here.`, 400)
+        if (asked.writes !== undefined && typeof asked.writes !== 'boolean')
+          return refused('Say whether it lets its holder write as true or false.', 400)
+        const writes = asked.writes === true
+        if (writes && !principal.isAdmin)
+          return refused(
+            'Only an administrator makes a link that lets its holder do more than look.',
+            403,
+          )
+        const made = await links.make(principal, days, writes, request)
+        await audit(
+          principal,
+          'Link',
+          SHARED_VIEW,
+          `A link to Shared for ${days} day(s)${writes ? ', letting its holder write' : ', to look'}`,
+          client,
+        )
+        return json(made, 201)
+      }
+      if (member && method === 'DELETE') {
+        const link = await links.byId(Number(member))
+        const mine = link && (principal.isAdmin || link.madeBy === normaliseUuid(principal.id))
+        if (!link || !mine || !(await links.withdraw(link.id)))
+          return refused('There is no such link.', 404)
+        await audit(principal, 'Unlink', SHARED_VIEW, 'Withdrew a link to Shared', client)
+        return new Response(null, { status: 204 })
+      }
+    }
+    return refused('There is nothing here.', 404)
+  }
+
   return {
     async handle(
       request: Request,
@@ -892,7 +1116,10 @@ export function createWorkspacesApi(
               )
           const listed = [...mine, ...shown]
           const counts = await workspaces.conflictCounts(listed.map((w) => w.id))
-          return json({ items: listed.map((w) => viewOf(w, principal, counts.get(w.id) ?? 0)) })
+          // Story 447: Shared first, so a list of places to work starts with it.
+          return json({
+            items: [SHARED_VIEW, ...listed.map((w) => viewOf(w, principal, counts.get(w.id) ?? 0))],
+          })
         }
         if (request.method === 'POST') {
           if (options.locked?.()) {
@@ -926,6 +1153,13 @@ export function createWorkspacesApi(
         const merging = options.merge?.()
         if (!merging) return refused('Merging is not available here.', 404)
         const asked = await body()
+        if (
+          Array.isArray(asked.workspaces) &&
+          asked.workspaces.some(
+            (k) => typeof k === 'string' && k.toLowerCase() === SHARED_WORKSPACE_KEY,
+          )
+        )
+          return refused(SHARED_REFUSALS.merge as string, 400)
         const keys = Array.isArray(asked.workspaces)
           ? asked.workspaces.filter((k): k is string => typeof k === 'string' && UUID.test(k))
           : []
@@ -992,6 +1226,9 @@ export function createWorkspacesApi(
         }
         return new Response(null, { status: 405 })
       }
+
+      if (parts[0]?.toLowerCase() === SHARED_WORKSPACE_KEY)
+        return sharedRoute(request, principal, parts[1], parts[2], body, client)
 
       const [key, sub, member] = parts as [string, string | undefined, string | undefined]
       const found = UUID.test(key) ? await workspaces.byKey(key) : undefined

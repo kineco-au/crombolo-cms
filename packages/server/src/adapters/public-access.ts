@@ -25,9 +25,19 @@ import {
   PublicAccessRepository,
 } from '@crombolo/data'
 
+export interface PublicAccessOptions {
+  nodeId?: string
+  onChange?: () => void | Promise<void>
+  /** Story 444: how the names in a rule are found, when another site holds the members. */
+  named?: {
+    groups(names: readonly string[]): Promise<MemberGroupItem[]>
+    members(usernames: readonly string[]): Promise<MemberItem[]>
+  }
+}
+
 export function createPublicAccessPort(
   db: Db,
-  options: { nodeId?: string; onChange?: () => void | Promise<void> } = {},
+  options: PublicAccessOptions = {},
 ): PublicAccessPort {
   const access = new PublicAccessRepository(db)
   // A page that leaves out what a visitor may not open changes with the rules,
@@ -88,8 +98,8 @@ export function createPublicAccessPort(
   ): Promise<PublicAccessResponse> => ({
     loginDocument: { id: entry.loginNodeKey },
     errorDocument: { id: entry.errorNodeKey },
-    members: await membersNamed(entry.memberUserNames),
-    groups: await groupsNamed(entry.memberGroupNames),
+    members: await (options.named?.members ?? membersNamed)(entry.memberUserNames),
+    groups: await (options.named?.groups ?? groupsNamed)(entry.memberGroupNames),
     isProtectedByAncestor: entry.nodeKey !== requestedKey.toLowerCase(),
   })
 

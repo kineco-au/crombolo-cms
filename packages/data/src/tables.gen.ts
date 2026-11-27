@@ -599,6 +599,7 @@ export interface CoreTables {
     last_login_date: Timestamp | null
     last_password_change_date: Timestamp | null
     login_name: string
+    managed_by: string | null
     node_id: Generated<number>
     password: string | null
     password_config: string | null
@@ -831,6 +832,15 @@ export interface CoreTables {
     served_at: Timestamp | null
     served_checkpoint: BigInteger | null
     version: string | null
+  }
+  shared_link: {
+    created_at: Timestamp
+    expires_at: Timestamp
+    id: Generated<number>
+    made_by: string
+    secret_hash: string
+    withdrawn_at: Timestamp | null
+    writes: Bool
   }
   single_use_token: {
     expires_at: Timestamp

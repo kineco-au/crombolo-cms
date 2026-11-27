@@ -51,6 +51,11 @@ export const SERVER_ROLES = ['all', 'api', 'web', 'worker'] as const
 
 export type ServerRole = (typeof SERVER_ROLES)[number]
 
+/** Who may see the site; see `CromboloConfig.siteAccess`. */
+export const SITE_ACCESS = ['public', 'users'] as const
+
+export type SiteAccess = (typeof SITE_ACCESS)[number]
+
 /** Delivers an invitation or password-reset link to a backoffice user, typically by e-mail. */
 export type UserLinkSender = (message: {
   kind: 'invite' | 'reset'
@@ -238,6 +243,23 @@ export const usersManaged = (config: { users?: UsersSetting }) =>
 /** Who defines the site's user groups (story 405): `managedAt` takes `{alias}` or `{key}`. */
 export type GroupsSetting = UsersSetting
 
+/** Links made for someone else to look at a workspace's site or Shared (story 447). */
+export interface LinksSetting {
+  /** The longest one may last, in days; 0 makes none. */
+  maxDays: number
+}
+
+/**
+ * Story 447: the setting `CROMBOLO_LINK_MAX_DAYS` replaced, read for one release where
+ * the new one is unset, with this said at start-up.
+ */
+export function replacedLinkSetting(): string | undefined {
+  if (setting('CROMBOLO_WORKSPACE_LINK_MAX_DAYS') === undefined) return undefined
+  return setting('CROMBOLO_LINK_MAX_DAYS') === undefined
+    ? 'CROMBOLO_WORKSPACE_LINK_MAX_DAYS is read for this release only: set CROMBOLO_LINK_MAX_DAYS in its place, which caps links to Shared too.'
+    : 'CROMBOLO_WORKSPACE_LINK_MAX_DAYS is ignored, as CROMBOLO_LINK_MAX_DAYS is set: remove it.'
+}
+
 /** Whether user groups are defined only outside the site (story 405). */
 export const groupsManaged = (config: { groups?: GroupsSetting }) =>
   (config.groups?.managedBy.length ?? 0) > 0
@@ -321,6 +343,12 @@ export interface CromboloConfig {
   defaultUiLanguage: string
   keepUserLoggedIn: boolean
   allowLocalLogin: boolean
+  /**
+   * Who may see the site (story 446): `public`, anyone its pages' own rules let in;
+   * `users`, only someone signed in to its back office, on every role.
+   * `CROMBOLO_SITE_ACCESS`. docs/configuration.md.
+   */
+  siteAccess: SiteAccess
   allowPasswordReset: boolean
   versionCheckPeriod: number
   umbracoCssPath: string
@@ -605,8 +633,12 @@ export interface CromboloConfig {
    * opened by a cookie on the site's own host. `CROMBOLO_WORKSPACES_HOST`.
    */
   workspacesHost: string | undefined
-  /** The longest a link to a workspace's site may last, in days; 0 turns links off. `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`, 30. */
-  workspaceLinkMaxDays: number
+  /**
+   * Links made for someone else to look (story 447): `maxDays`, the longest a link to a
+   * workspace's site or to Shared may last, in days; 0, the default, makes none.
+   * `CROMBOLO_LINK_MAX_DAYS`.
+   */
+  links: LinksSetting
   /** How many workspaces' sites one node keeps ready. `CROMBOLO_WORKSPACE_SITES`, 3. */
   workspaceSites: number
   /** How long a workspace's site is kept without a visit. `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES`, 15. */
@@ -829,6 +861,27 @@ export interface CromboloConfig {
    */
   members?: {
     actAs?: string
+    /**
+     * Story 445: the API clients a directory outside the site provisions members as. A
+     * member one of them creates is changed only by it. `CROMBOLO_MEMBERS_MANAGED_BY`.
+     */
+    managedBy?: readonly string[]
+    /**
+     * Story 444: the address of the site that holds this site's members. Set, the
+     * Members section, the pickers and `site().members` work on that site's members
+     * through its Management API, and this site keeps none. `CROMBOLO_MEMBERS_SOURCE`.
+     */
+    source?: string
+    /**
+     * Story 444: the service account on the `source` site this site signs in as.
+     * `CROMBOLO_MEMBERS_CLIENT_ID` and `CROMBOLO_MEMBERS_CLIENT_SECRET`.
+     */
+    client?: { id: string; secret: string }
+    /**
+     * Story 444: on the site that holds the members, the service accounts whose
+     * `Crombolo-Acting-For` header names who acted, in the audit. `CROMBOLO_MEMBERS_ACTORS_FROM`.
+     */
+    actorsFrom?: readonly string[]
     groups?: { selfService?: readonly string[]; managed?: readonly string[] }
     /**
      * Story 282: the site's page that sets a new password, a path such as
@@ -961,6 +1014,7 @@ export const DEFAULTS = {
   defaultUiLanguage: 'en-US',
   keepUserLoggedIn: false,
   allowLocalLogin: true,
+  siteAccess: 'public' as SiteAccess,
   allowPasswordReset: false,
   versionCheckPeriod: 7,
   umbracoCssPath: '/css',
@@ -1010,6 +1064,13 @@ function roleFromEnvironment(value: string | undefined): ServerRole {
   if (value === undefined || value === '') return 'all'
   assertRole(value)
   return value
+}
+
+/** A misspelt value is refused: defaulting to `public` would open a site meant to be closed. */
+function siteAccessFrom(value: string | undefined): SiteAccess {
+  if (value === undefined || value === '') return 'public'
+  if ((SITE_ACCESS as readonly string[]).includes(value)) return value as SiteAccess
+  throw new Error(`CROMBOLO_SITE_ACCESS must be ${SITE_ACCESS.join(' or ')}, not '${value}'.`)
 }
 
 function bundleSignatures(value: string | undefined): SignaturePolicy {
@@ -1124,6 +1185,7 @@ export function loadConfig(
     defaultUiLanguage: DEFAULTS.defaultUiLanguage,
     keepUserLoggedIn: DEFAULTS.keepUserLoggedIn,
     allowLocalLogin: DEFAULTS.allowLocalLogin,
+    siteAccess: siteAccessFrom(setting('CROMBOLO_SITE_ACCESS')),
     allowPasswordReset: DEFAULTS.allowPasswordReset,
     versionCheckPeriod: DEFAULTS.versionCheckPeriod,
     umbracoCssPath: DEFAULTS.umbracoCssPath,
@@ -1211,9 +1273,14 @@ export function loadConfig(
     applyChangesBy: (setting('CROMBOLO_APPLY_CHANGES_BY') || 'any') as 'any' | 'exchange',
     purgeAfterDays: Math.floor(nonNegativeNumber(setting('CROMBOLO_PURGE_AFTER_DAYS'), 0)),
     workspacesHost: setting('CROMBOLO_WORKSPACES_HOST') || undefined,
-    workspaceLinkMaxDays: Math.floor(
-      nonNegativeNumber(setting('CROMBOLO_WORKSPACE_LINK_MAX_DAYS'), 30),
-    ),
+    links: {
+      maxDays: Math.floor(
+        nonNegativeNumber(
+          setting('CROMBOLO_LINK_MAX_DAYS') ?? setting('CROMBOLO_WORKSPACE_LINK_MAX_DAYS'),
+          0,
+        ),
+      ),
+    },
     workspaceSites: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_SITES'), 3)),
     workspaceSiteIdleMinutes: positiveNumber(setting('CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES'), 15),
     workspaceProcesses: Math.floor(positiveNumber(setting('CROMBOLO_WORKSPACE_PROCESSES'), 10)),
@@ -1379,6 +1446,11 @@ export function loadConfig(
     host: undefined,
   }
   const merged: CromboloConfig = { ...fromEnv, ...stripUndefined(overrides) }
+  merged.links = { ...fromEnv.links, ...stripUndefined(overrides.links ?? {}) }
+  if (!(Number.isFinite(merged.links.maxDays) && merged.links.maxDays >= 0))
+    throw new Error(
+      `links.maxDays is ${String(merged.links.maxDays)} in crombolo.config.ts: it is a number of days, 0 for none.`,
+    )
   // The file is checked as the environment is: an unknown value must not fall back to editable.
   if ('contentMode' in overrides)
     throw new Error(
@@ -1411,6 +1483,21 @@ export function loadConfig(
     merged.groups.managedBy.some((id) => typeof id !== 'string' || !id.trim())
   )
     throw new Error('groups.managedBy in crombolo.config.ts is a list of API client ids.')
+  const membersManagedBy =
+    merged.members?.managedBy ??
+    (setting('CROMBOLO_MEMBERS_MANAGED_BY') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+  if (
+    !Array.isArray(membersManagedBy) ||
+    membersManagedBy.some((id) => typeof id !== 'string' || !id.trim())
+  )
+    throw new Error('members.managedBy in crombolo.config.ts is a list of API client ids.')
+  if (membersManagedBy.length > 0)
+    merged.members = { ...merged.members, managedBy: membersManagedBy }
+  const members = membersElsewhere(merged.members)
+  if (members) merged.members = members
   const resetPage = merged.members?.resetPasswordPage
   if (resetPage !== undefined && (typeof resetPage !== 'string' || !/^\/(?!\/)/.test(resetPage)))
     throw new Error(
@@ -1530,6 +1617,7 @@ export function loadConfig(
   // the same terms as one in the environment.
   assertRole(merged.role)
   assertJobs(merged)
+  siteAccessFrom(merged.siteAccess)
   return merged
 }
 
@@ -1583,7 +1671,7 @@ export function describeDatabase(
   }
 }
 
-export const VERSION = '0.82.0'
+export const VERSION = '0.83.0'
 
 /** A whole number of seconds from the environment; undefined when unset or not one. */
 /** A positive number from a setting, else the default. */
@@ -1608,4 +1696,60 @@ function numberSetting(name: Parameters<typeof setting>[0]): number | undefined 
   if (raw === undefined || raw.trim() === '') return undefined
   const value = Number(raw)
   return Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+const clientIds = (value: string | undefined): string[] =>
+  (value ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+
+/**
+ * Story 444: `members.source`, `members.client` and `members.actorsFrom`, from the
+ * file or else the environment, each refused with a sentence when it can't be used.
+ */
+function membersElsewhere(members: CromboloConfig['members']): CromboloConfig['members'] {
+  const source = members?.source ?? setting('CROMBOLO_MEMBERS_SOURCE')
+  const id = members?.client?.id ?? setting('CROMBOLO_MEMBERS_CLIENT_ID')
+  const secret = members?.client?.secret ?? setting('CROMBOLO_MEMBERS_CLIENT_SECRET')
+  const actorsFrom = members?.actorsFrom ?? clientIds(setting('CROMBOLO_MEMBERS_ACTORS_FROM'))
+  if (
+    !Array.isArray(actorsFrom) ||
+    actorsFrom.some((entry) => typeof entry !== 'string' || !entry.trim())
+  )
+    throw new Error('members.actorsFrom in crombolo.config.ts is a list of API client ids.')
+  const next = { ...members }
+  if (actorsFrom.length > 0) next.actorsFrom = actorsFrom
+  if (source === undefined || source === '') {
+    delete next.source
+    delete next.client
+    return Object.keys(next).length > 0 ? next : members
+  }
+  if (typeof source !== 'string' || !isSiteAddress(source))
+    throw new Error(
+      `members.source is "${String(source)}": it is the address of the site that holds the members, such as https://www.example.com (CROMBOLO_MEMBERS_SOURCE).`,
+    )
+  if (!id || !secret)
+    throw new Error(
+      `members.source is ${source}, but no service account there is named: set members.client, or CROMBOLO_MEMBERS_CLIENT_ID and CROMBOLO_MEMBERS_CLIENT_SECRET.`,
+    )
+  return { ...next, source: source.replace(/\/+$/, ''), client: { id, secret } }
+}
+
+/** An http or https address with a host and no path, query or fragment beyond `/`. Pure. */
+function isSiteAddress(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.hostname !== '' &&
+      (url.pathname === '/' || url.pathname === '') &&
+      !url.search &&
+      !url.hash &&
+      !url.username &&
+      !url.password
+    )
+  } catch {
+    return false
+  }
 }

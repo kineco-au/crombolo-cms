@@ -45,7 +45,9 @@ export default defineConfig({
   applyChangesBy: 'any', // CROMBOLO_APPLY_CHANGES_BY: exchange, to stage or apply only by an exchanged sign-in
   purgeAfterDays: 0, // CROMBOLO_PURGE_AFTER_DAYS: fewest days between retiring a property and purging it
   workspacesHost: '{workspace}.preview.example.com', // CROMBOLO_WORKSPACES_HOST: where a workspace is looked at
-  workspaceLinkMaxDays: 30, // CROMBOLO_WORKSPACE_LINK_MAX_DAYS: longest a link to a workspace lasts
+  links: {
+    maxDays: 7, // CROMBOLO_LINK_MAX_DAYS: longest a link to a workspace or Shared lasts; 0 makes none
+  },
   workspaceSites: 3, // CROMBOLO_WORKSPACE_SITES: workspaces one server keeps ready
   workspaceSiteIdleMinutes: 15, // CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES: kept that long after a visit
   workspaceProcesses: 10, // CROMBOLO_WORKSPACE_PROCESSES: workspaces with changed templates shown at once
@@ -163,6 +165,7 @@ export default defineConfig({
   defaultUiLanguage: 'en-US',
   keepUserLoggedIn: false,
   allowLocalLogin: true,
+  siteAccess: 'public', // CROMBOLO_SITE_ACCESS: 'users' opens the site only to back-office users (446)
   allowPasswordReset: true,
   usernameIsEmail: true,
   versionCheckPeriod: 7,

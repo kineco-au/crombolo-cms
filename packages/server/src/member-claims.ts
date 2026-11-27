@@ -97,7 +97,8 @@ export class MemberClaims {
   async sync(key: string, provider: IdentityProvider, identity: OidcIdentity): Promise<void> {
     const member = await this.#members.byKey(key)
     const stored = member ? await this.#members.content.byKey(key) : undefined
-    if (!member || !stored) return
+    // Story 445: a member a directory keeps has their properties from it alone.
+    if (!member || !stored || member.managedBy) return
     const shared = (value: DocumentValue, alias: string) =>
       value.alias === alias && !value.culture && !value.segment && !value.environment
     const changed = (await this.#wanted(member.contentTypeKey, provider, identity)).filter(

@@ -161,6 +161,10 @@ not cover.
 | `314` | An administrator sees the back office as a group does | should | M | done | — |
 | `389` | Users managed from outside the site | should | S | done | 031, 034 |
 | `391` | The code setting says what it locks | should | S | done | 343, 385 |
+| `444` | A site's members held by another site | should | L | done | 030, 034, 388, 443, 445 |
+| `445` | A provisioned member is changed only by what provisioned it | should | S | done | 030, 034, 035 |
+| `446` | A site open only to its back-office users | should | M | done | 031, 305 |
+| `448` | The command line manages members held by another site | must | M | done | 444 |
 
 ### Epic E — Cross-cutting
 
@@ -384,6 +388,7 @@ requests, only server-side and build-time front ends can call it.
 | `232` | Plain Signal, a magazine demo | could | L | done | 058, 209, 228 |
 | `263` | Personalised parts of a shared page | should | L | done | — |
 | `264` | Personalised parts in the back office | could | M | done | 263 |
+| `443` | Preview as a member of a group | should | M | done | 264 |
 | `265` | Deferred parts put together by the CDN | could | S | on hold | 263 |
 | `281` | A marked gap in a template | should | S | done | — |
 | `284` | A site's public folder | should | M | done | — |
@@ -393,6 +398,7 @@ requests, only server-side and build-time front ends can call it.
 | `290` | A starter site that shows what the CMS does | should | L | done | — |
 | `298` | Site code writes content and handles its events | should | L | done | 187, 206 |
 | `371` | Pages served as Markdown | could | M | ready | 370 |
+| `449` | A site's public files edited in the back office | could | M | backlog | 284, 377, 381 |
 
 ### Epic P — The command line
 
@@ -593,3 +599,4 @@ it.
 | `434` | A change staged after another that made the same page builds on it | should | S | done | 383, 394, 421 |
 | `436` | Each workspace makes its own new pages | must | L | done | 375, 376, 383, 434 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |
+| `447` | Shared answers the workspace routes | should | M | done | 379, 401, 408, 446 |

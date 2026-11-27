@@ -341,7 +341,7 @@ export function createWorkspaceChecks(options: WorkspaceCheckOptions) {
     },
 
     /** What rendering the workspace's pages said went wrong, on every node, oldest first. */
-    async errors(workspace: Workspace, since?: Date) {
+    async errors(workspace: { key: string }, since?: Date) {
       return (await errors.of(workspace.key, since)).map((e) => ({
         at: e.at.toISOString(),
         node: e.node,

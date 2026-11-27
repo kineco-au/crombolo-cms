@@ -1,6 +1,7 @@
 /**
  * Story 264: a page's Info tab says whether its copies are shared, and a
  * view's Insert menu makes a personalised part and writes its tag and import.
+ * Story 443: the preview's visitor switch shows the page to a member of a group.
  */
 import { expect, signIn, test } from './fixtures.ts'
 
@@ -37,6 +38,57 @@ test("a page's Info tab says whether its copies are shared", async ({ page }) =>
   await page.getByRole('tab', { name: 'Info' }).click()
   const sharing = page.locator('crombolo-page-sharing-info')
   await expect(sharing).toContainText(/Copies are|Not shared|Members only/, { timeout: 20_000 })
+})
+
+test("the preview's visitor switch shows the page to a member of chosen groups", async ({
+  page,
+}) => {
+  await signIn(page)
+  const group = `Readers ${crypto.randomUUID().slice(0, 6)}`
+  expect((await page.request.post(`${API}/member-group`, { data: { name: group } })).status()).toBe(
+    201,
+  )
+  const types = (await (
+    await page.request.get(`${API}/document-type/allowed-at-root?skip=0&take=10`)
+  ).json()) as { items: Array<{ id: string; name: string }> }
+  const homeType = types.items.find((t) => t.name === 'Home Page') as { id: string }
+  // Its view, as the back office gives a page it creates: without one, preview has nothing to show.
+  const detail = (await (await page.request.get(`${API}/document-type/${homeType.id}`)).json()) as {
+    defaultTemplate: { id: string } | null
+  }
+  const name = `Visited ${crypto.randomUUID().slice(0, 8)}`
+  const created = await page.request.post(`${API}/document`, {
+    data: {
+      documentType: { id: homeType.id },
+      template: detail.defaultTemplate,
+      parent: null,
+      values: [{ alias: 'title', culture: null, segment: null, value: name }],
+      variants: [{ culture: null, segment: null, name }],
+    },
+  })
+  expect(created.status()).toBe(201)
+  const key = created.headers()['umb-generated-resource'] as string
+
+  // Asking for its preview address enters preview, as the editor's Save and preview does.
+  expect((await page.request.get(`${API}/document/${key}/preview-url`)).status()).toBe(200)
+  await page.goto(`/crombolo/preview?id=${key}`)
+  await expect(page.frameLocator('iframe').locator('h1')).toContainText(name, { timeout: 20_000 })
+  const visitor = page.locator('crombolo-preview-member')
+  await expect(visitor).toContainText('Signed out', { timeout: 20_000 })
+  await visitor.getByRole('button', { name: 'Visitor' }).click()
+  await visitor.getByText('A member of…', { exact: true }).click()
+  await expect(visitor).toContainText('look the member up')
+  await visitor.locator('uui-checkbox', { hasText: group }).click()
+  await visitor.getByRole('button', { name: 'Preview' }).click()
+  await expect(visitor).toContainText(`A member of ${group}`)
+
+  await page.reload()
+  await expect(visitor).toContainText(`A member of ${group}`, { timeout: 20_000 })
+  await visitor.getByRole('button', { name: 'Visitor' }).click()
+  await visitor.getByText('Signed out', { exact: true }).last().click()
+  // The button's words are slotted into it, so they are the uui-button's text, not its inner button's.
+  await expect(visitor.locator('uui-button[label="Visitor"]')).toContainText('Signed out')
+  await expect(visitor.getByRole('menu')).toHaveCount(0)
 })
 
 test("a view's Insert menu makes a personalised part, with its tag and import", async ({

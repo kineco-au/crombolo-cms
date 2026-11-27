@@ -75,7 +75,14 @@ export function toSaveMember(key: string, body: Record<string, unknown>): SaveMe
 }
 
 const failed = (title: string, result: PortFailure) =>
-  problemResponse(problemDetails({ title, status: result.status ?? 400, detail: result.reason }))
+  problemResponse(
+    problemDetails({
+      title,
+      status: result.status ?? 400,
+      detail: result.reason,
+      ...(result.operationStatus ? { operationStatus: result.operationStatus } : {}),
+    }),
+  )
 
 const missing = () => problemResponse(notFound('The member could not be found'))
 
@@ -140,9 +147,11 @@ export function registerMemberHandlers(router: ManagementApiRouter, port: Member
     return result.ok ? done(ctx) : failed('Could not save the member', result)
   })
 
-  router.handle('DeleteMemberById', async (ctx) =>
-    (await port.remove(ctx.params.id as string)) ? done(ctx) : missing(),
-  )
+  router.handle('DeleteMemberById', async (ctx) => {
+    const result = await port.remove(ctx.params.id as string, viewer(ctx))
+    if (typeof result === 'object') return failed('Could not delete the member', result)
+    return result ? done(ctx) : missing()
+  })
 
   router.handle('GetFilterMember', async (ctx) => {
     const page = paging(ctx)

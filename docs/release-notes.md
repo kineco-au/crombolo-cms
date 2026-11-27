@@ -6,6 +6,120 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.83.0 — 2026-11-27
+
+### Features
+
+- **Preview as a member of a group (443).** The preview toolbar's visitor switch offers
+  "Signed out" and "A member of…" to anyone who previews, not only those who can open
+  Members. The page renders for a stand-in member in the chosen groups, so its
+  personalised parts, `site()` queries, search and protected media show what those groups
+  would see; a part that looks the member up shows what it would for an unknown member.
+  Previewing as a real member is gone, and a choice made before is read as signed out.
+  Each switch is in the audit log as `preview as groups` or `preview signed out`.
+- **A site's members held by another site (444).** With `members.source`
+  (`CROMBOLO_MEMBERS_SOURCE`) and `members.client` (`CROMBOLO_MEMBERS_CLIENT_ID`,
+  `CROMBOLO_MEMBERS_CLIENT_SECRET`), the site content is made on works on the members of
+  the site that serves them, through that site's Management API as one of its service
+  accounts. The Members section, the member and group pickers, a page's Public Access,
+  preview's groups and `site().members` all reach that site, and this one keeps no members:
+  member sign-in, registration, reset, external sign-in and the Delivery API's member
+  routes answer 404, `--with-members` is refused, and a bundle carrying members is refused
+  at its check. A group renamed from here rewrites this site's rules naming it, after a
+  warning counting the pages. While that site isn't answering, the Members section says so,
+  with Try again. On the site that holds the members, `members.actorsFrom`
+  (`CROMBOLO_MEMBERS_ACTORS_FROM`) names the service accounts trusted to say who they act
+  for: a change through one is audited as that person, through the account.
+- **A provisioned member is changed only by what provisioned it (445).** With
+  `members.managedBy` (`CROMBOLO_MEMBERS_MANAGED_BY`) naming a directory's API clients, a
+  member one of them creates remembers it, and anyone else's change to their name,
+  e-mail, username, approval, groups, properties or existence is refused, administrators
+  included, in the back office, the Management API, the command line, the remote protocol
+  and `site().members`. Their password, two-factor and an unlock stay the site's. The
+  manager hands a member back with `DELETE <backoffice>/crombolo/api/members/{key}/manager`.
+  The Members section marks them, and opens them read-only with who keeps them.
+- **A site open only to its back-office users (446).** `siteAccess: 'users'`
+  (`CROMBOLO_SITE_ACCESS=users`) lets nobody see the site but people who can sign in to its
+  back office, on every role, a `web` node included. A browser not signed in is sent to the
+  back office's sign-in and back; an API call is a 401. The sign-in, `/health`, the
+  Management API, the remote, the Delivery API with its key, a workspace's link and a
+  preview link go on as before. Every answer is marked `noindex, nofollow` and
+  `Cache-Control: private`, and `robots.txt` disallows everything. The session is read,
+  never refreshed, so signing out closes the site at once. The site and its back office
+  must be on one host.
+- **The site's code no longer sees the back office's cookies (446).** The access, refresh,
+  session and two-factor cookies are taken from what the renderer, `headers()` and
+  `cookies()`, middleware, routes and actions are given, on every site.
+- **One way in goes straight there (446).** With `allowLocalLogin: false` and a single
+  back-office identity provider, the login screen is skipped for the provider; a refused
+  sign-in shows its error with Try again.
+- **Shared answers the workspace routes (447).** Under the key `shared`, which no
+  workspace can have, `<backoffice>/crombolo/api/workspaces/shared` reads Shared as the
+  site serves it: `render`, `pages`, `errors` and `check` (Shared's own check), with
+  `diff` empty, and refuses with a sentence what only a workspace does (renaming,
+  discarding, members, merging from it, `update`, `conflicts`, `pending`, `site-files`).
+  `GET /` lists Shared first, with `shared: true`. `Crombolo-Workspace: shared` on the
+  Management API is the same as no header, and the command line takes `shared` wherever
+  it names a workspace: `crombolo workspace check shared`.
+- **A way to look at Shared on a closed site (447).** `POST …/shared/open` lets the
+  caller's browser in at the site's own address, once, and `…/shared/links` makes,
+  lists and withdraws links for someone with no account. Either becomes a host-only
+  `crombolo-shared` cookie that lets its holder read the site, its routes and the
+  Delivery API past `siteAccess: 'users'`, never the back office or the Management API.
+  A link only lets its holder look, unless an administrator made it with `writes: true`;
+  `open` writes only for an administrator. A link stops when it lapses or is withdrawn,
+  and when its maker loses the Content section, is disabled or is deleted. Making, using
+  and withdrawing one is audited.
+- **One setting caps every link (447).** `links.maxDays` (`CROMBOLO_LINK_MAX_DAYS`), 0 by
+  default, which makes none, caps links to a workspace and to Shared, in place of
+  `CROMBOLO_WORKSPACE_LINK_MAX_DAYS` (30).
+- **The command line on members another site holds (448).** With `members.source` set,
+  `crombolo members …`, `members groups …` and `content access`, and the remote protocol's
+  member routes, work on that site's members, where they were refused, including on this
+  site's database with no server running. `members show` and the back office's sign-ins
+  panel list the providers a member signs in with as that site knows them, and
+  `members reset-password` has that site send the link, or prints the one it hands back.
+  `members link` runs on that site, against its members and its member identity
+  providers, and prints its report. Each write is audited there as the person, through the
+  account. The site that holds the members answers
+  `POST <backoffice>/crombolo/api/members/{key}/reset-link` and
+  `POST <backoffice>/crombolo/api/members/link` for a principal with Members.
+
+### Migrations
+
+- **105 `AddMemberManager`** (expand, 445): `member.managed_by`, the API client that keeps
+  a member; empty for every member there was.
+- **106 `AddSharedLinks`** (expand, 447): `shared_link`, each link to Shared by the
+  SHA-256 of its secret, its maker, whether it writes, when it lapses and when it was
+  withdrawn.
+
+### Upgrade notes
+
+- **Previewing as a real member is gone (443).** Anyone who previews now chooses signed
+  out or a member of chosen groups, and a choice made before reads as signed out. A part
+  that reads a member's own details previews as it would for an unknown member.
+- **Workspace links stop working unless `CROMBOLO_LINK_MAX_DAYS` is set (447).** It
+  defaults to 0, which makes no links and lets none in. `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`
+  is still read for this release where the new one is unset, with a warning at start-up;
+  set `CROMBOLO_LINK_MAX_DAYS` (or `links: { maxDays }` in `crombolo.config.ts`, in place
+  of `workspaceLinkMaxDays`, which is no longer read) to the days you allowed before, 30
+  by default, to keep them.
+- **A tool listing `GET …/api/workspaces`** now finds Shared first, marked `shared: true`
+  (447): leave it out by that to list only workspaces.
+- **A site whose views, middleware or routes read the back office's cookies** no longer
+  finds them there (446). Nothing in crombolo needed them; a site that did should ask
+  the Management API instead.
+- **With `allowLocalLogin: false` and one back-office provider,** the login screen is no
+  longer shown (446); signing out and opening the back office again goes back to the
+  provider.
+- **Nothing to do unless you set `members.managedBy` (445).** Members from before it have
+  no manager: only members the directory creates after it is set are kept by it.
+- **Nothing to do unless you set `members.source` (444, 448).** Before you do, make a
+  service account with Members on the site that holds the members, and give its client id
+  and secret to this site; add its client id to that site's `members.actorsFrom` to have
+  the person who acted named in its audit. Members already on this site stay in its
+  database but are no longer used.
+
 ## v0.82.0 — 2026-11-26
 
 ### Features

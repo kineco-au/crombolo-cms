@@ -720,8 +720,17 @@ The back office helps (story 264):
   Partial view** writes a view's tag and import too.
 - **New partial view from snippet** offers "Personalised part" and
   "Interactive part", each a working starter saying which to use when.
-- **Preview** has a visitor switch, for a user who can open Members: signed
-  out, or as a member they choose. Each choice is in the audit log.
+- **Preview** has a visitor switch, for anyone who previews (story 443): signed
+  out, or a member of the groups they choose. The page's code sees a stand-in
+  member, "Preview member", whose `roles` are those groups' names, with no
+  username, e-mail or properties and a key (the empty UUID) that is nobody's: a
+  part that looks the member up shows what it would for a member the site does
+  not know, and nothing can be written as it. Preview still shows the page
+  whatever its Public Access; the groups change only what its code sees. Each
+  choice is in the audit log, as `preview as groups` or `preview signed out`.
+  The choice is kept by group key in a cookie signed for that user
+  (`crombolo-preview-member`), so a renamed group still previews and a deleted
+  one is dropped; the live site never reads it.
 
 ## The development loop
 

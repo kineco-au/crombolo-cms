@@ -17,7 +17,7 @@ export default class WorkspaceStatus extends BaseCommand {
       { name: 'conflicts', type: 'integer' },
       { name: 'findings', type: 'integer' },
     ],
-    errors: ['usage', 'auth', 'not_found'],
+    errors: ['usage', 'auth', 'not_found', 'refused'],
   } as const
 
   async run() {

@@ -429,6 +429,7 @@ export async function transferOptions(
       // Stories 404 and 405: what the directory alone writes is not taken from a bundle.
       ...(usersManaged(config) ? { usersManaged: true } : {}),
       ...(groupsManaged(config) ? { groupsManaged: true } : {}),
+      ...(config.members?.source ? { membersElsewhere: config.members.source } : {}),
     },
     under,
     problems: saved.problems,

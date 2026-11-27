@@ -30,6 +30,7 @@ import {
 } from '@crombolo/data'
 import { markPersonal, type SiteMember, type SiteMembers } from '@crombolo/render'
 import { recordAudit } from './adapters/audit.ts'
+import { MANAGED_MEMBER, mayChange } from './managed-members.ts'
 import { apiUserPrincipal, siteWriteScope } from './site-content.ts'
 
 export interface SiteMembersDeps {
@@ -135,6 +136,9 @@ export function createSiteMembers(deps: SiteMembersDeps) {
     const notTheirs = () => Outcome.forbidden('A member reaches their own record only.')
     const isSelf = (who: MembersCaller, key: string) =>
       who.kind === 'member' && normaliseUuid(who.key) === normaliseUuid(key)
+    /** Story 445: a member a directory keeps is changed only by a request its client signed. */
+    const keptOutside = (who: MembersCaller, member: MemberCredentials) =>
+      !mayChange(member, who.kind === 'user' ? who.principal : undefined)
 
     /** A write's caller: only in a route, an action, a job, an event or a back-office screen. */
     const writer = async (): Promise<MembersCaller | Outcome<403>> => {
@@ -221,6 +225,7 @@ export function createSiteMembers(deps: SiteMembersDeps) {
         )
       const member = UUID.test(key) ? await members.byKey(key) : undefined
       if (!member) return Outcome.notFound('There is no such member.')
+      if (keptOutside(who, member)) return Outcome.forbidden(MANAGED_MEMBER)
       const keys = await groupKeysByName(db)
       const wanted = names.map((name) => keys.get(lower(name)))
       if (wanted.some((k) => k === undefined))
@@ -290,6 +295,7 @@ export function createSiteMembers(deps: SiteMembersDeps) {
         const member = UUID.test(key) ? await members.byKey(key) : undefined
         const stored = member ? await members.content.byKey(member.key) : undefined
         if (!member || !stored) return Outcome.notFound('There is no such member.')
+        if (keptOutside(who, member)) return Outcome.forbidden(MANAGED_MEMBER)
 
         const errors: FieldError[] = []
         const email = change.email?.trim()
@@ -376,6 +382,7 @@ export function createSiteMembers(deps: SiteMembersDeps) {
         if (who.kind === 'member')
           return Outcome.forbidden('A member cannot delete their account: queue a job that does.')
         const member = UUID.test(key) ? await members.byKey(key) : undefined
+        if (member && keptOutside(who, member)) return Outcome.forbidden(MANAGED_MEMBER)
         if (!member || !(await members.delete(member.key)))
           return Outcome.notFound('There is no such member.')
         await audit(who, 'Delete', member, 'deleted')

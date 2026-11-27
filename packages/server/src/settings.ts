@@ -84,6 +84,15 @@ const DECLARED = [
       'What this process serves: everything, the back office and its API, the public site alone, or only the background jobs. Splitting needs Postgres; a misspelt role stops the server.',
   },
   {
+    env: 'CROMBOLO_SITE_ACCESS',
+    kind: 'enum',
+    values: ['public', 'users'],
+    default: 'public',
+    section: 'Server',
+    description:
+      'Who may see the site: anyone, or only people signed in to its back office, on every node. The site and its back office must be on one host.',
+  },
+  {
     env: 'CROMBOLO_JOBS',
     kind: 'enum',
     values: ['on', 'off'],
@@ -321,6 +330,13 @@ const DECLARED = [
       "The directory's address for one user, with `{email}`, `{key}` or `{userName}` filled in: the Users section links each person there.",
   },
   {
+    env: 'CROMBOLO_MEMBERS_MANAGED_BY',
+    kind: 'list',
+    section: 'Sign-in and secrets',
+    description:
+      'The API clients a directory outside the site provisions members as. A member one of them creates is changed only by it: their name, e-mail, username, approval, groups, properties and removal. Their password and two-factor stay theirs.',
+  },
+  {
     env: 'CROMBOLO_GROUPS_MANAGED_BY',
     kind: 'list',
     section: 'Sign-in and secrets',
@@ -534,12 +550,19 @@ const DECLARED = [
       'Where a workspace is looked at before it is merged: a host with `{workspace}` in it, such as `{workspace}.preview.example.com`, and `{host}` for one of the site’s own hosts. Unset, a workspace is opened in a browser on the site’s own address.',
   },
   {
-    env: 'CROMBOLO_WORKSPACE_LINK_MAX_DAYS',
+    env: 'CROMBOLO_LINK_MAX_DAYS',
     kind: 'number',
-    default: '30',
+    default: '0',
     section: 'Schema',
     description:
-      'The longest a link to a workspace, made for someone to look at it, may last, in days. 0 turns such links off.',
+      'The longest a link made for someone to look at a workspace or at Shared may last, in days. 0 makes no such links.',
+  },
+  {
+    env: 'CROMBOLO_WORKSPACE_LINK_MAX_DAYS',
+    kind: 'number',
+    section: 'Schema',
+    description:
+      'Replaced by CROMBOLO_LINK_MAX_DAYS, and read for this release only where that is unset, with a warning at start-up.',
   },
   {
     env: 'CROMBOLO_WORKSPACE_SITES',
@@ -942,6 +965,34 @@ const DECLARED = [
     default: '5',
     section: 'Members',
     description: 'Failed member sign-ins before the member is locked out. `0` never locks out.',
+  },
+  {
+    env: 'CROMBOLO_MEMBERS_SOURCE',
+    kind: 'string',
+    section: 'Members',
+    description:
+      "The address of the site that holds this site's members, such as `https://www.example.com`. Set, the Members section works on that site's members and this site keeps none: members can't sign in or register here.",
+  },
+  {
+    env: 'CROMBOLO_MEMBERS_CLIENT_ID',
+    kind: 'string',
+    section: 'Members',
+    description:
+      'The client id of the service account on that site this site signs in as. Required with `CROMBOLO_MEMBERS_SOURCE`.',
+  },
+  {
+    env: 'CROMBOLO_MEMBERS_CLIENT_SECRET',
+    kind: 'string',
+    section: 'Members',
+    description: "That service account's secret.",
+    secret: true,
+  },
+  {
+    env: 'CROMBOLO_MEMBERS_ACTORS_FROM',
+    kind: 'list',
+    section: 'Members',
+    description:
+      'On the site that holds the members: the service accounts, by client id, trusted to say who they act for. A member change through one is recorded in the audit as made by that person, through the account.',
   },
 
   // Public site

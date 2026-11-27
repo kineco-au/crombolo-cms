@@ -436,6 +436,28 @@ export class AuthService {
   }
 
   /**
+   * Whose live session a refresh token belongs to, checked as an access token is
+   * and never rotated (story 446): reading it extends nothing and ends nothing.
+   */
+  async resolveRefreshToken(
+    refreshToken: string,
+    now = new Date(),
+  ): Promise<{ userId: number; sessionId: string } | undefined> {
+    const token = await this.#store.findToken(refreshToken, 'refresh')
+    if (!token || token.revokedAt || token.expiresAt.getTime() < now.getTime()) return undefined
+    if (!(await this.#store.findSession(token.sessionId))) return undefined
+    const user = await this.#activeUser(token.userId)
+    return user && { userId: user.id, sessionId: token.sessionId }
+  }
+
+  /** An open session's user, while they may still sign in; read only. */
+  async resolveActiveSession(sessionId: string): Promise<{ userId: number } | undefined> {
+    const session = await this.#store.findSession(sessionId)
+    const user = session && (await this.#activeUser(session.userId))
+    return user ? { userId: user.id } : undefined
+  }
+
+  /**
    * Who a user is and what they may do now, outside any session: for a
    * credential that acts for them, such as a preview token. Undefined once they
    * are locked out or not approved.

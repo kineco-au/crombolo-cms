@@ -57,6 +57,7 @@ import {
   installDatabase,
   MediaFileStore,
   mediaStoreFor,
+  membersNotHere,
   pendingTablesSteps,
   planTablesUpgrades,
   type ReplaceMode,
@@ -317,6 +318,8 @@ export async function contentExport(
     throw new CommandError(`"${requested}" is not a package name npm accepts.`)
   const content = input.content ?? 'omitted'
   const withPeople = Boolean(input.withMembers || input.withUsers)
+  if (input.withMembers && config.members?.source)
+    throw new CommandError(membersNotHere(config.members.source))
   if ((content === 'sealed' || withPeople) && !input.passphrase)
     throw new CommandError('An encrypted export needs a passphrase.')
   if (input.withBlobs && content === 'omitted')

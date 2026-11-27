@@ -17,7 +17,7 @@ export default class WorkspaceDiscard extends BaseCommand {
     cardinality: 'single',
     confirmationBypassArg: '--yes',
     outputFields: [whereField, { name: 'discarded', type: 'boolean' }],
-    errors: ['usage', 'auth', 'not_found', 'confirmation_required'],
+    errors: ['usage', 'auth', 'not_found', 'refused', 'confirmation_required'],
   } as const
 
   async run() {

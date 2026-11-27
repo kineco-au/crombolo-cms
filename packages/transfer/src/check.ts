@@ -209,6 +209,8 @@ export interface CheckOptions {
   usersManaged?: boolean
   /** Story 405: the site's user groups are defined outside it, so a bundle carrying one is refused. */
   groupsManaged?: boolean
+  /** Story 444: another site holds the members, by its address, so a bundle carrying any is refused. */
+  membersElsewhere?: string
 }
 
 /** What the import would do to one node. */
@@ -999,6 +1001,14 @@ export async function checkBundle(
     managedRefusal(
       'users-managed',
       "This site's users are managed outside it, so the bundle's users cannot be applied: leave its people out (--exclude-people).",
+    )
+  if (
+    options.membersElsewhere &&
+    (carriedPeople?.members.length ?? 0) + (carriedPeople?.memberGroups.length ?? 0) > 0
+  )
+    managedRefusal(
+      'members-elsewhere',
+      `This site's members are kept at ${options.membersElsewhere}, so the bundle's members and member groups cannot be applied: leave its people out (--exclude-people).`,
     )
   if (options.groupsManaged && (carriedPeople?.userGroups.length ?? 0) > 0)
     managedRefusal(

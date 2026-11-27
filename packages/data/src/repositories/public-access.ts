@@ -121,6 +121,28 @@ export class PublicAccessRepository {
     })
   }
 
+  /** Story 444: each Shared page's own entry whose rule names this member group. */
+  async namingGroup(name: string): Promise<PublicAccessEntry[]> {
+    const ids = await this.#db.q
+      .selectFrom('public_access_rule')
+      .select('public_access_id')
+      .where('rule_type', '=', MEMBER_GROUP_RULE)
+      .where('rule_value', '=', name)
+      .execute()
+    if (ids.length === 0) return []
+    const rows = await entries(this.#db)
+      .where(
+        'a.id',
+        'in',
+        ids.map((row) => Number(row.public_access_id)),
+      )
+      .where('n.workspace_id', 'is', null)
+      .execute()
+    const found: PublicAccessEntry[] = []
+    for (const row of rows) found.push(await this.#hydrate(row))
+    return found
+  }
+
   /** The entry protecting this page itself, if any. */
   async byNodeKey(nodeKey: string): Promise<PublicAccessEntry | undefined> {
     const row = await entries(this.#db)

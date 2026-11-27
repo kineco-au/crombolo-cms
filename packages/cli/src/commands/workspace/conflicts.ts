@@ -14,7 +14,7 @@ export default class WorkspaceConflicts extends BaseCommand {
     cardinality: 'bounded',
     outputFields: [whereField, { name: 'items', type: 'array', items: { type: 'object' } }],
     outcomes: ['conflicts_found'],
-    errors: ['usage', 'auth', 'not_found'],
+    errors: ['usage', 'auth', 'not_found', 'refused'],
   } as const
 
   async run() {

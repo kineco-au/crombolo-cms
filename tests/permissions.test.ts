@@ -219,6 +219,8 @@ describe('the media verbs (story 088)', () => {
       'AddServiceAccountSecrets',
       'AddMemberPasswordReset',
       'RenameWebhookEvents',
+      'AddMemberManager',
+      'AddSharedLinks',
     ])
     const held = async (key: string) =>
       (

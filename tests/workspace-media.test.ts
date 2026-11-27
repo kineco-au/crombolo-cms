@@ -80,6 +80,7 @@ async function site(options: { components?: number } = {}) {
       componentsCacheDir: join(root, '.cache', 'components'),
       mediaDir: join(root, 'media'),
       workspacesHost: '{workspace}.preview.test',
+      links: { maxDays: 30 },
       schemaWritable: true,
       workspaces: true,
     },

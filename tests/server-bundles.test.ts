@@ -729,7 +729,9 @@ describe('nothing mounts a bundle except the site’s own configuration', () => 
     // which a public node never calls. Member and public routes are the site's.
     const server = read('packages/server/src/server.ts')
     const backOffice = server.slice(server.indexOf('async function serveBackOffice('))
-    expect(backOffice).toContain('bundles.handle(request, url, principal, siteRoutes.invoke)')
+    expect(backOffice).toContain(
+      'bundles.handle(forSite(request), url, principal, siteRoutes.invoke)',
+    )
     expect(server.match(/bundles\.handle\(/g)).toHaveLength(1)
     expect(server).toMatch(/if \(servesBackOffice\) \{\s*const response = await serveBackOffice\(/)
   })

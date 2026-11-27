@@ -156,6 +156,7 @@ export async function exportSite(
   const carryMembers = Boolean(options.withMembers)
   // Anonymised users are removed, so there are none to carry.
   const carryUsers = Boolean(options.withUsers) && !options.anonymise
+  if (carryMembers && config.members?.source) throw new Error(membersNotHere(config.members.source))
   if ((carryMembers || carryUsers) && !options.passphrase)
     throw new Error('Members and users travel sealed: give a passphrase.')
   if (options.withSiteData && !options.passphrase)
@@ -385,3 +386,7 @@ export async function exportSite(
       : {}),
   }
 }
+
+/** Story 444: why `--with-members` is refused on a site whose members another site holds. Pure. */
+export const membersNotHere = (source: string) =>
+  `This site holds no members: they are kept at ${source}. Leave out --with-members, or export that site.`

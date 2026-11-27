@@ -98,7 +98,14 @@ import { type EmailPort, emailReady, resolveEmailPort } from './email.ts'
 import { createFileIntake } from './file-intake.ts'
 import { createLogViewerPort } from './log-viewer.ts'
 import { logger } from './logging.ts'
+import { managedMemberPort } from './managed-members.ts'
 import { MediaFileStore } from './media-files.ts'
+import {
+  createRemoteMemberGroupPort,
+  createRemoteMemberPort,
+  type MembersSource,
+  rulesFollowRenames,
+} from './members-remote.ts'
 import { createModelsBuilderPort } from './models-builder.ts'
 import { createNodeOperations, type NodeOperations } from './node-operations.ts'
 import { createOEmbedService } from './oembed.ts'
@@ -453,6 +460,8 @@ export interface DepsOptions {
   notifier?: ContentNotifier
   /** The node's document and media operations, when it has built them already. */
   operations?: NodeOperations
+  /** Story 444: the site that holds this site's members, when `members.source` is set. */
+  membersSource?: MembersSource
 }
 
 function createTemporaryFilePort(files: MediaFileStore): TemporaryFilePort {
@@ -697,8 +706,7 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     )
     deps.logViewer = createLogViewerPort(options.db, options.config)
     deps.modelsBuilder = createModelsBuilderPort(options.config)
-    deps.memberGroups = createMemberGroupPort(options.db)
-    deps.members = createMemberPort(options.db, {
+    const ownMembers = createMemberPort(options.db, {
       nodeState: options.schema?.nodeState,
       nodeId: options.schema?.nodeId,
       valueIntake,
@@ -706,9 +714,26 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
         options.config.deliveryApi,
       ).memberAuthorization.clientCredentialsFlow.associatedMembers.map((m) => m.userName),
     })
+    const elsewhere = options.membersSource
+    if (elsewhere) {
+      // Story 444: another site holds the members; this one keeps none.
+      deps.memberGroups = createRemoteMemberGroupPort(elsewhere.client, {
+        renames: rulesFollowRenames(options.db, () => operations?.documents),
+        onChange: () => elsewhere.forgetGroups(),
+      })
+      deps.members = createRemoteMemberPort(elsewhere.client, { validate: ownMembers.validate })
+    } else {
+      deps.memberGroups = createMemberGroupPort(options.db)
+      deps.members = managedMemberPort(
+        options.db,
+        ownMembers,
+        options.config.members?.managedBy ?? [],
+      )
+    }
     deps.publicAccess = createPublicAccessPort(options.db, {
       nodeId: options.schema?.nodeId,
       onChange: () => options.cache?.invalidate(),
+      ...(elsewhere ? { named: remoteNames(elsewhere) } : {}),
     })
     const elementOptions = {
       nodeState: options.schema?.nodeState,
@@ -828,6 +853,27 @@ export function createDeps(options: DepsOptions): ManagementApiDeps {
     }
   }
   return deps
+}
+
+/** Story 444: a rule's names, as the site that holds the members knows them. */
+function remoteNames(source: MembersSource) {
+  return {
+    async groups(names: readonly string[]) {
+      const byName = new Map((await source.groups()).map((g) => [g.name, g]))
+      return names.flatMap((name) => {
+        const group = byName.get(name)
+        return group ? [{ id: group.key, name: group.name, flags: [] }] : []
+      })
+    },
+    async members(usernames: readonly string[]) {
+      const keys: string[] = []
+      for (const username of usernames) {
+        const member = await source.members.byUsername(username)
+        if (member) keys.push(member.id)
+      }
+      return source.members.items(keys)
+    },
+  }
 }
 
 /** The user operations' view of two-factor sign-in: the one authenticator provider. */

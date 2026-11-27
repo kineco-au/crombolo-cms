@@ -11,6 +11,32 @@ import { test as base, expect, type Page } from '@playwright/test'
 const OURS = /^\/(crombolo|umbraco)\//
 
 export const BROWSER_ADMIN = { login: 'admin@crombolo.local', password: 'browser-suite-password' }
+/** Story 445: the API client the suite's server keeps members for. */
+export const MEMBER_DIRECTORY = {
+  id: 'crombolo-back-office-member-directory',
+  secret: 'a-member-directory-secret',
+}
+
+/** Story 444: the service account a second site signs in to the suite's server as, for its members. */
+export const MEMBERS_CONTENT_SITE = {
+  id: 'crombolo-back-office-content-site',
+  secret: 'a-content-site-secret',
+}
+
+/**
+ * Story 444: the second site `serve.ts` boots, whose members the suite's server holds.
+ * At 127.0.0.1, not localhost, so its sign-in cookies are its own: cookies ignore the port.
+ */
+export const CONTENT_SITE_URL = `http://127.0.0.1:${Number(process.env.CROMBOLO_BROWSER_PORT ?? 3210) + 1}`
+
+/**
+ * Story 446: a third site `serve.ts` boots, open only to its back-office users. On
+ * 127.0.0.1 beside the content site, its cookies kept apart by its own site name.
+ */
+export const CLOSED_SITE_URL = `http://127.0.0.1:${Number(process.env.CROMBOLO_BROWSER_PORT ?? 3210) + 2}`
+
+/** The closed site's published home page, which `serve.ts` makes. */
+export const CLOSED_SITE_HOME = 'Closed home'
 
 /** An element type `serve.ts` writes with no library flag, for the workspace hint. */
 export const BLOCK_ONLY_ELEMENT_TYPE = '7c4b1f0e-2a5d-4e8b-9f31-6d2c8a0b5e17'
@@ -30,6 +56,8 @@ const UPSTREAM_BY_DESIGN = [
   'No refresh token was presented',
   '[UmbAuthClient] Token request failed: 400 Bad Request',
   'status of 400 (Bad Request) (http://localhost:',
+  // The same refresh on the second site's own sign-in, at 127.0.0.1 so its cookies are its own.
+  `status of 400 (Bad Request) (${CONTENT_SITE_URL}/crombolo/management/api/v1/security/back-office/token)`,
   // Logged by the back office, not thrown, when a screen is left before a context it
   // asked for arrives: leaving one quickly is ordinary, on a fast runner most of all.
   'Context request was cancelled, host was disconnected',

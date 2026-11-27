@@ -70,6 +70,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_SITE_NAME` | string | `Crombolo` | The site's name, shown in the back office and used when a page is shared. |
 | `CROMBOLO_APPLICATION_URL` | string | `http://localhost:<port>` | The site's public address, which invitation and password-reset links point at. |
 | `CROMBOLO_ROLE` | `all`, `api`, `web`, `worker` | `all` | What this process serves: everything, the back office and its API, the public site alone, or only the background jobs. Splitting needs Postgres; a misspelt role stops the server. |
+| `CROMBOLO_SITE_ACCESS` | `public`, `users` | `public` | Who may see the site: anyone, or only people signed in to its back office, on every node. The site and its back office must be on one host. |
 | `CROMBOLO_JOBS` | `on`, `off` | `on` | Whether an all or api node runs the background jobs. Off leaves them to a worker; the node still queues them. |
 | `CROMBOLO_NODE_ID` | string | `host:pid` | This node's name, stamped on schema syncs, content changes and the upgrade history. |
 | `CROMBOLO_MAX_REQUEST_BODY_MB` | number | `32` | The largest request body the server reads, media uploads included. |
@@ -110,6 +111,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_USERNAME_IS_EMAIL` | `true` / `false` | `true` | A back office user's login is their e-mail address. |
 | `CROMBOLO_USERS_MANAGED_BY` | list | — | The API clients a directory outside the site signs in as. Set, only they add, change, disable or remove back office users or change whom a group holds; each person keeps their own language, avatar, password and two-factor. |
 | `CROMBOLO_USERS_MANAGED_AT` | string | — | The directory's address for one user, with `{email}`, `{key}` or `{userName}` filled in: the Users section links each person there. |
+| `CROMBOLO_MEMBERS_MANAGED_BY` | list | — | The API clients a directory outside the site provisions members as. A member one of them creates is changed only by it: their name, e-mail, username, approval, groups, properties and removal. Their password and two-factor stay theirs. |
 | `CROMBOLO_GROUPS_MANAGED_BY` | list | — | The API clients that define the user groups, outside the site. Set, only they create, change or remove a group: its name, sections, levels, start nodes, languages and per-item permissions. |
 | `CROMBOLO_GROUPS_MANAGED_AT` | string | — | Where one group is defined, with `{alias}` or `{key}` filled in: the User Groups section links each group there. |
 
@@ -148,7 +150,8 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_WORKSPACES` | `true` / `false` | `true` | Whether people may open workspaces, to change pages apart from what everyone else sees and look after them there. On unless set to false; off, every workspace route is refused, and nothing else changes. |
 | `CROMBOLO_PURGE_AFTER_DAYS` | number | `0` | The fewest days between removing a property from a type and deleting its values for good. A purge sooner than that is refused. |
 | `CROMBOLO_WORKSPACES_HOST` | string | — | Where a workspace is looked at before it is merged: a host with `{workspace}` in it, such as `{workspace}.preview.example.com`, and `{host}` for one of the site’s own hosts. Unset, a workspace is opened in a browser on the site’s own address. |
-| `CROMBOLO_WORKSPACE_LINK_MAX_DAYS` | number | `30` | The longest a link to a workspace, made for someone to look at it, may last, in days. 0 turns such links off. |
+| `CROMBOLO_LINK_MAX_DAYS` | number | `0` | The longest a link made for someone to look at a workspace or at Shared may last, in days. 0 makes no such links. |
+| `CROMBOLO_WORKSPACE_LINK_MAX_DAYS` | number | — | Replaced by CROMBOLO_LINK_MAX_DAYS, and read for this release only where that is unset, with a warning at start-up. |
 | `CROMBOLO_WORKSPACE_SITES` | number | `3` | How many workspaces one server keeps ready to be looked at at once. |
 | `CROMBOLO_WORKSPACE_SITE_IDLE_MINUTES` | number | `15` | How long a workspace is kept ready after the last time it was looked at. |
 | `CROMBOLO_WORKSPACE_PROCESSES` | number | `10` | How many workspaces with changed templates one server shows at once, each kept apart from the site. Past it, the one least recently looked at is stopped, and started again when next asked for. |
@@ -224,6 +227,10 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_MEMBER_REGISTRATION_GROUPS` | list | — | The member groups a registration joins, separated by commas. |
 | `CROMBOLO_MEMBER_SESSION_MINUTES` | number | `20160` | How long a member's sign-in lasts, in minutes. The default is 14 days. |
 | `CROMBOLO_MAX_FAILED_PASSWORD_ATTEMPTS` | number | `5` | Failed member sign-ins before the member is locked out. `0` never locks out. |
+| `CROMBOLO_MEMBERS_SOURCE` | string | — | The address of the site that holds this site's members, such as `https://www.example.com`. Set, the Members section works on that site's members and this site keeps none: members can't sign in or register here. |
+| `CROMBOLO_MEMBERS_CLIENT_ID` | string | — | The client id of the service account on that site this site signs in as. Required with `CROMBOLO_MEMBERS_SOURCE`. |
+| `CROMBOLO_MEMBERS_CLIENT_SECRET` | string | — | That service account's secret. Kept secret: never printed. |
+| `CROMBOLO_MEMBERS_ACTORS_FROM` | list | — | On the site that holds the members: the service accounts, by client id, trusted to say who they act for. A member change through one is recorded in the audit as made by that person, through the account. |
 
 ### Public site
 
@@ -447,8 +454,8 @@ This line is what lets it answer a request.
 
 ## Service accounts the config names
 
-`content.actAs`, `members.actAs`, `users.managedBy` and `groups.managedBy` each name an API
-client. Settings → Service accounts (story 433) shows each account with what these make it
+`content.actAs`, `members.actAs`, `members.managedBy`, `members.actorsFrom`,
+`users.managedBy` and `groups.managedBy` each name an API client. Settings → Service accounts (story 433) shows each account with what these make it
 used for, and asks before anything they name is disabled, deleted or loses its client id.
 Make the account and its client id there, then name the client id here.
 
@@ -528,6 +535,158 @@ read at boot. Either setting may be on without the other.
   `<plugin>/api/users-managed?group=<key>` lists the trees still waiting.
 - **A bundle carrying a group's definition is refused** at its check (`groups-managed`),
   as a change carrying one is; `--exclude-people` leaves its people out.
+
+## Members managed from outside the site
+
+A site whose members are kept in a directory, as well as signing up on the site, names
+the API clients that directory provisions members as (story 445):
+
+```ts
+export default defineConfig({
+  members: { managedBy: ['crombolo-back-office-directory'] },
+})
+```
+
+or `CROMBOLO_MEMBERS_MANAGED_BY` (client ids, separated by commas). The config file's
+list wins over the variable.
+
+- **A member one of those clients creates remembers it as their manager**
+  (`member.managed_by`, `managedBy` in the Management API's member, with the name of the
+  API user the client signs in as). Members made by any other client, by
+  `members.actAs`, by sign-up or by an external sign-in have none, and nor does any
+  member from before the setting: nothing takes a member on.
+- **Only the manager changes them:** their name, e-mail, username, approval, groups,
+  member-type properties, and whether they exist. Everyone else is refused,
+  administrators included, with "This member comes from a directory outside the site:
+  change them there." (403, `operationStatus: ManagedOutside`), in the back office, the
+  Management API, the command line, the remote protocol and `site().members` (jobs
+  under `members.actAs` included). The member cannot change their own details through
+  the site either, and an identity provider's sign-in changes neither their groups nor
+  their properties.
+- **Still the member's and the site's:** their password (a reset, or a new one set by
+  an administrator), turning their second factor off, lockout after failed sign-ins and
+  an administrator unlocking them.
+- **Handing a member back:** `DELETE <backoffice>/crombolo/api/members/{key}/manager`,
+  by the manager alone (403 otherwise), clears it and the member is the site's own;
+  audited as `HandBack`. `GET` the same address says who keeps a member, to whoever
+  holds Members.
+- **The Members section** marks each managed member in the list ("Kept by a
+  directory"), and opens them read-only with Save hidden and "Kept by <name>: changes
+  are made there." in its footer.
+
+## Members held by another site
+
+Where content is made on one site and served from another (story 388), the members are
+the serving site's: they sign up, change their details and sign in there. The site where
+content is made names that site, and a service account on it (story 444):
+
+```ts
+export default defineConfig({
+  members: {
+    source: 'https://www.example.com',
+    client: { id: 'crombolo-back-office-content-site', secret: process.env.MEMBERS_SECRET ?? '' },
+  },
+})
+```
+
+or `CROMBOLO_MEMBERS_SOURCE`, `CROMBOLO_MEMBERS_CLIENT_ID` and
+`CROMBOLO_MEMBERS_CLIENT_SECRET`. A source that is not an `http` or `https` address with
+no path, or a source with no client, refuses to boot, saying which.
+
+- **The account** is a service account (story 433) on the serving site with Members; what
+  its groups allow there is what this site may do with its members. This site signs in as
+  it by client credentials, keeps the token until it expires, and calls that site's
+  Management API by the vendored contract (`packages/server/src/members-remote.ts`).
+- **Everything that reaches members through the ports** works on that site's: the Members
+  section, the member and member group pickers, the Management API's member routes, a
+  page's Public Access, preview's groups (story 443) and `site().members`. Nothing is kept
+  here but the group list, for a minute, for rendering and preview. A member a directory
+  keeps there (story 445) is read-only here too.
+- **Public Access stays this site's:** its rules name the serving site's groups and members
+  by name, as Umbraco stores them, and travel with the page. Renaming a group from here
+  rewrites this site's rules naming it, through the content operations, so the next change
+  carries them; the back office first warns how many pages' rules name it
+  (`<backoffice>/crombolo/api/member-groups/{key}/rules`).
+- **This site holds no members or member groups.** Member sign-in, registration, reset,
+  external sign-in and the Delivery API's member routes answer 404; `site export
+  --with-members` is refused with a sentence; a bundle carrying members or member groups is refused at its check
+  (`members-elsewhere`). Member types stay schema, made here and moved with the rest.
+- **The command line and the remote protocol** (story 448) work on the serving site's
+  members too, a `crombolo members …` run on this site's database with no server included:
+  see docs/operations.md, "Members held by another site". The sign-ins panel reads the
+  serving site's `<backoffice>/crombolo/api/members/{key}/sign-ins`, and a reset link is
+  sent from it by `POST <backoffice>/crombolo/api/members/{key}/reset-link`, and
+  `members link` runs there by `POST <backoffice>/crombolo/api/members/link`, each for a
+  principal with Members there.
+- **`site().members`** reads and writes the serving site's members through the same
+  account. A job needs no `members.actAs`: it acts through the account, and is named in
+  that site's audit by what it is (`job imports.nightly`).
+- **While the serving site isn't answering,** the Management API answers 503, "Members are
+  kept at <site>, which isn't answering.", and nothing is written here. The Members section
+  says so, with Try again (`<backoffice>/crombolo/api/members-source`).
+
+**Who acted.** Each write carries `Crombolo-Acting-For: <id>|<name>`, each part
+URI-encoded: the back-office user, or the site's code or job that wrote. The serving site
+records it as the audit's actor ("by Ada, through Content site") only when the caller is a
+service account it lists in `members.actorsFrom` (`CROMBOLO_MEMBERS_ACTORS_FROM`, client
+ids separated by commas); from any other caller the header is ignored, and the account is
+audited as itself. Any service account with Members may manage members, as the Management
+API allows: `actorsFrom` only adds the person's name.
+
+## A site open only to its back-office users
+
+`siteAccess: 'users'` (`CROMBOLO_SITE_ACCESS=users`, story `446`) closes the whole site
+to everyone but people who can sign in to its back office, whatever its pages' own
+Public Access says: an intranet, a staging copy, or the site content is made on before
+it is served elsewhere. `public`, the default, leaves the site as it was.
+
+- **On every role.** A `web` node checks a session as the back office does: sessions are
+  reference tokens in the shared database, so it needs no back office of its own.
+- **What needs a user:** pages, media, the site's routes and actions, form posts, member
+  sign-in pages and routes, search, its scripts, the sitemap, the back office's event hubs and
+  the Delivery API. A user in any group is let in: who may sign in at all is for the
+  back office and its providers to decide.
+- **What doesn't:** the back office's sign-in and its assets, `/health`, `robots.txt`,
+  and everything that checks its own credentials: the Management API, the plugin's API
+  routes and the remote, the token exchange (story `364`) included. The Delivery API
+  with its key (`CROMBOLO_DELIVERY_API_KEY`, sent as `Api-Key`), so a front end holding
+  it still reads it. A workspace's link or hand-off (stories `379`, `415`) and a preview
+  link (`368`), each by its own token: a preview link opens its one page and what that
+  page loads (its stylesheets, scripts, islands and media), and nothing else.
+- **A way to look at Shared** (story `447`, [`workspaces.md`](workspaces.md#shared-story-447)):
+  `open` for `shared`, or a link someone with the Content section made, swapped for a
+  host-only `crombolo-shared` cookie at the site's own address. It lets its holder read
+  the site, its pages, media, routes and the Delivery API, never the back office or the
+  Management API; to write too only where an administrator opened it, or made the link
+  so. A write it doesn't allow is a `401` saying a link only lets them look.
+- **Someone not signed in:** a browser opening an address goes to the back office's
+  sign-in, with `returnUrl` the path and query it asked for (only ever a path on this
+  site), and comes back there signed in. Anything else, an API call or a write, is a
+  `401` with problem details. A browser is a `GET` or `HEAD` with no `Authorization`
+  that navigates (`Sec-Fetch-Mode`), or, without that header, doesn't ask for JSON alone.
+- **The session:** the access token's cookie, else the refresh token's, else the session
+  cookie a sign-in through the login page leaves. The refresh token is read as it
+  stands, never rotated: refreshing would let a page's parallel requests spend a token
+  another of them needs and sign the person out. So reading the site never extends a
+  session, and signing out, an ended session or a disabled user closes it at once. A
+  write that relies on a cookie and comes from another site is refused, as the
+  Management API refuses one.
+- **Every answer** carries `X-Robots-Tag: noindex, nofollow` and `Cache-Control: private`,
+  in place of anything public a page said; `robots.txt` disallows everything.
+- **The same host.** The back office's cookies are host-only (`__Host-`, `Path=/`), so the
+  site and its back office must be served on one host: a proxy that sends the back
+  office's path to an `api` node and the rest to `web` nodes keeps them so. Boot warns
+  when `applicationUrl`'s host isn't among the site's hostnames.
+
+The site's own code never sees the back office's cookies, with either setting: the
+access, refresh, session and two-factor cookies are taken from the request the renderer,
+the views' `headers()` and `cookies()`, the middleware chain, the site's routes and
+actions, and an extension's back-office routes are given.
+
+**One way in.** With `allowLocalLogin: false` and a single back-office identity provider,
+the back office's login goes straight to that provider, keeping the return path, here
+and on a public site alike. A sign-in it refuses, or one that fails, comes back to the
+login screen with its error and Try again, and isn't sent round again.
 
 ## E-mail
 

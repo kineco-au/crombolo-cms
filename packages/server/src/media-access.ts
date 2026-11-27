@@ -59,6 +59,9 @@ export interface MediaAccessDeps {
   nodeId?: string
   /** The folders wired bundles declare (story 198), by bundle name and node path. */
   bundleFolders?(): ReadonlyArray<{ bundle: string; nodePath: string }>
+  /** Story 444: member groups and names from the site that holds the members. */
+  memberGroups?(): Promise<string[]>
+  memberName?(key: string): Promise<string | undefined>
 }
 
 const bearerOf = (request: Request): string | undefined => {
@@ -125,6 +128,8 @@ export function createMediaAccess(deps: MediaAccessDeps) {
     bundleFolders: deps.bundleFolders,
     onChange: deps.onChange,
     nodeId: deps.nodeId,
+    memberGroups: deps.memberGroups,
+    memberName: deps.memberName,
   }
 
   const mayView = async (principal: Principal, node: NodeRow) =>

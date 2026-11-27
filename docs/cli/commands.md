@@ -4961,7 +4961,7 @@ crombolo workspace address <workspace> [--profile <profile>] [--env <env>] [--in
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -4984,7 +4984,7 @@ crombolo workspace check <workspace> [--profile <profile>] [--env <env>] [--incl
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5012,7 +5012,7 @@ crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>] [--
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5022,7 +5022,7 @@ crombolo workspace conflicts <workspace> [--profile <profile>] [--env <env>] [--
 - `where` (string)
 - `items` (array of object)
 
-**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
 
 **Outcomes:** `conflicts_found`.
 
@@ -5036,7 +5036,7 @@ crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--inclu
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5051,7 +5051,7 @@ crombolo workspace diff <workspace> [--profile <profile>] [--env <env>] [--inclu
 - `files` (array of object)
 - `conflicts` (array of object)
 
-**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
 
 ### `crombolo workspace discard`
 
@@ -5063,7 +5063,7 @@ crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--in
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5074,7 +5074,7 @@ crombolo workspace discard <workspace> [--profile <profile>] [--env <env>] [--in
 - `where` (string)
 - `discarded` (boolean)
 
-**Fails with:** `usage`, `internal`, `auth`, `not_found`, `confirmation_required`.
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`, `confirmation_required`.
 
 ### `crombolo workspace errors`
 
@@ -5086,7 +5086,7 @@ crombolo workspace errors <workspace> [--profile <profile>] [--env <env>] [--inc
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5183,7 +5183,7 @@ crombolo workspace pages <workspace> [--profile <profile>] [--env <env>] [--incl
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5237,7 +5237,7 @@ crombolo workspace push <workspace> [--profile <profile>] [--env <env>] [--inclu
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5266,7 +5266,7 @@ crombolo workspace render <workspace> <path> [--profile <profile>] [--env <env>]
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `path` | string | The page’s address on the site. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
@@ -5294,7 +5294,7 @@ crombolo workspace resolve <workspace> <item> [--profile <profile>] [--env <env>
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `item` | string | A page’s part as `conflicts` names it (<key>#<part>), or a file’s path. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
@@ -5322,7 +5322,7 @@ crombolo workspace share <workspace> <people> [--profile <profile>] [--env <env>
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `people` | string | Their emails, separated by commas. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
@@ -5345,7 +5345,7 @@ crombolo workspace status <workspace> [--profile <profile>] [--env <env>] [--inc
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5357,7 +5357,7 @@ crombolo workspace status <workspace> [--profile <profile>] [--env <env>] [--inc
 - `conflicts` (integer)
 - `findings` (integer)
 
-**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
 
 ### `crombolo workspace sync`
 
@@ -5369,7 +5369,7 @@ crombolo workspace sync <workspace> [--profile <profile>] [--env <env>] [--inclu
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |
 | `--include-private` | boolean | An administrator: read a workspace you are not in, a person’s own included. |
@@ -5379,7 +5379,7 @@ crombolo workspace sync <workspace> [--profile <profile>] [--env <env>] [--inclu
 - `where` (string)
 - `conflicts` (array of string)
 
-**Fails with:** `usage`, `internal`, `auth`, `not_found`.
+**Fails with:** `usage`, `internal`, `auth`, `not_found`, `refused`.
 
 ### `crombolo workspace unshare`
 
@@ -5391,7 +5391,7 @@ crombolo workspace unshare <workspace> <people> [--profile <profile>] [--env <en
 
 | Argument | Type | What it is |
 | --- | --- | --- |
-| `workspace` | string | The workspace, by its name or key. Required. |
+| `workspace` | string | The workspace, by its name or key, or shared for what the site holds. Required. |
 | `people` | string | Their emails, separated by commas. Required. |
 | `--profile` | string | A hosted site, by its profile, rather than this folder’s. |
 | `--env` | string | The hosted site’s environment, named whenever --profile is. |

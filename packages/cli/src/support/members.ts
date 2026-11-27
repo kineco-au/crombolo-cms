@@ -12,16 +12,15 @@ import {
   bootstrapDatabase,
   changeMember,
   clearPageAccess,
-  createMemberResetLinks,
   groupsOf,
   listMembers,
-  MemberAdminError,
   type MemberChange,
   type MemberChanged,
   type MemberDetail,
   type MemberGroupInfo,
   type MemberQuery,
   type MemberSummary,
+  memberAdminErrorOf,
   type NewMember,
   newGroup,
   newMember,
@@ -29,10 +28,10 @@ import {
   pageAccess,
   removeGroup,
   removeMember,
+  sendMemberResetLink,
   setPageAccess,
   showMember,
   siteDocumentOperations,
-  siteEmail,
   siteMemberPorts,
 } from '@crombolo/server'
 import { BaseCommand } from '../base.ts'
@@ -79,14 +78,16 @@ const CAPABILITIES = {
   'public-access': 'set who may see a page',
 } as const
 
-const cliError = (error: unknown): unknown =>
-  error instanceof MemberAdminError
+const cliError = (thrown: unknown): unknown => {
+  const error = memberAdminErrorOf(thrown)
+  return error
     ? new CliError(
         error.kind === 'invalid' ? 'refused' : error.kind,
         error.message,
         error.details.length > 0 ? { details: error.details } : undefined,
       )
-    : error
+    : thrown
+}
 
 async function pageKey(db: Db, ref: string): Promise<string> {
   const resolved = await resolveNodeRef(db, [ObjectTypes.Document], ref)
@@ -119,29 +120,19 @@ export async function withMembers<T>(
         change: (ref, change) => changeMember(ports, me(), ref, change),
         remove: (ref) => removeMember(ports, me(), ref),
         async resetLink(ref) {
-          const member = await showMember(ports, me(), ref)
-          const port = await siteEmail(db, config)
-          const outcome = await createMemberResetLinks(db, config, () => port).sendResetLink({
-            key: member.key,
-            name: member.name,
-            email: member.email,
-            username: member.login,
-          })
+          const { member, outcome } = await sendMemberResetLink(ports, me(), ref)
           if ('refused' in outcome) throw resetRefusal(outcome.refused)
-          return {
-            key: member.key,
-            sent: outcome.sent,
-            ...(outcome.sent ? {} : { link: outcome.link }),
-          }
+          return { key: member.key, ...outcome }
         },
         groups: () => groupsOf(ports),
-        newGroup: (name) => newGroup(ports, name),
-        removeGroup: (name, confirmed) => removeGroup(ports, name, confirmed),
+        newGroup: (name) => newGroup(ports, name, me()),
+        removeGroup: (name, confirmed) => removeGroup(ports, name, confirmed, me()),
         page: (ref) => pageKey(db, ref),
-        access: (page) => pageAccess(db, page),
+        access: (page) => pageAccess(ports, page),
         setAccess: async (page, input) =>
           setPageAccess(ports, await operations(), commandActor(), page, input),
-        clearAccess: async (page) => clearPageAccess(db, await operations(), commandActor(), page),
+        clearAccess: async (page) =>
+          clearPageAccess(ports, await operations(), commandActor(), page),
       })
     } finally {
       await db.close()

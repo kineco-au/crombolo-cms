@@ -34,6 +34,9 @@ export interface WorkSite {
   close(): Promise<void>
 }
 
+/** Shared's key, which the workspace routes answer it by and no workspace has. */
+export const SHARED = 'shared'
+
 const whereOf = (site: string, environment: string) => (workspace?: string) =>
   `${site} › ${environment} ${workspace ? `› workspace ${workspace}` : '(shared)'}`
 
@@ -159,16 +162,20 @@ export async function workSite(flags: ProfileFlagValues): Promise<WorkSite> {
   }
 }
 
-/** A workspace by its name or key, among those this person may use there. */
+/**
+ * A workspace by its name or key, among those this person may use there; `shared`, Shared
+ * itself, whose routes answer under that key (story 447).
+ */
 export async function workspaceNamed(
   site: WorkSite,
   name: string,
 ): Promise<{ key: string; name: string }> {
+  if (name.toLowerCase() === SHARED) return { key: SHARED, name: 'Shared' }
   const { items } = await site.json<{ items: Array<{ key: string; name: string; state: string }> }>(
     'GET',
     'workspaces',
   )
-  const open = items.filter((w) => w.state === 'open')
+  const open = items.filter((w) => w.state === 'open' && w.key !== SHARED)
   const found =
     open.find((w) => w.key === name.toLowerCase()) ??
     open.find((w) => w.name.toLowerCase() === name.toLowerCase())

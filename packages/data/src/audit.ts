@@ -202,6 +202,11 @@ export interface AuditContext {
   token?: { userKey: string; name: string }
   /** A person acting through a token exchanged at the remote (story 364), by the provider's name. */
   exchange?: { userKey: string; provider: string; actor?: AuditActor }
+  /**
+   * Story 444: a service account trusted to say whom it acts for (`members.actorsFrom`),
+   * by the account's name, and the person or code it named.
+   */
+  actingFor?: { userKey: string; account: string; actor: AuditActor }
 }
 
 const contexts = new AsyncLocalStorage<AuditContext>()
@@ -239,6 +244,9 @@ export function detailInContext(
     context.exchange?.userKey === who
       ? `signed in through ${context.exchange.provider}${byActor(context.exchange.actor)}`
       : undefined,
+    context.actingFor?.userKey === who
+      ? `by ${context.actingFor.actor.name ?? context.actingFor.actor.id}, through ${context.actingFor.account}`
+      : undefined,
   ].filter((note): note is string => note !== undefined)
   if (notes.length === 0) return entry.detail
   const note = notes.join(', ')
@@ -255,9 +263,12 @@ function actorInContext(
   context = currentAuditContext(),
 ): AuditActor | null {
   if (entry.actor) return entry.actor
+  if (!entry.userKey || !UUID.test(entry.userKey)) return null
+  const who = normaliseUuid(entry.userKey)
+  if (context?.actingFor?.userKey === who) return context.actingFor.actor
   const actor = context?.exchange?.actor
-  if (!actor || !entry.userKey || !UUID.test(entry.userKey)) return null
-  return context?.exchange?.userKey === normaliseUuid(entry.userKey) ? actor : null
+  if (!actor) return null
+  return context?.exchange?.userKey === who ? actor : null
 }
 
 export class AuditLog {

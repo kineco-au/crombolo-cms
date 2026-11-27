@@ -76,7 +76,7 @@ import type { EmailPort } from './email.ts'
 import { MediaFileStore, mediaStoreFor } from './media-files.ts'
 import { type MediaStore, streamOf } from './media-store.ts'
 import { siteMemberPorts } from './member-admin.ts'
-import { createMemberResetLinks } from './member-reset.ts'
+import type { MembersSource } from './members-remote.ts'
 import { describeProvenance, provenanceProblem, verifyProvenance } from './provenance.ts'
 import { createBackgroundJobRoutes } from './remote-background-jobs.ts'
 import {
@@ -137,6 +137,8 @@ export interface RemoteOptions {
   nodeState?: MemberPortOptions['nodeState']
   /** Story 282: the site's e-mail, for a member's reset link. */
   email?: () => EmailPort | undefined
+  /** Story 448: the client for the site that holds the members, when another does (story 444). */
+  membersSource?: MembersSource
   /** The server's own user ports, as the Users section uses them; absent, made over the database. */
   userPorts?: () => Pick<UserPorts, 'users' | 'groups'> | undefined
   /** When this node began waiting for a background worker that is not running (story 223), or null. */
@@ -377,12 +379,16 @@ export function createRemote(options: RemoteOptions): Remote {
 
   const memberRoutes = createMemberRoutes({
     db,
-    ports: () => siteMemberPorts(db, config, options.nodeState),
+    ports: () =>
+      siteMemberPorts(db, config, {
+        nodeState: options.nodeState,
+        email: () => options.email?.(),
+        source: options.membersSource,
+      }),
     operations: options.operations?.documents,
     problem,
     levelRefusal: () =>
       atLeast('content') ? undefined : notAtLevel('content', 'changes to members or pages'),
-    resetLinks: createMemberResetLinks(db, config, () => options.email?.()),
   })
 
   const backgroundJobRoutes = createBackgroundJobRoutes({

@@ -22,6 +22,9 @@ import { WorkspaceFileRepository } from './workspace-files.ts'
 
 /** A change staged in a workspace (story 383), with the schedules its merge sets (story 395). */
 /** How lately a workspace changed a page for someone else opening it to be told. */
+/** Story 447: the key the workspace routes answer Shared by, which no workspace has. */
+export const SHARED_WORKSPACE_KEY = 'shared'
+
 export const TOUCHED_WITHIN_MS = 7 * 24 * 60 * 60 * 1000
 
 export interface StagedChange {
@@ -124,6 +127,7 @@ export class WorkspaceRepository {
     quiet?: boolean
   }): Promise<Workspace> {
     const key = normaliseUuid(crypto.randomUUID())
+    if (key === SHARED_WORKSPACE_KEY) throw new Error('No workspace may have the key of Shared.')
     const now = DbDate.toDb(new Date())
     await this.#db.q
       .insertInto('workspace')
@@ -165,6 +169,7 @@ export class WorkspaceRepository {
   }
 
   async byKey(key: string): Promise<Workspace | undefined> {
+    if (normaliseUuid(key) === SHARED_WORKSPACE_KEY) return undefined
     const rows = await this.#db.q
       .selectFrom('workspace')
       .selectAll()

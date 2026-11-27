@@ -15,7 +15,14 @@ import { join } from 'node:path'
 import { packageInRoot, prepareRoot, recordExtension } from '@crombolo/backoffice-host'
 import { DEFAULT_DATA_TYPES, UserGroupRepository } from '@crombolo/data'
 import { createServer, loadConfig, VERSION } from '@crombolo/server'
-import { BLOCK_ONLY_ELEMENT_TYPE, BROWSER_ADMIN } from './fixtures.ts'
+import { signIn, V1 } from '../support/harness.ts'
+import {
+  BLOCK_ONLY_ELEMENT_TYPE,
+  BROWSER_ADMIN,
+  CLOSED_SITE_HOME,
+  MEMBER_DIRECTORY,
+  MEMBERS_CONTENT_SITE,
+} from './fixtures.ts'
 
 const repo = join(import.meta.dir, '../..')
 mkdirSync(join(repo, 'output'), { recursive: true })
@@ -393,6 +400,9 @@ const server = await createServer(
       allowPasswordReset: true,
       // Story 384: the workspace switch, at the head of Content; Shared is as before until one is chosen.
       workspaces: true,
+      // Story 445: members this client creates are kept by it; members-managed.browser.ts makes it.
+      // Story 444: the second site below says who acted; members-elsewhere.browser.ts makes its account.
+      members: { managedBy: [MEMBER_DIRECTORY.id], actorsFrom: [MEMBERS_CONTENT_SITE.id] },
       // Seals the site's own signing key, which Trusted signers lists (story 316).
       secretKey: 'browser-suite-secret-key-that-is-long-enough-0123',
       backoffice: {
@@ -454,8 +464,86 @@ const server = await createServer(
 Bun.serve(server.serveOptions)
 console.log(`browser suite server on http://localhost:${port} (site ${root})`)
 
+// Story 444: a second site, content made here and members held by the suite's server.
+const contentRoot = mkdtempSync(join(repo, 'output', 'browser-site-'))
+cpSync(join(repo, 'apps/site/schema'), join(contentRoot, 'schema'), { recursive: true })
+cpSync(join(repo, 'apps/site/components'), join(contentRoot, 'components'), { recursive: true })
+const contentSite = await createServer(
+  loadConfig(
+    {
+      port: port + 1,
+      sqliteFile: join(contentRoot, 'site.sqlite'),
+      schemaDir: join(contentRoot, 'schema'),
+      componentsDir: join(contentRoot, 'components'),
+      mediaDir: join(contentRoot, 'media'),
+      adminLogin: BROWSER_ADMIN.login,
+      adminPassword: BROWSER_ADMIN.password,
+      development: true,
+      immutableAssets: true,
+      members: { source: `http://localhost:${port}`, client: MEMBERS_CONTENT_SITE },
+    },
+    contentRoot,
+  ),
+)
+Bun.serve(contentSite.serveOptions)
+console.log(`its content site on http://127.0.0.1:${port + 1} (site ${contentRoot})`)
+
+// Story 446: a third, open only to its back-office users; site-access.browser.ts signs in to it.
+const closedRoot = mkdtempSync(join(repo, 'output', 'browser-site-'))
+cpSync(join(repo, 'apps/site/schema'), join(closedRoot, 'schema'), { recursive: true })
+cpSync(join(repo, 'apps/site/components'), join(closedRoot, 'components'), { recursive: true })
+const closedSite = await createServer(
+  loadConfig(
+    {
+      port: port + 2,
+      siteName: 'Closed',
+      siteAccess: 'users',
+      sqliteFile: join(closedRoot, 'site.sqlite'),
+      schemaDir: join(closedRoot, 'schema'),
+      componentsDir: join(closedRoot, 'components'),
+      mediaDir: join(closedRoot, 'media'),
+      adminLogin: BROWSER_ADMIN.login,
+      adminPassword: BROWSER_ADMIN.password,
+      development: true,
+      immutableAssets: true,
+    },
+    closedRoot,
+  ),
+)
+// A published home page, so a visitor signed in is brought back to a page the site shows.
+{
+  const admin = await signIn(closedSite, {
+    username: BROWSER_ADMIN.login,
+    password: BROWSER_ADMIN.password,
+  })
+  const types = await admin.json<{ items: Array<{ id: string; name: string }> }>(
+    `${V1}/document-type/allowed-at-root?skip=0&take=10`,
+  )
+  const home = types.items.find((t) => t.name === 'Home Page') as { id: string }
+  const { defaultTemplate } = await admin.json<{ defaultTemplate: { id: string } | null }>(
+    `${V1}/document-type/${home.id}`,
+  )
+  const created = await admin.post(`${V1}/document`, {
+    documentType: { id: home.id },
+    template: defaultTemplate,
+    parent: null,
+    values: [{ alias: 'title', culture: null, segment: null, value: CLOSED_SITE_HOME }],
+    variants: [{ culture: null, segment: null, name: CLOSED_SITE_HOME }],
+  })
+  const key = created.headers.get('umb-generated-resource')
+  const published = await admin.put(`${V1}/document/${key}/publish`, { publishSchedules: [] })
+  if (created.status !== 201 || published.status !== 200)
+    throw new Error(`The closed site's home page was not published: ${await published.text()}`)
+}
+Bun.serve(closedSite.serveOptions)
+console.log(`its closed site on http://127.0.0.1:${port + 2} (site ${closedRoot})`)
+
 const stop = async () => {
+  await closedSite.close()
+  await contentSite.close()
   await server.close()
+  rmSync(contentRoot, { recursive: true, force: true })
+  rmSync(closedRoot, { recursive: true, force: true })
   rmSync(root, { recursive: true, force: true })
   process.exit(0)
 }

@@ -2,7 +2,7 @@
   "$schema": "../../backoffice-dist/dist/umbraco-package-schema.json",
   "name": "Crombolo",
   "id": "Crombolo.Core",
-  "version": "0.82.0",
+  "version": "0.83.0",
   "allowPublicAccess": false,
   "extensions": [
     {
@@ -190,6 +190,18 @@
       "alias": "Crombolo.EntryPoint.UsersManaged",
       "name": "Crombolo Users Managed",
       "js": "/crombolo-plugin/users-managed.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.MembersManaged",
+      "name": "Crombolo Members Managed",
+      "js": "/crombolo-plugin/members-managed.js"
+    },
+    {
+      "type": "backofficeEntryPoint",
+      "alias": "Crombolo.EntryPoint.MembersSource",
+      "name": "Crombolo Members Source",
+      "js": "/crombolo-plugin/members-source.js"
     },
     {
       "type": "backofficeEntryPoint",

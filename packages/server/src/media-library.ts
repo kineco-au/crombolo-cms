@@ -663,6 +663,9 @@ export interface MediaAccessContext {
   onChange?(key: string): void | Promise<void>
   /** This server's name, on the cache instruction an item's change appends. */
   nodeId?: string
+  /** Story 444: the member groups by name, and a creator's name, when another site holds the members. */
+  memberGroups?(): Promise<string[]>
+  memberName?(key: string): Promise<string | undefined>
 }
 
 /** A rule as the back office sends and shows it. */
@@ -729,9 +732,11 @@ export async function describeMediaAccess(context: MediaAccessContext, key: stri
     .where('node_id', '=', node.id)
     .execute()
   const from = inherited ? await nodes.byKey(inherited.nodeKey) : undefined
-  const creator = item.creatorMemberKey
-    ? await new MemberRepository(db).byKey(item.creatorMemberKey)
-    : undefined
+  const creatorName = !item.creatorMemberKey
+    ? undefined
+    : context.memberName
+      ? await context.memberName(item.creatorMemberKey).catch(() => undefined)
+      : (await new MemberRepository(db).byKey(item.creatorMemberKey))?.name
   const effective = own ?? inherited
   return {
     key: node.key,
@@ -747,11 +752,13 @@ export async function describeMediaAccess(context: MediaAccessContext, key: stri
       readPolicy: item.readPolicy,
       writePolicy: item.writePolicy,
       creator: item.creatorMemberKey
-        ? { key: item.creatorMemberKey, name: creator?.name ?? null }
+        ? { key: item.creatorMemberKey, name: creatorName ?? null }
         : null,
     },
     protected: node.trashed || isProtectedMedia(item, effective ? ruleOf(effective) : undefined),
-    memberGroups: await memberGroupNames(db),
+    memberGroups: context.memberGroups
+      ? await context.memberGroups().catch(() => [])
+      : await memberGroupNames(db),
     memberFileTypes: MEMBER_FILE_TYPES.map((type) => ({ id: type.id, label: type.label })),
     usedBy: bundlesUsing(context, node.id),
   }

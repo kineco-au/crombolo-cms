@@ -20,7 +20,7 @@ export const siteFlags = {
 
 export const workspaceArg = Args.string({
   required: true,
-  description: 'the workspace, by its name or key',
+  description: 'the workspace, by its name or key, or shared for what the site holds',
 })
 
 /** The `where` every command's JSON carries. */

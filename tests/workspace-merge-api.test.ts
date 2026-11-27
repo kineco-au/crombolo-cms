@@ -336,7 +336,8 @@ describe(`a site that requires a workspace (${dialectUnderTest})`, () => {
       `${WORKSPACES}?all=true`,
     )
     const personal = Object.fromEntries(all.items.map((w) => [w.key, w.personal]))
-    expect(personal).toEqual({ [own.workspace.key]: true, [sale.key]: false })
+    // Story 447: Shared first, neither a person's own nor named.
+    expect(personal).toEqual({ shared: false, [own.workspace.key]: true, [sale.key]: false })
     expect(await h.json<{ personal: boolean }>(`${WORKSPACES}/${sale.key}`)).toMatchObject({
       personal: false,
     })

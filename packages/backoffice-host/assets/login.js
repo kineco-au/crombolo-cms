@@ -321,11 +321,13 @@ class CromboloLoginElement extends LitElement {
   /** A button per backoffice identity provider, each returning here signed in. */
   #providers() {
     if (!this.externalProviders?.length) return nothing
+    // The one way in, come back refused, is tried again from here rather than sent round again.
+    const again = this._error && this.disableLocalLogin && this.externalProviders.length === 1
     return html`<div id="providers">
-      ${this.externalProviders.map(
-        (provider) =>
-          html`<uui-button look="outline" href=${provider.url} label=${`Sign in with ${provider.name}`}>Sign in with ${provider.name}</uui-button>`,
-      )}
+      ${this.externalProviders.map((provider) => {
+        const label = again ? 'Try again' : `Sign in with ${provider.name}`
+        return html`<uui-button look="outline" href=${provider.url} label=${label}>${label}</uui-button>`
+      })}
     </div>`
   }
 

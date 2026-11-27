@@ -29,14 +29,14 @@ export default class WorkspaceList extends BaseCommand {
           key: string
           name: string
           state: string
-          updatedAt: string
+          updatedAt: string | null
           conflicts?: number
         }>
       }>('GET', `workspaces${flags.all ? '?all=true' : ''}`)
       if (items.length === 0) this.say('  No workspaces.')
       for (const w of items)
         this.say(
-          `  ${w.name.padEnd(32)} ${w.state.padEnd(7)} ${w.updatedAt.slice(0, 16)}${w.conflicts ? `  ${w.conflicts} in conflict` : ''}`,
+          `  ${w.name.padEnd(32)} ${w.state.padEnd(7)} ${(w.updatedAt ?? '').slice(0, 16)}${w.conflicts ? `  ${w.conflicts} in conflict` : ''}`,
         )
       return { items }
     })

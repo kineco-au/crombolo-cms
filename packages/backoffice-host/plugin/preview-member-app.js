@@ -1,71 +1,109 @@
 /**
- * The preview toolbar's visitor switch (story 264): signed out, or a member
- * picked with Umbraco's member picker. Hidden from a user who cannot open
- * Members. Registered by `preview-member.js`.
+ * The preview toolbar's visitor switch (story 443): signed out, or a member of
+ * groups chosen from the site's member groups. Registered by `preview-member.js`.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { UMB_MEMBER_PICKER_MODAL } from '@umbraco-cms/backoffice/member'
-import { umbOpenModal } from '@umbraco-cms/backoffice/modal'
 import { UMB_PREVIEW_CONTEXT } from '@umbraco-cms/backoffice/preview'
-import { choosePreviewMember, readPreviewMember, visitorLabel } from './preview-member.js'
+import {
+  choosePreviewMember,
+  readPreviewMember,
+  STAND_IN_NOTE,
+  visitorLabel,
+} from './preview-member.js'
 
 export default class CromboloPreviewMemberElement extends UmbLitElement {
   static properties = {
-    _allowed: { state: true },
-    _member: { state: true },
+    _groups: { state: true },
+    _chosen: { state: true },
     _open: { state: true },
+    _picking: { state: true },
+    _ticked: { state: true },
+    _problem: { state: true },
   }
 
   constructor() {
     super()
-    this._allowed = false
-    this._member = null
+    this._groups = []
+    this._chosen = null
     this._open = false
+    this._picking = false
+    this._ticked = []
+    this._problem = ''
   }
 
   connectedCallback() {
     super.connectedCallback()
-    this.hidden = true
-    readPreviewMember().then(({ allowed, member }) => {
-      this._allowed = allowed
-      this._member = member
-      this.hidden = !allowed
+    readPreviewMember().then(({ groups, chosen }) => {
+      this._groups = groups
+      this._chosen = chosen
     })
   }
 
-  async #choose(member) {
-    this._open = false
-    const answer = await choosePreviewMember(member)
-    this._member = answer.member
+  #toggle() {
+    this._open = !this._open
+    this._picking = false
+    this._problem = ''
+    this._ticked = (this._chosen?.groups ?? []).map((g) => g.key)
+  }
+
+  #tick(key, on) {
+    this._ticked = on ? [...this._ticked, key] : this._ticked.filter((k) => k !== key)
+  }
+
+  async #choose(keys) {
+    try {
+      const answer = await choosePreviewMember(keys)
+      this._groups = answer.groups
+      this._chosen = answer.chosen
+      this._open = false
+      this._picking = false
+    } catch (error) {
+      this._problem = error.message
+      return
+    }
     const preview = await this.getContext(UMB_PREVIEW_CONTEXT)
     const frame = preview?.getIFrameWrapper()?.querySelector('iframe')
     if (frame) preview.reloadIFrame(frame)
   }
 
-  async #pick() {
-    this._open = false
-    const picked = await umbOpenModal(this, UMB_MEMBER_PICKER_MODAL, {
-      data: { multiple: false },
-    }).catch(() => undefined)
-    const key = picked?.selection?.[0]
-    if (key) await this.#choose(key)
+  #menu() {
+    if (!this._picking)
+      return html`
+        <uui-menu-item label="Signed out" @click-label=${() => this.#choose([])}></uui-menu-item>
+        <uui-menu-item label="A member of…" @click-label=${() => (this._picking = true)}></uui-menu-item>
+      `
+    return html`
+      <div class="groups">
+        ${
+          this._groups.length === 0
+            ? html`<p>This site has no member groups yet.</p>`
+            : this._groups.map(
+                (group) => html`<uui-checkbox
+                  label=${group.name}
+                  ?checked=${this._ticked.includes(group.key)}
+                  @change=${(event) => this.#tick(group.key, event.target.checked)}
+                ></uui-checkbox>`,
+              )
+        }
+        <p class="note">${STAND_IN_NOTE}</p>
+        ${this._problem ? html`<p class="problem">${this._problem}</p>` : nothing}
+        <uui-button
+          look="primary"
+          label="Preview"
+          ?disabled=${this._ticked.length === 0}
+          @click=${() => this.#choose(this._ticked)}
+        ></uui-button>
+      </div>
+    `
   }
 
   render() {
-    if (!this._allowed) return nothing
     return html`
-      <uui-button look="primary" label="Visitor" compact @click=${() => (this._open = !this._open)}>
-        <uui-icon name="icon-user"></uui-icon><span>${visitorLabel(this._member)}</span>
+      <uui-button look="primary" label="Visitor" compact @click=${() => this.#toggle()}>
+        <uui-icon name="icon-user"></uui-icon><span>${visitorLabel(this._chosen)}</span>
       </uui-button>
-      ${
-        this._open
-          ? html`<div class="menu" role="menu">
-              <uui-menu-item label="Signed out" @click-label=${() => this.#choose(null)}></uui-menu-item>
-              <uui-menu-item label="Choose a member…" @click-label=${() => this.#pick()}></uui-menu-item>
-            </div>`
-          : nothing
-      }
+      ${this._open ? html`<div class="menu" role="menu">${this.#menu()}</div>` : nothing}
     `
   }
 
@@ -81,11 +119,26 @@ export default class CromboloPreviewMemberElement extends UmbLitElement {
       position: absolute;
       bottom: 100%;
       right: 0;
-      min-width: 200px;
+      min-width: 260px;
       background: var(--uui-color-surface);
       box-shadow: var(--uui-shadow-depth-3);
       border-radius: var(--uui-border-radius);
       z-index: 1;
+    }
+    .groups {
+      display: flex;
+      flex-direction: column;
+      gap: var(--uui-size-space-2, 6px);
+      padding: var(--uui-size-space-4, 12px);
+    }
+    .note {
+      margin: 0;
+      color: var(--uui-color-text-alt);
+      font-size: var(--uui-type-small-size, 12px);
+    }
+    .problem {
+      margin: 0;
+      color: var(--uui-color-danger);
     }
   `
 }

@@ -32,17 +32,20 @@ export type WorkspaceAccess =
 const hmac = (key: string, text: string) =>
   createHmac('sha256', key).update(text).digest('base64url')
 
-const keyFor = (secret: string, purpose: 'handoff' | 'cookie') =>
+/** What a signed value is for: one is never accepted as another (story 447 adds Shared's). */
+export type SignedPurpose = 'handoff' | 'cookie' | 'shared-handoff' | 'shared-cookie'
+
+const keyFor = (secret: string, purpose: SignedPurpose) =>
   hmac(secret, `crombolo/workspace-${purpose}`)
 
-function sign(secret: string, purpose: 'handoff' | 'cookie', claims: object): string {
+export function sign(secret: string, purpose: SignedPurpose, claims: object): string {
   const payload = Buffer.from(JSON.stringify(claims)).toString('base64url')
   return `${payload}.${hmac(keyFor(secret, purpose), payload)}`
 }
 
-function read(
+export function read(
   secret: string,
-  purpose: 'handoff' | 'cookie',
+  purpose: SignedPurpose,
   token: string,
   now: number,
 ): Record<string, unknown> | undefined {

@@ -15,7 +15,14 @@ export type MemberGroupTreeItem = ResponseOf<'GetTreeMemberGroupRoot'>['items'][
 /** A name already taken is Umbraco's only failure here besides a missing group. */
 export type MemberGroupStatus = 'ok' | 'not-found' | 'duplicate-name'
 
-export type MemberResponse = ResponseOf<'GetMemberById'>
+/** Story 445: who keeps a member, when a directory outside the site does. */
+export interface MemberManager {
+  clientId: string
+  /** The name of the API user the client signs in as. */
+  name: string
+}
+
+export type MemberResponse = ResponseOf<'GetMemberById'> & { managedBy: MemberManager | null }
 export type MemberItem = ResponseOf<'GetItemMember'>[number]
 
 /**
@@ -36,6 +43,8 @@ export interface SaveMember {
   groupKeys: string[] | undefined
   values: DocumentValue[]
   variants: Array<{ culture: string | null; segment: string | null; name: string }>
+  /** Story 445: on a create, the API client that keeps the member; set by the server alone. */
+  managedBy?: string | null
 }
 
 export interface MemberFilterCriteria extends SkipTake {
@@ -54,7 +63,8 @@ export interface MemberPort {
   validate(input: SaveMember): Promise<DocumentValidationError[]>
   create(input: SaveMember, principal: Principal): Promise<{ ok: true; key: string } | PortFailure>
   update(key: string, input: SaveMember, principal: Principal): Promise<{ ok: true } | PortFailure>
-  remove(key: string): Promise<boolean>
+  /** False when there is no such member. */
+  remove(key: string, principal: Principal): Promise<boolean | PortFailure>
   /** The Members collection. */
   filter(criteria: MemberFilterCriteria, viewer: Principal): Promise<Page<MemberResponse>>
   items(keys: readonly string[]): Promise<MemberItem[]>
@@ -102,10 +112,14 @@ export interface MemberGroupPort {
   byKey(key: string): Promise<MemberGroupResponse | undefined>
   items(keys: readonly string[]): Promise<MemberGroupItem[]>
   tree(paging: SkipTake): Promise<Page<MemberGroupTreeItem>>
-  create(input: {
-    key?: string
-    name: string
-  }): Promise<{ status: MemberGroupStatus; key?: string }>
-  rename(key: string, name: string): Promise<MemberGroupStatus>
-  remove(key: string): Promise<MemberGroupStatus>
+  /** Story 444: `principal` is who a write is for, which another site holding the groups records. */
+  create(
+    input: {
+      key?: string
+      name: string
+    },
+    principal?: Principal,
+  ): Promise<{ status: MemberGroupStatus; key?: string }>
+  rename(key: string, name: string, principal?: Principal): Promise<MemberGroupStatus>
+  remove(key: string, principal?: Principal): Promise<MemberGroupStatus>
 }

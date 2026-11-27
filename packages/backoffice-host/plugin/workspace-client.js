@@ -288,7 +288,9 @@ async function call(path, init = {}) {
 
 export const workspacesApi = {
   mine: () => call('/mine'),
-  list: () => call(''),
+  // Shared is listed first for tools (story 447); the back office shows only workspaces.
+  list: () =>
+    call('').then((body) => ({ ...body, items: (body.items ?? []).filter((w) => !w.shared) })),
   open: (name, more = {}) => call('', { method: 'POST', body: { name, ...more } }),
   describe: (key, description) => call(`/${key}`, { method: 'PATCH', body: { description } }),
   rename: (key, name) => call(`/${key}`, { method: 'PATCH', body: { name } }),

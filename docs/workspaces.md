@@ -290,7 +290,8 @@ wrote it.
   signed token used once within five minutes and swapped for a host-only cookie, checked
   again on every request (still a member, still enabled, the workspace still open); or
   whoever holds a link a member made (`POST /{key}/links { days }`, at most
-  `CROMBOLO_WORKSPACE_LINK_MAX_DAYS`, 30; 0 turns links off), reusable until it lapses or
+  `links.maxDays` / `CROMBOLO_LINK_MAX_DAYS`, 0 by default, which makes none; story
+  `447`), reusable until it lapses or
   is withdrawn (`DELETE /{key}/links/{id}`), and no use once its maker leaves the
   workspace. Its secret travels once in the address, then as a cookie, or in
   `Crombolo-Workspace-Link` on a Delivery API call. A link is kept by the SHA-256 of its
@@ -324,7 +325,7 @@ The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
 
 | | |
 | --- | --- |
-| `GET /` | yours: those you own or are a member of; `?all=true` every one, for an administrator |
+| `GET /` | Shared first (story 447), then yours: those you own or are a member of; `?all=true` every one, for an administrator |
 | `POST /` `{ name }` | opens one |
 | `GET /{key}` · `PATCH /{key}` `{ name }` · `DELETE /{key}` | reads, renames (its owner), discards (its owner, or an administrator) |
 | `POST /{key}/members` `{ userKey }` · `DELETE /{key}/members/{userKey}` | shares it, and stops (its owner) |
@@ -382,6 +383,57 @@ they ask to (story `401`): with `includePrivate=true` (the command line's
 `changes`, `merge` preview, `conflicts`, `diff`, `errors`, `pages`, `files`, `members`,
 `render` and `POST check`, and open its site, honoured while they remain an
 administrator. Writes stay with its owner and members, and `member` stays false.
+
+### Shared (story 447)
+
+Shared answers the same routes under the key `shared`, which no workspace can have
+(keys are UUIDs, and `WorkspaceRepository` refuses the key and never finds it), so a
+tool that looks at, checks and links to places to work has one path for all of them.
+Everyone who may use workspaces (the Content section) may read it.
+
+| | |
+| --- | --- |
+| `GET /shared` | `{ key: "shared", name: "Shared", shared: true, mine: false }`, no owner or members, no dates |
+| `GET /shared/render?path=` | one page as the site serves it, rendered as a check renders it |
+| `GET /shared/pages?since=&all=&failing=` · `POST /shared/check { since?, all? }` | Shared's own check (story 406, `shared-check.ts`): with no `since`, every published page, up to 500 |
+| `GET /shared/errors?since=` | each page of Shared that failed in `render`, `pages` or `check`, kept in `workspace_error` under the key `shared` |
+| `GET /shared/diff` · `GET /shared/changes` | nothing: Shared is its own base |
+| `POST /shared/open { path }` | a single-use way in for the caller, at the site's own address |
+| `GET /shared/links` · `POST /shared/links { days, writes? }` · `DELETE /shared/links/{id}` | links for someone else to look; the caller's own, or every one for an administrator |
+
+- **Refused, with a sentence saying why (400):** renaming, discarding or deleting it,
+  `members`, `merge` (and `POST /merge` naming it), `update`, `conflicts`, `pending`,
+  `site-files`, `files`, `marks` and `change`.
+- **Listed first** by `GET /`, with `shared: true`, so a host listing only people's own
+  work leaves it out by that. The back office does.
+- **The header:** `Crombolo-Workspace: shared` on the Management API is the same as no
+  header (`workspaceHeaderOf`).
+- **The way in** (`packages/server/src/shared-access.ts`): `open` answers the site's own
+  address with `?crombolo-shared=<token>`, a hand-off signed for the person and used once
+  within five minutes; a link answers it with `?crombolo-shared-link=<secret>`. Either is
+  swapped, on a `GET` or `HEAD` at any site path, for a host-only `crombolo-shared`
+  cookie (eight hours, or less to a link's lapse) and a 303 to the address without it.
+  Where workspaces have no host of their own, the swap also clears a workspace's
+  cookie, which would otherwise answer in Shared's place.
+- **Past a closed site's gate** (story 446): a request not signed in, with that cookie,
+  reaches the site's pages, media, routes and the Delivery API as a signed-in user would.
+  The back office and the Management API never read the cookie, so it reaches neither;
+  the site's code is never shown it, as with the back office's own cookies. On an open
+  site it changes nothing.
+- **What it lets its holder do:** look, `GET` and `HEAD`, unless it came from an
+  administrator: `open` by an administrator, or a link one made with `writes: true`
+  (refused, 403, to anyone else). Anything else is a 401 with problem details saying a
+  link only lets them look. A write it lets through from another origin is refused, as a
+  session's is. Its rights are read again on every request.
+- **A link stops** when it is withdrawn or lapses, when `links.maxDays` is 0, and when its
+  maker loses the Content section, is disabled or locked out, or is deleted; an
+  administrator's `writes` stop when they stop being one. `open`'s cookie stops with the
+  opener's the same way, and when their security stamp changes. Links are kept by the
+  SHA-256 of their secret in `shared_link` (migration 106), with `writes`, rather than in
+  `workspace_link`, whose `workspace_id` SQLite would have had to rebuild to make
+  nullable.
+- **Audited** as `Link`, `LinkUsed` (when a link is swapped for its cookie) and `Unlink`,
+  on the entity `Workspace` `shared`.
 
 **The Management API takes the workspace as a header:** `Crombolo-Workspace: <key>`.
 The router asks once the request is authorised:
@@ -502,6 +554,9 @@ hosted site's environment: `open`, `list`, `status`, `discard`, `share`/`unshare
 merged is checked together by `changes check --since <change>` (story `406`,
 [`changes.md`](changes.md#shared-checked-since-a-change-story-406)).
 
+- **`shared` names Shared** wherever a command takes a workspace (story `447`): `render`,
+  `pages`, `check`, `errors`, `diff` and `address` answer for it, and the rest are refused
+  with the server's sentence. It says where it acts as `… (shared)`.
 - **Every command says where it acts** first, `<site> › <env> › workspace <name>` or `… (shared)`,
   and its `-o json` carries it as `where`. Nothing asks: `--yes` does what a dry run shows.
 - **Exit codes say why:** 22 conflicts present, 20 a check failed, 23 a lossy change not

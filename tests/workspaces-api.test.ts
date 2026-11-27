@@ -132,7 +132,11 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     const { h, send, opened } = await site()
     const sale = await opened(h, 'Spring sale')
     const listed = await h.json<{ items: Array<{ key: string; mine: boolean }> }>(WORKSPACES)
-    expect(listed.items).toEqual([expect.objectContaining({ key: sale.key, mine: true })])
+    // Story 447: Shared first.
+    expect(listed.items).toEqual([
+      expect.objectContaining({ key: 'shared', shared: true }),
+      expect.objectContaining({ key: sale.key, mine: true }),
+    ])
     const renamed = await send(h, 'PATCH', `${WORKSPACES}/${sale.key}`, { name: 'Summer sale' })
     expect(await renamed.json()).toMatchObject({ name: 'Summer sale', description: null })
     // What it is for: said by its owner, changed and cleared, and said when one is opened.
@@ -158,7 +162,9 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     const writer = await signInAsGroup(h, 'writer')
     const writerKey = (await writer.json<{ id: string }>(`${V1}/user/current`)).id
     expect((await writer.call(`${WORKSPACES}/${sale.key}`)).status).toBe(404)
-    expect((await writer.json<{ items: unknown[] }>(WORKSPACES)).items).toEqual([])
+    expect((await writer.json<{ items: unknown[] }>(WORKSPACES)).items).toEqual([
+      expect.objectContaining({ key: 'shared', shared: true }),
+    ])
     const shared = await send(h, 'POST', `${WORKSPACES}/${sale.key}/members`, {
       userKey: writerKey,
     })
@@ -239,10 +245,15 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     const { h, send, opened } = await site()
     const writer = await signInAsGroup(h, 'writer')
     const theirs = await opened(writer, 'Their work')
-    expect((await h.json<{ items: unknown[] }>(WORKSPACES)).items).toEqual([])
+    expect((await h.json<{ items: unknown[] }>(WORKSPACES)).items).toEqual([
+      expect.objectContaining({ key: 'shared', shared: true }),
+    ])
     expect(
       (await h.json<{ items: Array<{ key: string }> }>(`${WORKSPACES}?all=true`)).items,
-    ).toEqual([expect.objectContaining({ key: theirs.key })])
+    ).toEqual([
+      expect.objectContaining({ key: 'shared', shared: true }),
+      expect.objectContaining({ key: theirs.key }),
+    ])
     expect((await writer.call(`${WORKSPACES}?all=true`)).status).toBe(403)
     expect((await h.call(`${WORKSPACES}/${theirs.key}`)).status).toBe(404)
     expect((await h.call(`${WORKSPACES}/${theirs.key}/changes`)).status).toBe(404)

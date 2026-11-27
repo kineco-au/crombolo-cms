@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { hostname, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { describeDatabase, loadConfig } from '@crombolo/server'
+import { describeDatabase, loadConfig, replacedLinkSetting } from '@crombolo/server'
 
 const OWNED = /^(CROMBOLO_|PORT$|NODE_ENV$|DATABASE_URL$)/
 let saved: Record<string, string | undefined> = {}
@@ -397,5 +397,25 @@ describe('the Delivery API from the environment (story 348)', () => {
   test('the switch it replaced stops the start, so a private API never quietly opens', () => {
     setEnv({ CROMBOLO_DELIVERY_API_PUBLIC: 'false' })
     expect(() => loadConfig({})).toThrow('CROMBOLO_DELIVERY_API_PRIVATE')
+  })
+})
+
+describe('the longest a link lasts (story 447)', () => {
+  test('CROMBOLO_LINK_MAX_DAYS sets it, 0 when unset, and the file sets it as links.maxDays', () => {
+    expect(loadConfig({}).links).toEqual({ maxDays: 0 })
+    setEnv({ CROMBOLO_LINK_MAX_DAYS: '7' })
+    expect(loadConfig({}).links.maxDays).toBe(7)
+    expect(loadConfig({ links: { maxDays: 2 } }).links.maxDays).toBe(2)
+    expect(() => loadConfig({ links: { maxDays: -1 } })).toThrow('links.maxDays')
+    expect(replacedLinkSetting()).toBeUndefined()
+  })
+
+  test('the variable it replaced is read for one release, with a warning naming the new one', () => {
+    setEnv({ CROMBOLO_WORKSPACE_LINK_MAX_DAYS: '5' })
+    expect(loadConfig({}).links.maxDays).toBe(5)
+    expect(replacedLinkSetting()).toContain('set CROMBOLO_LINK_MAX_DAYS in its place')
+    setEnv({ CROMBOLO_LINK_MAX_DAYS: '3' })
+    expect(loadConfig({}).links.maxDays).toBe(3)
+    expect(replacedLinkSetting()).toContain('is ignored, as CROMBOLO_LINK_MAX_DAYS is set')
   })
 })

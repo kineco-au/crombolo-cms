@@ -31,6 +31,8 @@ export type PortFailure = {
   ok: false
   reason: string
   status?: number
+  /** Why, as a word the client may key off, such as `ManagedOutside`. */
+  operationStatus?: string
   /** Validation failures, when the reason is the request's values. */
   errors?: DocumentValidationError[]
 }

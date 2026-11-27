@@ -79,7 +79,7 @@ async function site(
       workspaces: true,
       workspacesHost:
         options.host === null ? undefined : (options.host ?? '{workspace}.preview.test'),
-      workspaceLinkMaxDays: options.linkDays ?? 30,
+      links: { maxDays: options.linkDays ?? 30 },
     },
   })
   open.push(h)
@@ -283,6 +283,8 @@ describe(`a workspace's site (${dialectUnderTest})`, () => {
     const { send, opened } = await site({ linkDays: 0 })
     const sale = await opened('Spring sale')
     expect((await send('POST', `${WORKSPACES}/${sale.key}/links`, { days: 1 })).status).toBe(403)
+    // Story 447: nor one to Shared, under the same setting.
+    expect((await send('POST', `${WORKSPACES}/shared/links`, { days: 1 })).status).toBe(403)
   })
 
   test('its stylesheets are served changed at its address only', async () => {

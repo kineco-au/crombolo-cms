@@ -1192,6 +1192,24 @@ back office's.
   site's reset page (story 282), or prints it where the site cannot send mail, and refuses
   a member who signs in through a provider. `--password` sets one, as the Members section
   does, printed once for you to pass on, or from `--stdin`.
+- **Members held by another site** (`members.source`, story 444): every command above
+  works on that site's members (story 448), here, on a hosted site
+  with `--profile`, and on this site's database with no server running, by the account in
+  `members.client`. Each write is in that site's audit log as the person who ran it,
+  through the account, where it lists the account in `members.actorsFrom`. A member is
+  found there by key, or by e-mail address or login matched exactly through its member
+  filter; `members groups list` counts each group's members there; `members show` lists
+  the providers they sign in with as that site knows them
+  (`<backoffice>/crombolo/api/members/{key}/sign-ins`). `members reset-password` asks
+  that site to send the link, by its mail to its reset page
+  (`POST <backoffice>/crombolo/api/members/{key}/reset-link`, for a principal with Members
+  there), and prints the link it hands back where it can't send. `content access` keeps
+  its rules here, naming that site's groups and members. While that site isn't answering,
+  each command says "Members are kept at <site>, which isn't answering." and changes
+  nothing; a refusal there is said in its words. `members link` runs there, against its
+  members and the member identity providers it declares
+  (`POST <backoffice>/crombolo/api/members/link`, for a principal with Members there), and
+  prints the report it answers; each link is in that site's audit as the person.
 - **Member groups** change the database until story 162 decides where they live.
   A page's rule names a group by its name, so removing a group drops it from every
   rule that names it, and a page whose rule named only that group is then open to no

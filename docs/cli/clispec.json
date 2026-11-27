@@ -16783,7 +16783,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -16851,7 +16851,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -16900,7 +16900,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -16918,7 +16918,7 @@
           "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
-      "errors": ["usage", "internal", "auth", "not_found"],
+      "errors": ["usage", "internal", "auth", "not_found", "refused"],
       "outcomes": ["conflicts_found"]
     },
     {
@@ -16962,7 +16962,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -16991,7 +16991,7 @@
           "description": "the profile of the site --against <env> is on"
         }
       ],
-      "errors": ["usage", "internal", "auth", "not_found"]
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
     },
     {
       "name": "workspace discard",
@@ -17014,7 +17014,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -17037,7 +17037,7 @@
           "description": "discard it, rather than only saying what would go"
         }
       ],
-      "errors": ["usage", "internal", "auth", "not_found", "confirmation_required"]
+      "errors": ["usage", "internal", "auth", "not_found", "refused", "confirmation_required"]
     },
     {
       "name": "workspace errors",
@@ -17062,7 +17062,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -17265,7 +17265,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -17404,7 +17404,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -17471,7 +17471,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "path",
@@ -17527,7 +17527,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "item",
@@ -17596,7 +17596,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "people",
@@ -17653,7 +17653,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -17671,7 +17671,7 @@
           "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
-      "errors": ["usage", "internal", "auth", "not_found"]
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
     },
     {
       "name": "workspace sync",
@@ -17696,7 +17696,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "--profile",
@@ -17714,7 +17714,7 @@
           "description": "an administrator: read a workspace you are not in, a person’s own included"
         }
       ],
-      "errors": ["usage", "internal", "auth", "not_found"]
+      "errors": ["usage", "internal", "auth", "not_found", "refused"]
     },
     {
       "name": "workspace unshare",
@@ -17739,7 +17739,7 @@
           "name": "workspace",
           "type": "string",
           "required": true,
-          "description": "the workspace, by its name or key"
+          "description": "the workspace, by its name or key, or shared for what the site holds"
         },
         {
           "name": "people",

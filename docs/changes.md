@@ -87,6 +87,12 @@ The remote protocol answers the same at `POST …/changes/check`, and the comman
 asks it: `crombolo changes check --since <change>`, or `--all`, exiting 20 when a check
 fails.
 
+The workspace routes answer it for Shared too (story `447`,
+[`workspaces.md`](workspaces.md#shared-story-447)): `POST <plugin>/api/workspaces/shared/check
+{ since?, all? }`, and `GET …/shared/pages`, the same pages alone. Each page that fails
+there, or in `GET …/shared/render`, is one of Shared's errors, read at `GET …/shared/errors`,
+so a tool checks Shared as it checks a workspace: `crombolo workspace check shared`.
+
 ### Moving a change without the remote
 
 A change moves between copies of a site through the Management API as well, with the
@@ -251,9 +257,20 @@ the Management API refuse every write of them (409, "This site takes its content
 change"), and opening a workspace is refused. Applying a change (`PUT changes`, Apply
 changes) and merging a change staged there still write. Members and their groups, form
 entries, what visitors upload, the redirects it records, its jobs and its logs are
-written as before. Locked content locks the code too, as `CROMBOLO_CODE=locked` does.
+written as before; a member a directory keeps is the directory's alone (story `445`,
+docs/configuration.md, "Members managed from outside the site"). The site the content is
+made on can manage those members from its own Members section (story `444`,
+docs/configuration.md, "Members held by another site"): they are written there directly,
+never moved by a change. A page's Public Access rule travels with the page and names the
+serving site's groups by name; a group renamed from the content site rewrites its rules
+there, and the next change carries them. Locked content locks the code too, as `CROMBOLO_CODE=locked` does.
 Languages, the dictionary, blueprints, form definitions and workflow set-up stay
 writable until changes carry them (story `392`).
+
+The site content is made on needn't be seen by anyone else: `CROMBOLO_SITE_ACCESS=users`
+(story `446`, docs/configuration.md, "A site open only to its back-office users") closes
+it to all but its back-office users. Changes move as before, through the Management API
+and the remote, which check their own credentials.
 
 In the back office each page, media item and Library item opens read-only, its Info tab
 saying where it is edited, with a link to the same item there when

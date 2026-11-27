@@ -36,7 +36,7 @@ export default class WorkspaceDiff extends BaseCommand {
       { name: 'files', type: 'array', items: { type: 'object' } },
       { name: 'conflicts', type: 'array', items: { type: 'object' } },
     ],
-    errors: ['usage', 'auth', 'not_found'],
+    errors: ['usage', 'auth', 'not_found', 'refused'],
   } as const
 
   async run() {

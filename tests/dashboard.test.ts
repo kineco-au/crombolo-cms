@@ -103,6 +103,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'backofficeEntryPoint:Crombolo.EntryPoint.ContentLocked',
       'backofficeEntryPoint:Crombolo.EntryPoint.Notices',
       'backofficeEntryPoint:Crombolo.EntryPoint.UsersManaged',
+      'backofficeEntryPoint:Crombolo.EntryPoint.MembersManaged',
+      'backofficeEntryPoint:Crombolo.EntryPoint.MembersSource',
       'backofficeEntryPoint:Crombolo.EntryPoint.EnvironmentValues',
       'backofficeEntryPoint:Crombolo.EntryPoint.EditConflicts',
       'backofficeEntryPoint:Crombolo.EntryPoint.Maintenance',

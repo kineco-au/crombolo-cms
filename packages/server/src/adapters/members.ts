@@ -42,6 +42,7 @@ import {
   type ValueIntake,
   WriteRejectedError,
 } from '@crombolo/data'
+import { memberManager } from '../managed-members.ts'
 
 export interface MemberPortOptions extends DocumentRepositoryOptions {
   valueIntake?: ValueIntake
@@ -53,6 +54,9 @@ export interface MemberPortOptions extends DocumentRepositoryOptions {
    */
   apiMemberUserNames?: readonly string[]
 }
+
+/** Story 445: the flag a member kept by a directory carries, for the back office to mark. */
+export const MANAGED_FLAG = 'Crombolo.Member.Managed'
 
 const notFound = () => ({
   ok: false as const,
@@ -131,7 +135,8 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
       groups: await members.groupKeys(member.key),
       kind: kindOf(member),
       profileData: null,
-      flags: [],
+      flags: member.managedBy ? [{ alias: MANAGED_FLAG }] : [],
+      managedBy: await memberManager(db, member.managedBy),
       values: content.values
         .filter((value) => !withheld.has(value.alias))
         .map((value) => ({
@@ -185,7 +190,7 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
     memberType: { id: member.contentTypeKey, icon: member.contentTypeIcon ?? 'icon-user' },
     variants: [{ name: member.name, culture: null }],
     kind: kindOf(member),
-    flags: [],
+    flags: member.managedBy ? [{ alias: MANAGED_FLAG }] : [],
   })
 
   const contentOf = (input: SaveMember, contentTypeKey: string) => ({
@@ -262,6 +267,7 @@ export function createMemberPort(db: Db, options: MemberPortOptions = {}): Membe
             passwordHash: input.password ? await hashPassword(input.password) : null,
             passwordConfig: input.password ? passwordConfigJson() : null,
             groupKeys: input.groupKeys ?? [],
+            managedBy: input.managedBy ?? null,
           },
         )
         return { ok: true as const, key: created.key }
