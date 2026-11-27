@@ -1,3 +1,5 @@
+import type { Observable } from '@umbraco-cms/backoffice/external/rxjs';
+import { umbCromboloHooks, type UmbCromboloNameSuffixes } from '@umbraco-cms/backoffice/extension-registry';
 import type { UmbVariantDatasetWorkspaceContext } from '../../contexts/index.js';
 import { UMB_WORKSPACE_SPLIT_VIEW_CONTEXT } from './workspace-split-view.context.js';
 import { css, customElement, html, nothing, query, ref, state } from '@umbraco-cms/backoffice/external/lit';
@@ -39,6 +41,12 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 
 	@state()
 	private _name?: string;
+
+	@state()
+	private _suffixes?: UmbCromboloNameSuffixes;
+
+	@state()
+	private _suffix = '';
 
 	@state()
 	private _activeVariant?: VariantOptionModelType;
@@ -90,6 +98,16 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 			this.#observeActiveVariants(workspaceContext);
 			this.#observeReadOnlyCultures(workspaceContext);
 			this.#observeCurrentVariant();
+
+			this.observe(
+				(workspaceContext as unknown as { contentTypeUnique?: Observable<string | undefined> })
+					?.contentTypeUnique,
+				(unique) => {
+					this._suffixes = unique ? umbCromboloHooks.nameSuffixes?.(unique) : undefined;
+					if (this._suffixes) this._suffix = this.#splitName(this._name).suffix;
+				},
+				'umbObserveCromboloNameSuffixes',
+			);
 
 			this.observe(
 				workspaceContext?.variesBySegment,
@@ -185,6 +203,7 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 			this.#datasetContext.name,
 			(name) => {
 				this._name = name;
+				if (this._suffixes && name) this._suffix = this.#splitName(name).suffix;
 			},
 			'_name',
 		);
@@ -219,9 +238,51 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 				this.#datasetContext &&
 				isNameablePropertyDatasetContext(this.#datasetContext)
 			) {
-				this.#datasetContext.setName(target.value);
+				this.#datasetContext.setName(this.#joinName(target.value, this._suffix));
 			}
 		}
+	}
+
+	/** A name as its typed part and its ending, when the type's names have endings. */
+	#splitName(name: string | undefined): { stem: string; suffix: string } {
+		const value = name ?? '';
+		const suffixes = this._suffixes;
+		if (!suffixes) return { stem: value, suffix: '' };
+		if (value === '') return { stem: '', suffix: this._suffix || suffixes.initial };
+		const lower = value.toLowerCase();
+		const ending = suffixes.options
+			.map((option) => option.value)
+			.filter((suffix) => suffix && value.length > suffix.length && lower.endsWith(suffix.toLowerCase()))
+			.sort((a, b) => b.length - a.length)[0];
+		return ending ? { stem: value.slice(0, -ending.length), suffix: ending } : { stem: value, suffix: '' };
+	}
+
+	/** The typed part with its ending; nothing typed is no name yet. */
+	#joinName(stem: string, suffix: string) {
+		return stem === '' ? '' : stem + suffix;
+	}
+
+	#handleSuffix(event: Event) {
+		const suffix = String((event.target as unknown as { value: unknown }).value ?? '');
+		const { stem } = this.#splitName(this._name);
+		this._suffix = suffix;
+		if (this.#datasetContext && isNameablePropertyDatasetContext(this.#datasetContext))
+			this.#datasetContext.setName(this.#joinName(stem, suffix));
+	}
+
+	#renderSuffix() {
+		if (!this._suffixes) return nothing;
+		const chosen = this.#splitName(this._name).suffix;
+		return html`<uui-select
+			id="name-suffix"
+			slot="append"
+			label="Ending"
+			.options=${this._suffixes.options.map((option) => ({
+				name: option.label,
+				value: option.value,
+				selected: option.value === chosen,
+			}))}
+			@change=${this.#handleSuffix}></uui-select>`;
 	}
 
 	#switchVariant(variant: VariantOptionModelType) {
@@ -384,6 +445,7 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 				this.#isSegmentVariantOption(this._activeVariant)}
 				${umbBindToValidation(this, `$.variants[${UmbDataPathVariantQuery(this._variantId)}].name`, this._name ?? '')}
 				${ref(this.#focusInput)}>
+				${this.#renderSuffix()}
 				${this.#selectorIsEnabled()
 					? html`
 							<uui-button
@@ -549,7 +611,7 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 			this.#isSegmentVariantOption(this._activeVariant) && this._activeVariant?.segmentInfo?.name
 				? this._activeVariant.segmentInfo.name
 				: '';
-		return segmentName !== '' ? segmentName : (this._name ?? '');
+		return segmentName !== '' ? segmentName : this.#splitName(this._name).stem;
 	}
 
 	#getVariantDisplayName(variantOption: VariantOptionModelType) {
@@ -615,6 +677,12 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 	static override styles = [
 		UmbTextStyles,
 		css`
+			#name-suffix {
+				min-width: 9em;
+				--uui-select-border-color: transparent;
+				border-left: 1px solid var(--uui-color-border);
+			}
+
 			#name-input {
 				width: 100%;
 			}

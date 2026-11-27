@@ -21,7 +21,16 @@ export interface UmbCromboloInsert {
 	pick(host: HTMLElement): Promise<string | undefined>;
 }
 
+export interface UmbCromboloNameSuffixes {
+	/** The endings a name may have, in order; '' for none. */
+	options: Array<{ value: string; label: string }>;
+	/** The one chosen while the name is still empty. */
+	initial: string;
+}
+
 export interface UmbCromboloHooks {
+	/** For an item of this content type: its name typed without an ending, chosen from these. */
+	nameSuffixes?(contentTypeUnique: string): UmbCromboloNameSuffixes | undefined;
 	/** For a code editor in `language`: how a view is edited, or undefined to leave it as it is. */
 	viewEditor?(language: string): UmbCromboloViewEditor | undefined;
 	/** The content of a new template. */
