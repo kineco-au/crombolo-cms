@@ -65,6 +65,18 @@ describe('the revision an editor works from', () => {
     expect(revisions.revisionOf(KEY)).toBe('"15.0"')
   })
 
+  test('a create the back office rebuilt, the key as its body and no header, counts the same', async () => {
+    const revisions = createRevisionTracker()
+    const COLLECTION = 'http://local/umbraco/management/api/v1/document'
+    const rebuilt = new Response(KEY, { status: 201, headers: { 'content-type': 'text/plain' } })
+    const answered = await revisions.onResponse(rebuilt, request(COLLECTION, 'POST'))
+    expect(await answered.text()).toBe(KEY)
+    revisions.onResponse(read('"15.0"'), request(PAGE))
+    expect(revisions.onRequest(request(`${PAGE}/publish`, 'PUT')).headers.get('if-match')).toBe(
+      '"15.0"',
+    )
+  })
+
   test('a refused save is a conflict until the editor saves or loads again', () => {
     const revisions = createRevisionTracker()
     let heard = 0

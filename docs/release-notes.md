@@ -67,6 +67,10 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **A new page can be published straight after its first save.** Save and publish, or
+  Save and preview then Save and publish, on a page just created was refused (428) until
+  the page was opened again. The back office never learnt the new page's revision, because
+  it rebuilds a create's answer without the header naming the page.
 - **The Servers check** failed with "Cannot access 'latest' before initialization" on any
   server reporting the published content it serves (since 0.25.0).
 

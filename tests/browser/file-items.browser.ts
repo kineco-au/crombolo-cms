@@ -29,9 +29,12 @@ test('a File is made, previewed, published and served at its name', async ({ pag
   }).toPass({ timeout: 30_000 })
 
   // The name chooses the editor: a .txt File is a plain text area.
-  await page.locator('#name-input input').fill(NAME)
+  // Typed again if the new item's workspace, still loading, clears it.
   const editor = page.locator('crombolo-file-body')
-  await expect(editor.locator('uui-textarea')).toBeVisible()
+  await expect(async () => {
+    await page.locator('#name-input input').fill(NAME)
+    await expect(editor.locator('uui-textarea')).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
   await editor.locator('uui-textarea textarea').fill(BODY)
 
   // Previewed raw, as a browser would show the draft.
@@ -44,9 +47,6 @@ test('a File is made, previewed, published and served at its name', async ({ pag
   )
   await preview.close()
 
-  // Saved by the preview: opened again, as it now is, before publishing.
-  await page.reload()
-  await expect(page.locator('#name-input input')).toHaveValue(NAME)
   await page.getByTestId('workspace-action:Umb.WorkspaceAction.Document.SaveAndPublish').click()
   await expect(
     page.locator('uui-toast-notification').filter({ hasText: 'published' }),

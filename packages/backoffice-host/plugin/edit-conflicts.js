@@ -73,8 +73,19 @@ export function createRevisionTracker() {
       }
       if (request.method === 'POST' && response.ok && PAGE_CREATE.test(path)) {
         const made = response.headers.get('umb-generated-resource')
-        if (made) created.add(made.toLowerCase())
+        if (made) {
+          created.add(made.toLowerCase())
+          return response
+        }
+        // The back office's own interceptor answers the new key as the body, without the header.
         return response
+          .clone()
+          .text()
+          .then((body) => {
+            const key = body.trim().toLowerCase()
+            if (/^[0-9a-f-]{36}$/.test(key)) created.add(key)
+            return response
+          })
       }
       const write = PAGE_WRITE.exec(path)
       if (!write) return response

@@ -322,8 +322,9 @@ test('publish with descendants publishes the branch from the workspace', async (
   const home = await createPage(page, HOME)
   const child = await createPage(page, 'Child', home)
   await page.goto(`/crombolo/section/content/workspace/document/edit/${home}`)
+  // The content footer's actions are toned elements of their own (branding/content-actions.js).
   await page
-    .locator('umb-workspace-action')
+    .locator('umb-workspace-action, crombolo-umb-workspaceaction-document-saveandpublish')
     .filter({ hasText: 'Save and publish' })
     .locator('#popover-trigger, uui-button[compact]')
     .last()
