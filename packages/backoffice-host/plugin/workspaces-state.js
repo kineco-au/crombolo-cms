@@ -18,17 +18,22 @@ export const chosenWorkspace = () =>
   new URLSearchParams(location.search).get('workspace') ?? undefined
 
 /** What is shown of it: `merge`, or what it is. */
-export const chosenView = () =>
-  new URLSearchParams(location.search).get('view') === 'merge' ? 'merge' : 'info'
+/** The views a workspace is shown in besides its page: its merge, and its changes to read. */
+const VIEWS = new Set(['merge', 'changes'])
+
+export const chosenView = () => {
+  const view = new URLSearchParams(location.search).get('view')
+  return VIEWS.has(view) ? view : 'info'
+}
 
 /**
- * Shows a workspace, or its merge, at Workspaces; the tab stays in the workspace it is
+ * Shows a workspace, its merge or its changes, at Workspaces; the tab stays in the workspace it is
  * in. `replace` keeps the step out of the history, for the one first shown.
  */
 export function showWorkspace(key, view = 'info', replace = false) {
   const to = new URL(WORKSPACES.path, document.baseURI)
   to.searchParams.set('workspace', key)
-  if (view === 'merge') to.searchParams.set('view', 'merge')
+  if (VIEWS.has(view)) to.searchParams.set('view', view)
   const address = `${to.pathname}${to.search}`
   if (`${location.pathname}${location.search}` !== address)
     history[replace ? 'replaceState' : 'pushState'](null, '', address)

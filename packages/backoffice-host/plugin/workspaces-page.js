@@ -185,7 +185,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       this._merge = undefined
       return
     }
-    if (chosenView() === 'merge') return this.#plan(view)
+    if (chosenView() === 'merge' || chosenView() === 'changes') return this.#plan(view)
     this._merge = undefined
     const [members, changes] = await Promise.all([
       workspacesApi.members(view.key).catch(() => ({ items: [], groups: [] })),
@@ -473,6 +473,14 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
         }
       </div>
       ${
+        view.conflicts === 0 && changes.length > 0
+          ? html`<div class="conflict clear" role="status">
+              <strong>No conflicts with Shared</strong>
+              <button type="button" class="link" @click=${() => showWorkspace(view.key, 'changes')}>View all changes</button>
+            </div>`
+          : nothing
+      }
+      ${
         view.conflicts > 0
           ? html`<div class="conflict" role="status">
               <strong>${view.conflicts} conflict${view.conflicts === 1 ? '' : 's'} with Shared</strong>
@@ -557,7 +565,8 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       }`
   }
 
-  #merging(view) {
+  /** The merge, or with `readOnly` every change it would make, with nothing to settle or accept. */
+  #merging(view, readOnly = false) {
     const { plan, diff, accepted, settled, says, done } = this._merge
     const conflicts = plan.conflicts ?? []
     const findings = plan.findings ?? []
@@ -577,16 +586,16 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       </button>
       <div class="head">
         <span class="dot" style=${`background:${colourOf(view.key)}`}></span>
-        <h2>Merge ${view.name} into Shared</h2>
+        <h2>${readOnly ? `Changes in ${view.name}` : `Merge ${view.name} into Shared`}</h2>
       </div>
       <div class="chips">
         <span class="chip">${count(plan.pages?.length ?? 0, 'page')}</span>
         ${pending.length > 0 ? html`<span class="chip">${count(pending.length, 'move or delete', 'moves or deletes')}</span>` : nothing}
-        ${conflicts.length > 0 ? html`<span class="chip warn">${count(conflicts.length, 'conflict')} to settle</span>` : nothing}
-        ${findings.length > 0 ? html`<span class="chip">${count(findings.length, 'thing')} to accept</span>` : nothing}
+        ${conflicts.length > 0 ? html`<span class="chip warn">${count(conflicts.length, 'conflict')}${readOnly ? '' : ' to settle'}</span>` : nothing}
+        ${findings.length > 0 && !readOnly ? html`<span class="chip">${count(findings.length, 'thing')} to accept</span>` : nothing}
       </div>
       ${
-        conflicts.length + settled.length > 0
+        !readOnly && conflicts.length + settled.length > 0
           ? html`<div class="field wide">
               <h3>Conflicts <span class="hint">changed here and in Shared: choose which to keep</span></h3>
               ${conflicts.map(
@@ -618,7 +627,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
           : nothing
       }
       ${
-        findings.length > 0
+        !readOnly && findings.length > 0
           ? html`<div class="field wide">
               <h3>To accept <span class="hint">tick each to go on</span></h3>
               ${findings.map(
@@ -710,19 +719,25 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
         }
       </div>
     </div></section>
-      <span slot="footer-info" class="hint" role="status">
-        ${says || (left.length > 0 ? `${left.join(' and ')} first.` : 'Once merged, the workspace is closed and its changes are in Shared.')}
-      </span>
-      <uui-button slot="actions" look="secondary" label="Cancel" @click=${() => showWorkspace(view.key)}>Cancel</uui-button>
-      <uui-button slot="actions" look="primary" color="positive" label="Merge into Shared" ?disabled=${!ready} @click=${() => this.#mergeNow(view)}>Merge into Shared</uui-button>`
+      ${
+        readOnly
+          ? html`<uui-button slot="actions" look="secondary" label="Back" @click=${() => showWorkspace(view.key)}>Back</uui-button>
+              <uui-button slot="actions" look="primary" color="positive" label="Merge into Shared…" @click=${() => showWorkspace(view.key, 'merge')}>Merge into Shared…</uui-button>`
+          : html`<span slot="footer-info" class="hint" role="status">
+                ${says || (left.length > 0 ? `${left.join(' and ')} first.` : 'Once merged, the workspace is closed and its changes are in Shared.')}
+              </span>
+              <uui-button slot="actions" look="secondary" label="Cancel" @click=${() => showWorkspace(view.key)}>Cancel</uui-button>
+              <uui-button slot="actions" look="primary" color="positive" label="Merge into Shared" ?disabled=${!ready} @click=${() => this.#mergeNow(view)}>Merge into Shared</uui-button>`
+      }`
   }
 
   render() {
     if (!this._ready || !this.#mine.enabled) return nothing
     const view = this.#view()
-    const merging = view && this._merge?.key === view.key && chosenView() === 'merge'
+    const shown = view && this._merge?.key === view.key ? chosenView() : undefined
+    const merging = shown === 'merge' || shown === 'changes'
     return html`<umb-body-layout>
-      ${merging ? this.#merging(view) : view ? this.#workspace(view) : this.#shared()}
+      ${merging ? this.#merging(view, shown === 'changes') : view ? this.#workspace(view) : this.#shared()}
     </umb-body-layout>`
   }
 
@@ -805,6 +820,9 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       border-radius: var(--uui-border-radius);
       background: var(--uui-color-surface);
       color: inherit;
+    }
+    .conflict.clear {
+      border-color: var(--uui-color-positive-standalone, var(--uui-color-border));
     }
     .conflict {
       display: flex;
