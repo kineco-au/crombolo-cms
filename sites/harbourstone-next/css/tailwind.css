@@ -20,4 +20,133 @@
   --font-sans: "Outfit", "Avenir Next", "Segoe UI", system-ui, sans-serif;
 
   --tracking-caps: 0.2em;
+
+  /* The column every section sits in: max-w-page. */
+  --container-page: 72rem;
+}
+
+/* Patterns several views share, made from the theme: the same as the app's in web/app/globals.css. */
+
+/* The column every section's content sits in: the measure and the gutter. */
+@utility page-column {
+  @apply mx-auto w-full max-w-page px-5 sm:px-8;
+}
+
+/* A heading in the display serif. Sizes are the component's. */
+@utility heading-display {
+  @apply font-display font-medium tracking-tight text-balance;
+}
+
+/* The small letter-spaced capitals over headings, in the nav and on buttons. Colour is the caller's. */
+@utility caps {
+  @apply text-xs font-medium tracking-caps uppercase;
+}
+
+/* An outlined button or link that fills on hover: btn-ink on paper, btn-light on a photograph or the sea. */
+@utility btn {
+  @apply caps inline-flex min-h-11 cursor-pointer items-center border bg-transparent px-5 no-underline motion-safe:transition-colors;
+}
+
+@utility btn-ink {
+  @apply btn border-ink text-ink hover:bg-ink hover:text-foam;
+}
+
+@utility btn-light {
+  @apply btn border-brass text-foam hover:bg-brass hover:text-ink;
+}
+
+/* A text box, a list or a text area. */
+@utility form-field {
+  @apply w-full rounded-none border border-line bg-card p-3 text-base text-ink outline-none focus-visible:border-brass aria-invalid:border-wine motion-safe:transition-colors;
+}
+
+/* A rich-text body as the editor wrote it: Tailwind's typography in the site's faces and colours. */
+@utility prose-site {
+  @apply prose max-w-xl prose-headings:font-display prose-headings:font-medium prose-headings:tracking-tight prose-h2:text-3xl prose-strong:font-medium;
+  --tw-prose-body: var(--color-muted);
+  --tw-prose-headings: var(--color-ink);
+  --tw-prose-links: var(--color-brass-deep);
+  --tw-prose-bold: var(--color-ink);
+  --tw-prose-counters: var(--color-brass-deep);
+  --tw-prose-bullets: var(--color-brass);
+  --tw-prose-hr: var(--color-line);
+  --tw-prose-quotes: var(--color-ink);
+  --tw-prose-quote-borders: var(--color-line);
+
+  /* The plugin's rules that name .prose itself, which @apply leaves naming .prose. */
+  & > :first-child {
+    margin-top: 0;
+  }
+  & > :last-child {
+    margin-bottom: 0;
+  }
+  & > :is(ul, ol) > li > p:first-child {
+    margin-top: 1.25em;
+  }
+  & > :is(ul, ol) > li > p:last-child {
+    margin-bottom: 1.25em;
+  }
+}
+
+/*
+ * <Form> writes its own markup, so the contact form is styled from a wrapper,
+ * reaching each part by element and position. The text controls are
+ * :read-write, which a tick box is not.
+ */
+@utility form-site {
+  /* the thanks, once it is sent */
+  & > div {
+    @apply font-display text-2xl leading-snug;
+  }
+  /* a page's fields, and a group's caption */
+  & fieldset > div {
+    @apply grid gap-5;
+  }
+  & legend {
+    @apply caps mb-4 text-brass-deep;
+  }
+  /* a field's label, the mark of a required one, and its help */
+  & label {
+    @apply block text-xs font-medium tracking-widest text-muted uppercase;
+  }
+  & label > span {
+    @apply ml-1 text-brass-deep;
+  }
+  & label + p {
+    @apply mt-1 text-sm text-muted;
+  }
+  /* the controls */
+  & :is(:read-write, select) {
+    @apply mt-2 w-full border border-line bg-card p-3 text-base text-ink outline-none focus-visible:border-brass aria-invalid:border-wine;
+  }
+  & textarea {
+    @apply resize-y;
+  }
+  /* what went wrong: under a field, and the summary at the top */
+  & :is(input, select, textarea) ~ p {
+    @apply mt-2 text-sm text-wine;
+  }
+  & form > div:has(> ul) {
+    @apply mb-6 border border-wine bg-wine/5 p-4 text-wine;
+  }
+  /* a tick box reads box then label, so its field is a row with the box moved first */
+  & div:has(> input:not(:read-write)) {
+    @apply flex flex-wrap gap-x-3 gap-y-1;
+  }
+  & input:not(:read-write) {
+    @apply order-first mt-0.5 size-4 accent-brass-deep;
+  }
+  & div:has(> input:not(:read-write)) > label {
+    @apply flex-1 text-base font-normal tracking-normal text-ink normal-case;
+  }
+  & div:has(> input:not(:read-write)) > p {
+    @apply basis-full pl-7;
+  }
+  /* the button */
+  & button {
+    @apply caps mt-8 min-h-12 cursor-pointer bg-ink px-6 text-foam;
+  }
+  & button:hover {
+    @apply bg-brass-deep;
+  }
 }

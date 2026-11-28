@@ -1,6 +1,5 @@
 import { usePathname } from 'next/navigation'
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react'
-import { button, caps, shell } from '@/lib/classes'
 import { accessToken, signIn, signOut } from '@/lib/members'
 import { Eyebrow, PageTitle, Standfirst } from './section-intro'
 
@@ -34,7 +33,7 @@ export function MemberButton() {
   return (
     <button
       type="button"
-      className={`${caps} shrink-0 cursor-pointer text-muted hover:text-ink motion-safe:transition-colors`}
+      className="caps shrink-0 cursor-pointer text-muted hover:text-ink motion-safe:transition-colors"
       onClick={() => (signedIn ? signOut() : signIn(path))}
     >
       {signedIn ? 'Sign out' : 'Sign in'}
@@ -46,7 +45,7 @@ export function MemberButton() {
 export function MembersOnly({ refused }: { refused?: boolean }) {
   const path = usePathname()
   return (
-    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+    <header className="page-column pt-16 pb-6 md:pt-24">
       <Eyebrow>Members only</Eyebrow>
       <PageTitle>
         {refused ? 'This page is not open to your account.' : 'This page is for members.'}
@@ -55,7 +54,7 @@ export function MembersOnly({ refused }: { refused?: boolean }) {
         {refused ? 'It is kept for other members.' : 'Sign in with your member account to see it.'}
       </Standfirst>
       {refused ? null : (
-        <button type="button" className={`${button()} mt-8`} onClick={() => signIn(path)}>
+        <button type="button" className="btn-ink mt-8" onClick={() => signIn(path)}>
           Sign in
         </button>
       )}

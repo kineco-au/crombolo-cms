@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { button, caps, display, field, shell } from '@/lib/classes'
 import { hrefOf, type Page, text } from '@/lib/content'
 import { crombolo } from '@/lib/crombolo'
 import { Eyebrow, PageTitle, Standfirst } from './section-intro'
@@ -29,9 +28,9 @@ async function Results({ page, searchParams }: { page: Page; searchParams: Query
             name="q"
             defaultValue={query}
             aria-label="Search the site"
-            className={`${field} min-w-48 flex-1`}
+            className="form-field min-w-48 flex-1"
           />
-          <button className={button()} type="submit">
+          <button className="btn-ink" type="submit">
             Search
           </button>
         </form>
@@ -51,7 +50,7 @@ async function Results({ page, searchParams }: { page: Page; searchParams: Query
             {results.items.map((item) => (
               <li key={item.id} className="border-t border-line py-7">
                 <Eyebrow>{text(item, 'eyebrow')}</Eyebrow>
-                <h2 className={`${display} mt-2 text-2xl`}>
+                <h2 className="heading-display mt-2 text-2xl">
                   <Link
                     className="hover:text-brass-deep motion-safe:transition-colors"
                     href={hrefOf(item)}
@@ -69,7 +68,7 @@ async function Results({ page, searchParams }: { page: Page; searchParams: Query
           </ol>
           {pages > 1 ? (
             <nav
-              className={`${caps} flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-muted [&_a]:text-brass-deep`}
+              className="caps flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-muted [&_a]:text-brass-deep"
               aria-label="Search results pages"
             >
               {at > 1 ? <Link href={link(at - 1)}>Previous</Link> : <span />}
@@ -87,7 +86,7 @@ async function Results({ page, searchParams }: { page: Page; searchParams: Query
 
 export function SearchPage({ page, searchParams }: { page: Page; searchParams: Query }) {
   return (
-    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+    <header className="page-column pt-16 pb-6 md:pt-24">
       <Eyebrow>{text(page, 'eyebrow')}</Eyebrow>
       <PageTitle>{text(page, 'title')}</PageTitle>
       <Suspense fallback={null}>

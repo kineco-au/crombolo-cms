@@ -3,7 +3,6 @@ import { DeliveryError, type RouteAnswer } from '@crombolo/delivery-client'
 import { usePathname } from 'next/navigation'
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { CMS } from '@/lib/address'
-import { shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import type { DeliveryTypes } from '@/lib/cms-types.gen'
 import { finishSignIn } from '@/lib/members'
@@ -76,7 +75,7 @@ function CmsRoute({ path }: { path: string }) {
       return <MembersOnly refused />
     default:
       return (
-        <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+        <header className="page-column pt-16 pb-6 md:pt-24">
           <PageTitle>This page could not be loaded.</PageTitle>
           <Standfirst>Please try again in a moment.</Standfirst>
         </header>
@@ -86,7 +85,7 @@ function CmsRoute({ path }: { path: string }) {
 
 /** What shows while a page is read: quiet, where the page will be. */
 function Loading({ children }: { children: ReactNode }) {
-  return <p className={`${shell} mt-16 text-muted`}>{children}</p>
+  return <p className="page-column mt-16 text-muted">{children}</p>
 }
 
 /** `/signed-in`: where the site sends a member back to, to finish signing in. */
@@ -103,7 +102,7 @@ function SignedIn() {
     )
   }, [setSignedIn])
   return (
-    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+    <header className="page-column pt-16 pb-6 md:pt-24">
       <PageTitle>{failed ? 'You could not be signed in.' : 'Signing you in…'}</PageTitle>
       {failed ? <Standfirst>Please try signing in again.</Standfirst> : null}
     </header>

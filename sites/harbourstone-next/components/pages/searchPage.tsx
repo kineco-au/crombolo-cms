@@ -1,5 +1,4 @@
 import { type PageProps, search } from '@crombolo/crombolo'
-import { button, display, field, shell } from '../shared/classes.ts'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow, Standfirst } from '../shared/section-intro.tsx'
 
@@ -22,21 +21,21 @@ export default async function SearchPage({ model, nav, request }: PageProps) {
 
   return (
     <Layout model={model} nav={nav}>
-      <header class={`${shell} pt-16 pb-6 md:pt-24`}>
+      <header class="page-column pt-16 pb-6 md:pt-24">
         <Eyebrow>{model.text('eyebrow')}</Eyebrow>
-        <h1 class={`${display} mt-3 max-w-[20ch] text-5xl leading-none md:text-7xl`}>
+        <h1 class="heading-display mt-3 max-w-[20ch] text-5xl leading-none md:text-7xl">
           {model.text('title')}
         </h1>
         <search>
           <form class="mt-8 flex max-w-xl flex-wrap gap-3" action={model.url} method="get">
             <input
-              class={`${field} min-w-48 flex-1`}
+              class="form-field min-w-48 flex-1"
               type="search"
               name="q"
               value={query}
               aria-label="Search the site"
             />
-            <button class={`${button()} cursor-pointer`} type="submit">
+            <button class="btn-ink" type="submit">
               Search
             </button>
           </form>
@@ -53,12 +52,12 @@ export default async function SearchPage({ model, nav, request }: PageProps) {
       </header>
 
       {results.items.length > 0 ? (
-        <section class={shell}>
+        <section class="page-column">
           <ol class="mt-6 max-w-2xl">
             {results.items.map((item) => (
               <li class="border-t border-line py-7">
                 <Eyebrow>{item.content.text('eyebrow')}</Eyebrow>
-                <h2 class={`${display} mt-2 text-2xl leading-tight`}>
+                <h2 class="heading-display mt-2 text-2xl leading-tight">
                   <a
                     class="no-underline hover:text-brass-deep motion-safe:transition-colors"
                     href={item.url}
@@ -80,7 +79,7 @@ export default async function SearchPage({ model, nav, request }: PageProps) {
           </ol>
           {pages > 1 ? (
             <nav
-              class="flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-xs font-medium tracking-caps text-muted uppercase"
+              class="flex max-w-2xl items-baseline justify-between border-t border-line pt-7 caps text-muted"
               aria-label="Search results pages"
             >
               {page > 1 ? (

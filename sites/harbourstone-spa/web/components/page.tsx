@@ -1,4 +1,3 @@
-import { shell } from '@/lib/classes'
 import type { Page } from '@/lib/content'
 import { ComparisonPage } from './comparison-page'
 import { ContactPage } from './contact-page'
@@ -35,7 +34,7 @@ export function CmsPage({ page }: { page: Page }) {
 export function NotFound({ page }: { page: Page | null }) {
   if (page) return <CmsPage page={page} />
   return (
-    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+    <header className="page-column pt-16 pb-6 md:pt-24">
       <Eyebrow>Not found</Eyebrow>
       <PageTitle>There is no page here.</PageTitle>
       <Standfirst>It may have moved, or the address may be mistyped.</Standfirst>

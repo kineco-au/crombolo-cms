@@ -1,4 +1,3 @@
-import { shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { useLoad } from '@/lib/use-load'
 import { Wordmark } from './site-header'
@@ -8,9 +7,7 @@ export function SiteFooter() {
   const settings = useLoad('settings', () => cms.settings())
   return (
     <footer className="mt-20 border-t border-line text-sm text-muted">
-      <div
-        className={`${shell} flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 pt-8 pb-12`}
-      >
+      <div className="page-column flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 pt-8 pb-12">
         <p>
           <Wordmark plain /> {settings?.properties.address}
         </p>

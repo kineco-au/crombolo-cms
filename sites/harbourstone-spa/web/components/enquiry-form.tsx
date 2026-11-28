@@ -6,8 +6,6 @@ interface Rule {
   value: string
 }
 
-import { caps, field as fieldClasses } from '@/lib/classes'
-
 interface Field {
   alias: string
   type: string
@@ -112,7 +110,7 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
             required: field.mandatory,
             'aria-invalid': error ? true : undefined,
             'aria-describedby': described || undefined,
-            className: field.type === 'dataConsent' ? undefined : fieldClasses,
+            className: field.type === 'dataConsent' ? undefined : 'form-field',
           }
           const control =
             field.type === 'longAnswer' ? (
@@ -162,7 +160,7 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
                 </label>
               ) : (
                 <>
-                  <label htmlFor={id} className={`${caps} tracking-[0.14em] text-muted`}>
+                  <label htmlFor={id} className="caps text-muted">
                     {field.caption}
                   </label>
                   {control}
@@ -190,7 +188,7 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
         </p>
       ) : null}
       <button
-        className={`${caps} mt-2 min-h-11 cursor-pointer justify-self-start bg-ink px-6 text-foam hover:bg-brass-deep disabled:cursor-wait disabled:opacity-60 motion-safe:transition-colors`}
+        className="caps mt-2 min-h-11 cursor-pointer justify-self-start bg-ink px-6 text-foam hover:bg-brass-deep disabled:cursor-wait disabled:opacity-60 motion-safe:transition-colors"
         type="submit"
         disabled={state === 'sending'}
       >

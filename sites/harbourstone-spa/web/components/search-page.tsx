@@ -1,6 +1,5 @@
 import { useSearchParams } from 'next/navigation'
 import { type FormEvent, useState } from 'react'
-import { button, caps, display, field, shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { hrefOf, type Page, text } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
@@ -27,7 +26,7 @@ export function SearchPage({ page }: { page: Page }) {
     navigate(`${hrefOf(page)}?q=${encodeURIComponent(typed.trim())}`)
   }
   return (
-    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+    <header className="page-column pt-16 pb-6 md:pt-24">
       <Eyebrow>{text(page, 'eyebrow')}</Eyebrow>
       <PageTitle>{text(page, 'title')}</PageTitle>
       <search>
@@ -38,9 +37,9 @@ export function SearchPage({ page }: { page: Page }) {
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             aria-label="Search the site"
-            className={`${field} min-w-48 flex-1`}
+            className="form-field min-w-48 flex-1"
           />
-          <button className={button()} type="submit">
+          <button className="btn-ink" type="submit">
             Search
           </button>
         </form>
@@ -60,7 +59,7 @@ export function SearchPage({ page }: { page: Page }) {
             {results.items.map((item) => (
               <li key={item.id} className="border-t border-line py-7">
                 <Eyebrow>{text(item, 'eyebrow')}</Eyebrow>
-                <h2 className={`${display} mt-2 text-2xl`}>
+                <h2 className="heading-display mt-2 text-2xl">
                   <AppLink
                     className="hover:text-brass-deep motion-safe:transition-colors"
                     href={hrefOf(item)}
@@ -78,7 +77,7 @@ export function SearchPage({ page }: { page: Page }) {
           </ol>
           {pages > 1 ? (
             <nav
-              className={`${caps} flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-muted [&_a]:text-brass-deep`}
+              className="caps flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-muted [&_a]:text-brass-deep"
               aria-label="Search results pages"
             >
               {at > 1 ? <AppLink href={link(at - 1)}>Previous</AppLink> : <span />}

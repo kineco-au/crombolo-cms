@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { caps, display, shell } from '@/lib/classes'
 import { AppLink } from './app-link'
 
 export interface Bottling {
@@ -108,7 +107,7 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
     choose(chosenIds.includes(id) ? chosenIds.filter((c) => c !== id) : [...chosenIds, id])
 
   return (
-    <div className={`${shell} grid gap-10 pt-6 pb-16`}>
+    <div className="page-column grid gap-10 pt-6 pb-16">
       <section aria-labelledby={`${ids}-pick`}>
         <h2 id={`${ids}-pick`} className="sr-only">
           Choose up to {MOST}
@@ -170,7 +169,7 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
                         />
                       ) : null}
                       <AppLink
-                        className={`${display} text-xl hover:text-brass-deep motion-safe:transition-colors`}
+                        className="heading-display text-xl hover:text-brass-deep motion-safe:transition-colors"
                         href={b.href}
                       >
                         {b.title}
@@ -215,7 +214,7 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
           <ul className="grid gap-6 md:hidden">
             {chosen.map((b) => (
               <li key={b.id} className="border border-line bg-card p-5">
-                <h3 className={`${display} text-2xl`}>
+                <h3 className="heading-display text-2xl">
                   <AppLink href={b.href}>{b.title}</AppLink>
                 </h3>
                 <dl className="mt-3 text-sm">
@@ -401,7 +400,7 @@ function Carousel(props: {
                   />
                 ) : null}
                 <span className="mt-1 font-medium">{b.title}</span>
-                <span className={`${caps} text-brass-deep`}>
+                <span className="caps text-brass-deep">
                   {[b.abv, b.age ? `${b.age} years` : b.batch ? `Batch ${b.batch}` : '']
                     .filter(Boolean)
                     .join(' · ')}

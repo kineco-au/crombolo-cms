@@ -1,4 +1,3 @@
-import { button, display, prose, shell } from '@/lib/classes'
 import { blocks, childrenOf, hrefOf, image, type PageOf, richText, text } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
 import { AppLink } from './app-link'
@@ -26,28 +25,24 @@ export function HomePage({ page }: { page: PageOf<'homePage'> }) {
           sizes="100vw"
           priority
         />
-        <div className={`${shell} relative z-10`}>
+        <div className="page-column relative z-10">
           <Eyebrow tone="light">{page.properties.eyebrow}</Eyebrow>
-          <h1
-            className={`${display} mt-4 text-5xl leading-none sm:text-7xl lg:text-8xl xl:text-9xl`}
-          >
+          <h1 className="heading-display mt-4 text-5xl leading-none sm:text-7xl lg:text-8xl xl:text-9xl">
             {page.properties.title}
           </h1>
           <p className="mt-5 max-w-lg text-lg text-pretty">{page.properties.strapline}</p>
           {range && page.properties.heroCtaLabel ? (
-            <AppLink className={`${button('light')} mt-8`} href={hrefOf(range)}>
+            <AppLink className="btn-light mt-8" href={hrefOf(range)}>
               {page.properties.heroCtaLabel}
             </AppLink>
           ) : null}
         </div>
       </section>
 
-      <section
-        className={`${shell} grid items-center gap-10 py-20 md:grid-cols-2 md:gap-16 md:py-28`}
-      >
+      <section className="page-column grid items-center gap-10 py-20 md:grid-cols-2 md:gap-16 md:py-28">
         <div>
           <SectionIntro eyebrow={text(page, 'styleEyebrow')} heading={text(page, 'styleHeading')} />
-          <RichText value={richText(page, 'styleIntro')} className={`${prose} mt-5`} />
+          <RichText value={richText(page, 'styleIntro')} className="prose-site mt-5" />
           <Figures value={blocks(page, 'stats')} />
         </div>
         <Picture media={image(page, 'styleImage')} className="h-80 w-full object-cover md:h-112" />
@@ -55,7 +50,7 @@ export function HomePage({ page }: { page: PageOf<'homePage'> }) {
 
       {range ? (
         <section className="bg-foam py-20 md:py-28">
-          <div className={shell}>
+          <div className="page-column">
             <SectionIntro
               eyebrow={text(page, 'rangeEyebrow')}
               heading={text(page, 'rangeHeading')}
@@ -66,7 +61,7 @@ export function HomePage({ page }: { page: PageOf<'homePage'> }) {
               ))}
             </ul>
             {page.properties.rangeCtaLabel ? (
-              <AppLink className={`${button()} mt-10`} href={hrefOf(range)}>
+              <AppLink className="btn-ink mt-10" href={hrefOf(range)}>
                 {page.properties.rangeCtaLabel}
               </AppLink>
             ) : null}

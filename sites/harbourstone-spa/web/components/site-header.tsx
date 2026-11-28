@@ -1,5 +1,4 @@
 import { type FormEvent, useState } from 'react'
-import { shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { childrenOf, hrefOf } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
@@ -42,9 +41,7 @@ export function SiteHeader() {
   }
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur-md">
-      <div
-        className={`${shell} flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3 md:gap-x-8 md:py-4`}
-      >
+      <div className="page-column flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3 md:gap-x-8 md:py-4">
         <AppLink className="font-display text-xl tracking-wide sm:text-2xl" href="/">
           <Wordmark />
         </AppLink>

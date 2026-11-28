@@ -1,6 +1,5 @@
 import { RichText } from '@crombolo/next-integration/components'
 import Link from 'next/link'
-import { button, display, prose, shell } from '@/lib/classes'
 import { blocks, childrenOf, hrefOf, image, type Page, richText, text } from '@/lib/content'
 import { BottlingCard } from './bottling'
 import { Figures } from './highlights'
@@ -20,28 +19,24 @@ export async function HomePage({ page }: { page: Page }) {
           sizes="100vw"
           priority
         />
-        <div className={`${shell} relative z-10`}>
+        <div className="page-column relative z-10">
           <Eyebrow tone="light">{text(page, 'eyebrow')}</Eyebrow>
-          <h1
-            className={`${display} mt-4 text-5xl leading-none sm:text-7xl lg:text-8xl xl:text-9xl`}
-          >
+          <h1 className="heading-display mt-4 text-5xl leading-none sm:text-7xl lg:text-8xl xl:text-9xl">
             {text(page, 'title')}
           </h1>
           <p className="mt-5 max-w-lg text-lg text-pretty">{text(page, 'strapline')}</p>
           {range && text(page, 'heroCtaLabel') ? (
-            <Link className={`${button('light')} mt-8`} href={hrefOf(range)}>
+            <Link className="btn-light mt-8" href={hrefOf(range)}>
               {text(page, 'heroCtaLabel')}
             </Link>
           ) : null}
         </div>
       </section>
 
-      <section
-        className={`${shell} grid items-center gap-10 py-20 md:grid-cols-2 md:gap-16 md:py-28`}
-      >
+      <section className="page-column grid items-center gap-10 py-20 md:grid-cols-2 md:gap-16 md:py-28">
         <div>
           <SectionIntro eyebrow={text(page, 'styleEyebrow')} heading={text(page, 'styleHeading')} />
-          <RichText value={richText(page, 'styleIntro')} className={`${prose} mt-5`} />
+          <RichText value={richText(page, 'styleIntro')} className="prose-site mt-5" />
           <Figures value={blocks(page, 'stats')} />
         </div>
         <Picture media={image(page, 'styleImage')} className="h-80 w-full object-cover md:h-112" />
@@ -49,7 +44,7 @@ export async function HomePage({ page }: { page: Page }) {
 
       {range ? (
         <section className="bg-foam py-20 md:py-28">
-          <div className={shell}>
+          <div className="page-column">
             <SectionIntro
               eyebrow={text(page, 'rangeEyebrow')}
               heading={text(page, 'rangeHeading')}
@@ -60,7 +55,7 @@ export async function HomePage({ page }: { page: Page }) {
               ))}
             </ul>
             {text(page, 'rangeCtaLabel') ? (
-              <Link className={`${button()} mt-10`} href={hrefOf(range)}>
+              <Link className="btn-ink mt-10" href={hrefOf(range)}>
                 {text(page, 'rangeCtaLabel')}
               </Link>
             ) : null}

@@ -1,6 +1,5 @@
 import type { PageProps } from '@crombolo/crombolo'
 import { BottlingCard } from '../shared/bottling.tsx'
-import { button, display, shell } from '../shared/classes.ts'
 import { Figures, highlightsOf } from '../shared/highlights.tsx'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow, Prose, SectionIntro } from '../shared/section-intro.tsx'
@@ -26,21 +25,21 @@ export default async function HomePage({ model, nav }: PageProps) {
           class="absolute inset-0 bg-linear-to-t from-sea/90 via-sea/50 via-35% to-sea/10"
           aria-hidden="true"
         />
-        <div class={`${shell} relative`}>
+        <div class="page-column relative">
           <Eyebrow tone="light">{model.text('eyebrow')}</Eyebrow>
-          <h1 class={`${display} mt-4 text-6xl leading-none sm:text-7xl lg:text-8xl`}>
+          <h1 class="heading-display mt-4 text-6xl leading-none sm:text-7xl lg:text-8xl">
             {model.text('title')}
           </h1>
           <p class="mt-5 max-w-lg text-lg">{model.text('strapline')}</p>
           {range && model.hasValue('heroCtaLabel') ? (
-            <a class={`${button('light')} mt-8`} href={range.url}>
+            <a class="btn-light mt-8" href={range.url}>
               {model.text('heroCtaLabel')}
             </a>
           ) : null}
         </div>
       </section>
 
-      <section class={`${shell} grid items-center gap-10 py-20 md:grid-cols-2 md:gap-12 md:py-28`}>
+      <section class="page-column grid items-center gap-10 py-20 md:grid-cols-2 md:gap-12 md:py-28">
         <div>
           <SectionIntro eyebrow={model.text('styleEyebrow')} heading={model.text('styleHeading')} />
           <Prose>{model.html('styleIntro')}</Prose>
@@ -57,7 +56,7 @@ export default async function HomePage({ model, nav }: PageProps) {
 
       {range ? (
         <section class="bg-foam py-20 md:py-28">
-          <div class={shell}>
+          <div class="page-column">
             <SectionIntro
               eyebrow={model.text('rangeEyebrow')}
               heading={model.text('rangeHeading')}
@@ -68,7 +67,7 @@ export default async function HomePage({ model, nav }: PageProps) {
               ))}
             </ul>
             {model.hasValue('rangeCtaLabel') ? (
-              <a class={`${button()} mt-8`} href={range.url}>
+              <a class="btn-ink mt-8" href={range.url}>
                 {model.text('rangeCtaLabel')}
               </a>
             ) : null}

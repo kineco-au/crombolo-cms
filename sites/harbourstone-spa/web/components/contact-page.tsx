@@ -1,4 +1,3 @@
-import { display, prose, shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { image, type PageOf, richText } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
@@ -23,12 +22,12 @@ export function ContactPage({ page }: { page: PageOf<'contactPage'> }) {
   return (
     <>
       <PageHeader page={page} />
-      <section className={`${shell} grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr] md:gap-16`}>
+      <section className="page-column grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr] md:gap-16">
         <div>{id ? <FreshForm id={id} /> : null}</div>
         <aside>
           <Eyebrow>{page.properties.asideEyebrow}</Eyebrow>
-          <h2 className={`${display} mt-3 text-3xl`}>{page.properties.asideHeading}</h2>
-          <RichText value={richText(page, 'asideBody')} className={`${prose} mt-5`} />
+          <h2 className="heading-display mt-3 text-3xl">{page.properties.asideHeading}</h2>
+          <RichText value={richText(page, 'asideBody')} className="prose-site mt-5" />
           <Picture media={image(page, 'asideImage')} className="mt-8 h-56 w-full object-cover" />
         </aside>
       </section>

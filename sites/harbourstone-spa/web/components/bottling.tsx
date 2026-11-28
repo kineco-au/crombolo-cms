@@ -1,5 +1,4 @@
 import type { ApiElement } from '@crombolo/delivery-client'
-import { caps, display } from '@/lib/classes'
 import { elements, hrefOf, image, type Page, specOf, text } from '@/lib/content'
 import { AppLink } from './app-link'
 import { Picture } from './picture'
@@ -35,8 +34,8 @@ export function BottlingCard({ bottling, detailed }: { bottling: Page; detailed?
         </AppLink>
       ) : null}
       <div className="p-6">
-        <p className={`${caps} text-brass-deep`}>{specOf(bottling)}</p>
-        <h3 className={`${display} mt-2 text-3xl`}>
+        <p className="caps text-brass-deep">{specOf(bottling)}</p>
+        <h3 className="heading-display mt-2 text-3xl">
           <AppLink
             className="hover:text-brass-deep motion-safe:transition-colors"
             href={hrefOf(bottling)}

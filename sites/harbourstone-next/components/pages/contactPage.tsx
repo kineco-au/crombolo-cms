@@ -1,6 +1,4 @@
 import { Form, type PageProps, type SchemaForm } from '@crombolo/crombolo'
-import { display, shell } from '../shared/classes.ts'
-import { formClasses } from '../shared/form-classes.ts'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow, PageHeader, Prose } from '../shared/section-intro.tsx'
 
@@ -17,11 +15,11 @@ export default async function ContactPage({ model, nav, submission }: PageProps)
   return (
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
-      <section class={`${shell} grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr]`}>
-        <div class={formClasses}>{form ? <Form form={form} submission={submission} /> : null}</div>
+      <section class="page-column grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr]">
+        <div class="form-site">{form ? <Form form={form} submission={submission} /> : null}</div>
         <aside>
           <Eyebrow>{model.text('asideEyebrow')}</Eyebrow>
-          <h2 class={`${display} mt-3 text-3xl leading-tight`}>{model.text('asideHeading')}</h2>
+          <h2 class="heading-display mt-3 text-3xl leading-tight">{model.text('asideHeading')}</h2>
           <Prose>{model.html('asideBody')}</Prose>
           {image ? (
             <img

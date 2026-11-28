@@ -1,6 +1,5 @@
 import type { PageProps, PublishedElement } from '@crombolo/crombolo'
 import { specOf, TastingNotes } from '../shared/bottling.tsx'
-import { display, shell } from '../shared/classes.ts'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow, Prose, Standfirst } from '../shared/section-intro.tsx'
 
@@ -10,9 +9,7 @@ export default async function Expression({ model, nav }: PageProps) {
   const range = nav.parent(model)
   return (
     <Layout model={model} nav={nav}>
-      <article
-        class={`${shell} grid items-start gap-10 pt-12 pb-16 md:grid-cols-[minmax(0,2fr)_3fr] md:gap-12`}
-      >
+      <article class="page-column grid items-start gap-10 pt-12 pb-16 md:grid-cols-[minmax(0,2fr)_3fr] md:gap-12">
         <div class="border border-line bg-foam">
           {bottle ? (
             <img
@@ -24,12 +21,14 @@ export default async function Expression({ model, nav }: PageProps) {
         </div>
         <div>
           <Eyebrow>{specOf(model)}</Eyebrow>
-          <h1 class={`${display} mt-3 text-5xl leading-none md:text-6xl`}>{model.text('title')}</h1>
+          <h1 class="heading-display mt-3 text-5xl leading-none md:text-6xl">
+            {model.text('title')}
+          </h1>
           {model.hasValue('summary') ? <Standfirst>{model.text('summary')}</Standfirst> : null}
           <Prose>{model.html('bodyText')}</Prose>
           <TastingNotes notes={notes} />
           {range ? (
-            <p class="mt-10 text-xs font-medium tracking-caps text-brass-deep uppercase">
+            <p class="caps mt-10 text-brass-deep">
               <a class="hover:text-ink motion-safe:transition-colors" href={range.url}>
                 Back to {range.text('title')}
               </a>

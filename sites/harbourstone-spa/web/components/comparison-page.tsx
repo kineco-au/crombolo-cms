@@ -1,4 +1,3 @@
-import { shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { elements, hrefOf, image, imageOf, type Page, text } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
@@ -41,7 +40,7 @@ export function ComparisonPage({ page }: { page: Page }) {
       {all ? (
         <Compare bottlings={all} />
       ) : (
-        <p className={`${shell} text-muted`}>Loading the comparison…</p>
+        <p className="page-column text-muted">Loading the comparison…</p>
       )}
     </>
   )
