@@ -1,7 +1,8 @@
 import type { PageProps, PublishedContent, PublishedElement } from '@crombolo/crombolo'
+import { shell } from '../shared/classes.ts'
 import Compare, { type Bottling } from '../shared/compare.tsx'
 import { Layout } from '../shared/layout.tsx'
-import { PageHeader } from '../shared/section-intro.tsx'
+import { Eyebrow, PageHeader } from '../shared/section-intro.tsx'
 
 /** Every bottling under the whisky list, as the comparison needs it. */
 async function range(
@@ -47,13 +48,15 @@ export default async function ComparisonPage({ model, nav }: PageProps) {
   return (
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
-      <section>
+      <section class={`${shell} mt-10`}>
         <Compare bottlings={bottlings.map((b) => b.data)}>
-          <ul class="compare__fallback">
+          <ul class="grid gap-2">
             {bottlings.map(({ page, data }) => (
-              <li>
-                <a href={page.url}>{data.title}</a>
-                <span class="eyebrow">{[data.kind, data.abv].filter(Boolean).join(' · ')}</span>
+              <li class="flex items-baseline gap-4">
+                <a class="hover:text-brass-deep" href={page.url}>
+                  {data.title}
+                </a>
+                <Eyebrow>{[data.kind, data.abv].filter(Boolean).join(' · ')}</Eyebrow>
               </li>
             ))}
           </ul>

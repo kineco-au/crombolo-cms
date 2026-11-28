@@ -1,7 +1,8 @@
 import type { PageProps } from '@crombolo/crombolo'
+import { shell } from '../shared/classes.ts'
 import { HighlightRows, highlightsOf } from '../shared/highlights.tsx'
 import { Layout } from '../shared/layout.tsx'
-import { PageHeader, SectionIntro } from '../shared/section-intro.tsx'
+import { PageHeader, Prose, SectionIntro } from '../shared/section-intro.tsx'
 
 export default async function ContentPage({ model, nav }: PageProps) {
   const image = (await model.media('heroImage'))[0]
@@ -11,10 +12,10 @@ export default async function ContentPage({ model, nav }: PageProps) {
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
 
-      <section class="split split--image-first">
+      <section class={`${shell} grid items-center gap-10 py-20 md:grid-cols-2 md:gap-12 md:py-28`}>
         {image ? (
           <img
-            class="split__image"
+            class="h-112 w-full object-cover"
             src={image.cropUrl({ width: 1200, height: 800 })}
             alt={image.name}
           />
@@ -24,13 +25,13 @@ export default async function ContentPage({ model, nav }: PageProps) {
             eyebrow={model.text('sectionEyebrow')}
             heading={model.text('sectionHeading')}
           />
-          <div class="prose">{model.html('bodyText')}</div>
+          <Prose>{model.html('bodyText')}</Prose>
         </div>
       </section>
 
       {highlights.length > 0 ? (
-        <section class="band band--dark">
-          <div class="split">
+        <section class="bg-sea py-20 text-foam md:py-28">
+          <div class={`${shell} grid items-center gap-10 md:grid-cols-2 md:gap-12`}>
             <div>
               <SectionIntro
                 eyebrow={model.text('highlightsEyebrow')}
@@ -41,7 +42,7 @@ export default async function ContentPage({ model, nav }: PageProps) {
             </div>
             {highlightsImage ? (
               <img
-                class="split__image"
+                class="h-112 w-full object-cover"
                 src={highlightsImage.cropUrl({ width: 1200, height: 800 })}
                 alt={highlightsImage.name}
               />

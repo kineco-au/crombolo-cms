@@ -1,4 +1,5 @@
 import type { Navigation, PublishedContent } from '@crombolo/crombolo'
+import { shell } from './classes.ts'
 
 /**
  * The masthead and the primary nav.
@@ -10,7 +11,7 @@ import type { Navigation, PublishedContent } from '@crombolo/crombolo'
  *
  * There is no hamburger because there is no client-side JavaScript on this
  * site: below the breakpoint the links wrap under the wordmark instead, which
- * `site.css` does with flex-wrap alone.
+ * flex-wrap does alone.
  *
  * A Search Page among the children is the search box at the end instead of a
  * link: a plain GET form, which needs no script either.
@@ -23,19 +24,19 @@ export function SiteHeader({ model, nav }: { model: PublishedContent; nav: Navig
   const searchPage = children.find((child) => child.contentType.alias === 'searchPage')
   const links = [home, ...children.filter((child) => child !== searchPage)]
   return (
-    <header class="masthead">
-      <div class="masthead__inner">
-        <a class="wordmark" href={home.url}>
+    <header class="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur-md">
+      <div class={`${shell} flex flex-wrap items-center justify-between gap-x-8 gap-y-3 py-4`}>
+        <a class="font-display text-2xl tracking-wide no-underline" href={home.url}>
           <Wordmark />
         </a>
-        <nav aria-label="Primary">
+        <nav aria-label="Primary" class="flex flex-wrap gap-x-7 gap-y-2">
           {links.map((link) => {
             const here =
               link.key === home.key ? model.key === home.key : ancestry.includes(String(link.id))
             return (
               <a
                 href={link.url}
-                class={here ? 'here' : undefined}
+                class="text-xs font-medium tracking-caps text-muted uppercase no-underline hover:text-brass-deep aria-[current=page]:text-brass-deep motion-safe:transition-colors"
                 aria-current={here ? 'page' : undefined}
               >
                 {link.key === home.key ? 'Home' : link.name}
@@ -44,9 +45,15 @@ export function SiteHeader({ model, nav }: { model: PublishedContent; nav: Navig
           })}
         </nav>
         {searchPage ? (
-          <search class="masthead__search">
+          <search>
             <form action={searchPage.url} method="get">
-              <input type="search" name="q" placeholder="Search" aria-label="Search the site" />
+              <input
+                type="search"
+                name="q"
+                placeholder="Search"
+                aria-label="Search the site"
+                class="w-36 border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus-visible:w-52 focus-visible:border-brass motion-safe:transition-all"
+              />
             </form>
           </search>
         ) : null}
@@ -60,10 +67,10 @@ export function SiteHeader({ model, nav }: { model: PublishedContent; nav: Navig
  * with two colours in it, which makes it part of the design and not a value an
  * editor should have to reproduce. The page title stays the editable one.
  */
-export function Wordmark() {
+export function Wordmark({ plain }: { plain?: boolean }) {
   return (
     <>
-      Harbour<span>stone</span>
+      Harbour<span class={plain ? undefined : 'text-brass-deep'}>stone</span>
     </>
   )
 }

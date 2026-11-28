@@ -1,0 +1,35 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-paper: #efe8dc;
+  --color-foam: #f7f3eb;
+  --color-card: #fbf8f3;
+  --color-ink: #1a1612;
+  --color-muted: #6d6156;
+  --color-brass: #a6844a;
+  --color-brass-deep: #7a5c2e;
+  --color-sea: #24383c;
+  --color-line: #d8cebf;
+  --color-wine: #9c3b2e;
+  --color-sand: #f1e3c4;
+  --color-selection: #e4d3ae;
+
+  --font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+
+  --tracking-caps: 0.2em;
+
+  --animate-slide-in: slide-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(2.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

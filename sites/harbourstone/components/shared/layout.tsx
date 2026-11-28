@@ -1,4 +1,4 @@
-import { asset, type Child, type Navigation, type PublishedContent } from '@crombolo/crombolo'
+import type { Child, Navigation, PublishedContent } from '@crombolo/crombolo'
 import { SiteFooter } from './site-footer.tsx'
 import { SiteHeader } from './site-header.tsx'
 
@@ -9,9 +9,9 @@ import { SiteHeader } from './site-header.tsx'
  *
  * The two faces come from Google Fonts rather than from files in this template:
  * nothing binary ships, and deleting the two <link> tags is the whole cost of
- * taking the third-party request out. `site.css` names a fallback for each, so
- * a blocked request degrades to the system serif and sans rather than to
- * nothing.
+ * taking the third-party request out. `css/tailwind.css` names a fallback for
+ * each, so a blocked request degrades to the system serif and sans rather than
+ * to nothing.
  */
 export function Layout({
   model,
@@ -26,7 +26,7 @@ export function Layout({
   const siteName = home?.text('title') || 'Harbourstone'
   const heading = model.text('title') || model.name
   return (
-    <html lang="en">
+    <html lang="en" class="antialiased">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -37,9 +37,8 @@ export function Layout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Outfit:wght@300;400;500&display=swap"
         />
-        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
-      <body>
+      <body class="bg-paper font-sans leading-normal font-light text-ink selection:bg-selection selection:text-ink">
         <SiteHeader model={model} nav={nav} />
         <main>{children}</main>
         <SiteFooter />

@@ -7,8 +7,8 @@ import type { BlockProps } from '@crombolo/crombolo'
  */
 export default function HighlightBlock({ content }: BlockProps) {
   return (
-    <li>
-      <span class="highlight-rows__heading">{content.text('heading')}</span>
+    <li class="grid gap-1 border-t border-foam/15 py-4 text-foam/80 first:border-t-0">
+      <span class="font-display text-xl text-foam">{content.text('heading')}</span>
       <span>{content.text('detail')}</span>
     </li>
   )

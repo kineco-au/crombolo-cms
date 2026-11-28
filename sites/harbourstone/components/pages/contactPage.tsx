@@ -1,6 +1,8 @@
 import { Form, type PageProps, type SchemaForm } from '@crombolo/crombolo'
+import { display, shell } from '../shared/classes.ts'
+import { formClasses } from '../shared/form-classes.ts'
 import { Layout } from '../shared/layout.tsx'
-import { Eyebrow, PageHeader } from '../shared/section-intro.tsx'
+import { Eyebrow, PageHeader, Prose } from '../shared/section-intro.tsx'
 
 export default async function ContactPage({ model, nav, submission }: PageProps) {
   // A `formPicker` property arrives as the definition itself, so there is
@@ -15,16 +17,18 @@ export default async function ContactPage({ model, nav, submission }: PageProps)
   return (
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
-      <section class="contact">
-        <div class="contact__form">
-          {form ? <Form form={form} submission={submission} /> : null}
-        </div>
-        <aside class="contact__aside">
+      <section class={`${shell} grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr]`}>
+        <div class={formClasses}>{form ? <Form form={form} submission={submission} /> : null}</div>
+        <aside>
           <Eyebrow>{model.text('asideEyebrow')}</Eyebrow>
-          <h2>{model.text('asideHeading')}</h2>
-          <div class="prose">{model.html('asideBody')}</div>
+          <h2 class={`${display} mt-3 text-3xl leading-tight`}>{model.text('asideHeading')}</h2>
+          <Prose>{model.html('asideBody')}</Prose>
           {image ? (
-            <img src={image.cropUrl({ width: 1200, height: 800 })} alt={image.name} />
+            <img
+              class="mt-8 h-56 w-full object-cover"
+              src={image.cropUrl({ width: 1200, height: 800 })}
+              alt={image.name}
+            />
           ) : null}
         </aside>
       </section>

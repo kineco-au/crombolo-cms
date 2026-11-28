@@ -484,7 +484,7 @@ describe('what init writes', () => {
 
     expect(paths).toContain('components/pages/homePage.tsx')
     expect(paths).toContain('schema/content-types/home-page.toml')
-    expect(paths).toContain('css/site.css')
+    expect(paths).toContain('css/tailwind.css')
     // The content arrives as the seed, files the new site edits (story 164).
     expect(paths).toContain('content/pages/harbourstone.toml')
     expect(paths.some((p) => p.startsWith('content/library/'))).toBe(true)
@@ -597,7 +597,7 @@ describe('the demo’s photographs', () => {
 
 describe('the demo’s typography', () => {
   const template = byId('demo/harbourstone')
-  const css = readFileSync(join(template.dir, 'files', 'css', 'site.css'), 'utf8')
+  const css = readFileSync(join(template.dir, 'files', 'css', 'tailwind.css'), 'utf8')
   const layout = readFileSync(
     join(template.dir, 'files', 'components', 'shared', 'layout.tsx'),
     'utf8',
@@ -608,7 +608,9 @@ describe('the demo’s typography', () => {
     // link falls back silently, and looks merely a bit wrong rather than
     // broken. Reading the first-named family out of each custom property is
     // enough to catch that.
-    const families = [...css.matchAll(/--(?:display|sans):\s*"([^"]+)"/g)].map((m) => m[1] ?? '')
+    const families = [...css.matchAll(/--font-(?:display|sans):\s*"([^"]+)"/g)].map(
+      (m) => m[1] ?? '',
+    )
     expect(families.length).toBe(2)
     for (const family of families) expect([family, layout.includes(family)]).toEqual([family, true])
   })
@@ -616,7 +618,7 @@ describe('the demo’s typography', () => {
   test('names a fallback for each, so a blocked request still reads', () => {
     // The fonts come off a third party. A site behind a filter that cannot
     // reach it should land on a system serif and sans, not on a default.
-    for (const property of ['--display', '--sans']) {
+    for (const property of ['--font-display', '--font-sans']) {
       const declaration = new RegExp(`${property}:([^;]+);`).exec(css)?.[1] ?? ''
       expect([property, declaration.split(',').length > 2]).toEqual([property, true])
       expect([property, /serif/.test(declaration)]).toEqual([property, true])

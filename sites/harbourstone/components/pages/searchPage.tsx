@@ -1,6 +1,7 @@
 import { type PageProps, search } from '@crombolo/crombolo'
+import { button, display, field, shell } from '../shared/classes.ts'
 import { Layout } from '../shared/layout.tsx'
-import { Eyebrow } from '../shared/section-intro.tsx'
+import { Eyebrow, Standfirst } from '../shared/section-intro.tsx'
 
 const PER_PAGE = 10
 
@@ -21,52 +22,84 @@ export default async function SearchPage({ model, nav, request }: PageProps) {
 
   return (
     <Layout model={model} nav={nav}>
-      <header class="page-header">
+      <header class={`${shell} pt-16 pb-6 md:pt-24`}>
         <Eyebrow>{model.text('eyebrow')}</Eyebrow>
-        <h1>{model.text('title')}</h1>
+        <h1 class={`${display} mt-3 max-w-[20ch] text-5xl leading-none md:text-7xl`}>
+          {model.text('title')}
+        </h1>
         <search>
-          <form class="search-form" action={model.url} method="get">
-            <input type="search" name="q" value={query} aria-label="Search the site" />
-            <button class="button" type="submit">
+          <form class="mt-8 flex max-w-xl flex-wrap gap-3" action={model.url} method="get">
+            <input
+              class={`${field} min-w-48 flex-1`}
+              type="search"
+              name="q"
+              value={query}
+              aria-label="Search the site"
+            />
+            <button class={`${button()} cursor-pointer`} type="submit">
               Search
             </button>
           </form>
         </search>
         {query ? (
-          <p class="standfirst">
+          <Standfirst>
             {results.total === 0
               ? `Nothing matches “${query}”.`
               : `${results.total} ${results.total === 1 ? 'page matches' : 'pages match'} “${query}”.`}
-          </p>
+          </Standfirst>
         ) : model.hasValue('standfirst') ? (
-          <p class="standfirst">{model.text('standfirst')}</p>
+          <Standfirst>{model.text('standfirst')}</Standfirst>
         ) : null}
       </header>
 
       {results.items.length > 0 ? (
-        <section>
-          <ol class="search-results">
+        <section class={shell}>
+          <ol class="mt-6 max-w-2xl">
             {results.items.map((item) => (
-              <li>
+              <li class="border-t border-line py-7">
                 <Eyebrow>{item.content.text('eyebrow')}</Eyebrow>
-                <h2>
-                  <a href={item.url}>{item.content.text('title') || item.name}</a>
+                <h2 class={`${display} mt-2 text-2xl leading-tight`}>
+                  <a
+                    class="no-underline hover:text-brass-deep motion-safe:transition-colors"
+                    href={item.url}
+                  >
+                    {item.content.text('title') || item.name}
+                  </a>
                 </h2>
-                <p>
+                <p class="mt-3 text-muted">
                   {item.excerpt.map((segment) =>
-                    segment.match ? <mark>{segment.text}</mark> : segment.text,
+                    segment.match ? (
+                      <mark class="bg-transparent font-medium text-ink">{segment.text}</mark>
+                    ) : (
+                      segment.text
+                    ),
                   )}
                 </p>
               </li>
             ))}
           </ol>
           {pages > 1 ? (
-            <nav class="search-pages" aria-label="Search results pages">
-              {page > 1 ? <a href={link(page - 1)}>Previous</a> : <span />}
+            <nav
+              class="flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-xs font-medium tracking-caps text-muted uppercase"
+              aria-label="Search results pages"
+            >
+              {page > 1 ? (
+                <a class="text-brass-deep no-underline" href={link(page - 1)}>
+                  Previous
+                </a>
+              ) : (
+                <span />
+              )}
               <span>
                 Page {page} of {pages}
               </span>
-              {page < pages ? <a href={link(page + 1)}>Next</a> : <span />}
+              {page < pages ? (
+                <a class="text-brass-deep no-underline" href={link(page + 1)}>
+                  Next
+                </a>
+              ) : (
+                <span />
+              )}
             </nav>
           ) : null}
         </section>
