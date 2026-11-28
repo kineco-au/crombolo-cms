@@ -122,6 +122,9 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   const list = page.locator('umb-section-sidebar crombolo-workspaces-list')
   const all = page.locator('crombolo-workspaces-page')
   await expect(list.locator('.row[aria-current="true"]')).toContainText('Spring sale')
+  // The tab is in it, so its switch is off; Shared's is on.
+  await expect(list.locator('.row[aria-current="true"] .switch')).toBeDisabled()
+  await expect(list.locator('.row', { hasText: 'Shared' }).first().locator('.switch')).toBeEnabled()
   await expect(list.locator('.row[aria-current="true"] .here')).toHaveAttribute(
     'aria-label',
     'You are here',

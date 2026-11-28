@@ -139,8 +139,10 @@ import {
   markOf,
   menuFor,
   mergeRows,
+  named,
   onceKnown,
   PALETTE,
+  pageOf,
   WORKSPACE_HEADER,
   whoSees,
   workspaceFacts,
@@ -552,6 +554,25 @@ describe("a workspace's colour and Shared's grid", () => {
 })
 
 describe('who sees a workspace (story 451)', () => {
+  test('the list finds a workspace by any part of its name, whatever its case', () => {
+    const list = [{ name: 'Spring sale' }, { name: 'Winter 2026' }, { name: 'Sale archive' }]
+    expect(named(list, 'sale').map((w: { name: string }) => w.name)).toEqual([
+      'Spring sale',
+      'Sale archive',
+    ])
+    expect(named(list, '  ')).toHaveLength(3)
+    expect(named(list, 'autumn')).toEqual([])
+  })
+
+  test('the list is paged ten at a time, the page kept within those there are', () => {
+    const items = Array.from({ length: 23 }, (_, i) => i + 1)
+    expect(pageOf(items, 1)).toMatchObject({ page: 1, pages: 3, from: 1, to: 10, total: 23 })
+    expect(pageOf(items, 3)).toMatchObject({ page: 3, from: 21, to: 23, items: [21, 22, 23] })
+    expect(pageOf(items, 9).page).toBe(3)
+    expect(pageOf(items, 0).page).toBe(1)
+    expect(pageOf([], 1)).toMatchObject({ page: 1, pages: 1, from: 0, to: 0, total: 0 })
+  })
+
   test("the list's filter: Mine is those the person is in, All is every one they can see", () => {
     const list = [
       { key: 'a', member: true },

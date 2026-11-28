@@ -128,7 +128,9 @@ export default class CromboloContentStripElement extends UmbLitElement {
       )}
       ${
         this.#workspaces
-          ? html`<a
+          ? html`<span class="divider" role="separator" aria-orientation="vertical"></span
+              ><a
+                class="workspaces"
                 href=${new URL(WORKSPACES.path, document.baseURI).pathname}
                 aria-current=${this._active === WORKSPACES.label ? 'page' : 'false'}
                 >${WORKSPACES.label}</a
@@ -151,8 +153,15 @@ export default class CromboloContentStripElement extends UmbLitElement {
       background: var(--uui-color-surface);
       border-bottom: 1px solid var(--uui-color-border);
     }
-    crombolo-workspace-controls {
+    /* Workspaces sits at the right, set apart, with the controls and the switch it goes with. */
+    .divider {
+      flex: none;
+      align-self: center;
+      width: 1px;
+      height: 20px;
       margin-left: auto;
+      margin-right: var(--uui-size-space-2);
+      background: var(--uui-color-border);
     }
     a {
       padding: var(--uui-size-space-1) var(--uui-size-space-3);

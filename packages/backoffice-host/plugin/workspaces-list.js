@@ -2,12 +2,24 @@
  * The sidebar at Workspaces: Shared, set apart, then every workspace the person can see,
  * each name on its colour, a green dot by the one this tab is in, and the ones merged
  * lately below. A filter shows the person's own (Mine: theirs, or shared with them) or
- * All they can see, Mine at first, the choice kept in this browser. Choosing a row shows that
+ * All they can see, Mine at first, the choice kept in this browser; a box finds them by
+ * any part of their name, and they are shown ten at a time, Shared always first. Each has
+ * a switch that moves this tab into it, off for the one the tab is in and for one the
+ * person may only look at. Choosing a row shows that
  * workspace beside the list; the tab moves only when asked there.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { colourOf, filtered, inkOn, workspaceRows, workspacesApi } from './workspace-client.js'
+import {
+  chooseWorkspace,
+  colourOf,
+  filtered,
+  inkOn,
+  named,
+  pageOf,
+  workspaceRows,
+  workspacesApi,
+} from './workspace-client.js'
 import { here, newWorkspace } from './workspace-switch.js'
 import { chosenWorkspace, showWorkspace, watchWorkspaces } from './workspaces-state.js'
 
@@ -32,6 +44,8 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     _ready: { state: true },
     _chosen: { state: true },
     _filter: { state: true },
+    _query: { state: true },
+    _page: { state: true },
   }
 
   #mine = { enabled: false, required: false }
@@ -44,10 +58,13 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     this._ready = false
     this._chosen = chosenWorkspace()
     this._filter = readFilter()
+    this._query = ''
+    this._page = 1
   }
 
   #setFilter(filter) {
     this._filter = filter
+    this._page = 1
     try {
       localStorage.setItem(FILTER_KEY, filter)
     } catch {}
@@ -91,9 +108,64 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     return changes.filter((c) => c.kind === 'merge').slice(0, 8)
   }
 
+  /** Moves this tab into a workspace, or Shared, and shows the screen there again. */
+  #switchTo(row) {
+    if (row.key === 'shared')
+      chooseWorkspace(this.#mine.required ? { key: 'shared', name: 'Shared' } : null)
+    else chooseWorkspace({ key: row.key, name: row.name })
+    location.reload()
+  }
+
+  #row(row) {
+    const workspace = this.#workspaces.find((w) => w.key === row.key)
+    const mayEnter = row.key === 'shared' || workspace?.member === true
+    const why = row.here
+      ? 'This tab is in it'
+      : mayEnter
+        ? `Switch to ${row.name}`
+        : 'You may look at it, not work in it'
+    return html`<div class="row" aria-current=${row.key === this._chosen ? 'true' : 'false'}>
+      <button type="button" class="pick" @click=${() => showWorkspace(row.key)}>
+        <span
+          class=${row.here ? 'here' : 'there'}
+          role=${row.here ? 'img' : nothing}
+          aria-label=${row.here ? 'You are here' : nothing}
+          title=${row.here ? 'You are here' : nothing}
+        ></span>
+        <span class="name">
+          ${
+            row.key === 'shared'
+              ? row.name
+              : html`<span
+                  class="label"
+                  style=${`background:${colourOf(row.key)};color:${inkOn(colourOf(row.key))}`}
+                  >${row.name}</span
+                >`
+          }
+        </span>
+        ${row.note ? html`<span class="note">${row.note}</span>` : nothing}
+      </button>
+      <button
+        type="button"
+        class="switch"
+        aria-label=${`Switch to ${row.name}`}
+        title=${why}
+        ?disabled=${row.here || !mayEnter}
+        @click=${() => this.#switchTo(row)}
+      >
+        <uui-icon name="icon-enter"></uui-icon>
+      </button>
+    </div>`
+  }
+
   render() {
     if (!this._ready || !this.#mine.enabled) return nothing
     const current = here(this.#mine)
+    const [shared, ...rows] = workspaceRows({
+      current,
+      workspaces: named(filtered(this.#workspaces, this._filter), this._query),
+    })
+    const shown = pageOf(rows, this._page)
     return html`<nav aria-label="Workspaces">
       <div class="head">
         <span>Workspaces</span>
@@ -101,6 +173,8 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
           <uui-icon name="icon-add"></uui-icon>
         </uui-button>
       </div>
+      ${this.#row(shared)}
+      <hr class="apart" />
       <div class="filter" role="group" aria-label="Which workspaces">
         ${[
           ['mine', 'Mine'],
@@ -114,35 +188,45 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
             >${label}</button>`,
         )}
       </div>
-      ${workspaceRows({ current, workspaces: filtered(this.#workspaces, this._filter) }).map(
-        (row) =>
-          html`<button
-            type="button"
-            class="row"
-            aria-current=${row.key === this._chosen ? 'true' : 'false'}
-            @click=${() => showWorkspace(row.key)}
-          >
-            <span
-              class=${row.here ? 'here' : 'there'}
-              role=${row.here ? 'img' : nothing}
-              aria-label=${row.here ? 'You are here' : nothing}
-              title=${row.here ? 'You are here' : nothing}
-            ></span>
-            <span class="name">
-              ${
-                row.key === 'shared'
-                  ? row.name
-                  : html`<span
-                      class="label"
-                      style=${`background:${colourOf(row.key)};color:${inkOn(colourOf(row.key))}`}
-                      >${row.name}</span
-                    >`
-              }
-            </span>
-            ${row.note ? html`<span class="note">${row.note}</span>` : nothing}
-          </button>
-          ${row.key === 'shared' ? html`<hr class="apart" />` : nothing}`,
-      )}
+      <input
+        class="find"
+        type="search"
+        placeholder="Find a workspace"
+        aria-label="Find a workspace by name"
+        .value=${this._query}
+        @input=${(event) => {
+          this._query = event.currentTarget.value
+          this._page = 1
+        }}
+      />
+      ${
+        shown.total === 0
+          ? html`<p class="none">${this._query.trim() ? 'No workspace has that in its name.' : 'None yet.'}</p>`
+          : shown.items.map((row) => this.#row(row))
+      }
+      ${
+        shown.pages > 1
+          ? html`<div class="pager" aria-label="Pages">
+              <button
+                type="button"
+                aria-label="Previous page"
+                ?disabled=${shown.page === 1}
+                @click=${() => {
+                  this._page = shown.page - 1
+                }}
+              >‹</button>
+              <span>${shown.from}–${shown.to} of ${shown.total}</span>
+              <button
+                type="button"
+                aria-label="Next page"
+                ?disabled=${shown.page === shown.pages}
+                @click=${() => {
+                  this._page = shown.page + 1
+                }}
+              >›</button>
+            </div>`
+          : nothing
+      }
       ${
         this.#merged.length > 0
           ? html`<div class="head merged"><span>Merged</span></div>
@@ -202,6 +286,42 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       background: var(--uui-color-selected);
       color: var(--uui-color-selected-contrast);
     }
+    .find {
+      margin: 0 var(--uui-size-space-3) var(--uui-size-space-3);
+      padding: var(--uui-size-space-2) var(--uui-size-space-3);
+      border: 1px solid var(--uui-color-border-standalone, var(--uui-color-border));
+      border-radius: var(--uui-border-radius);
+      background: var(--uui-color-surface);
+      color: var(--uui-color-text);
+      font: inherit;
+    }
+    .none {
+      margin: 0 var(--uui-size-space-3);
+      color: var(--uui-color-text-alt);
+      font-size: var(--uui-type-small-size);
+    }
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: var(--uui-size-space-3) var(--uui-size-space-3) 0;
+      color: var(--uui-color-text-alt);
+      font-size: var(--uui-type-small-size);
+    }
+    .pager button {
+      border: 1px solid var(--uui-color-border);
+      border-radius: var(--uui-border-radius);
+      background: var(--uui-color-surface);
+      color: var(--uui-color-text);
+      font: inherit;
+      line-height: 1;
+      padding: 4px 10px;
+      cursor: pointer;
+    }
+    .pager button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
     .head.merged {
       margin-top: var(--uui-size-space-5);
     }
@@ -224,6 +344,46 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     .row[aria-current='true'] {
       background: var(--crombolo-terracotta-tint, var(--uui-color-surface-alt));
       font-weight: 700;
+    }
+    .row:has(> .pick) {
+      gap: var(--uui-size-space-1);
+      padding: 0 var(--uui-size-space-1) 0 0;
+      cursor: default;
+    }
+    .pick {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: var(--uui-size-space-3);
+      padding: var(--uui-size-space-3);
+      border: none;
+      background: none;
+      font: inherit;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .switch {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 1px solid transparent;
+      border-radius: var(--uui-border-radius);
+      background: none;
+      color: var(--uui-color-interactive, var(--uui-color-text));
+      cursor: pointer;
+    }
+    .switch:hover:not(:disabled) {
+      border-color: var(--uui-color-border);
+      background: var(--uui-color-surface);
+    }
+    .switch:disabled {
+      opacity: 0.35;
+      cursor: default;
     }
     .row.gone {
       cursor: default;

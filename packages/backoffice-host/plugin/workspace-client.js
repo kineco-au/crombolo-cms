@@ -278,6 +278,36 @@ export function whoSees(view, groups = [], people = []) {
 export const filtered = (workspaces, filter) =>
   filter === 'all' ? workspaces : workspaces.filter((w) => w.member)
 
+/** The workspaces whose name holds `query`, whatever its case; all of them for none. Pure. */
+export const named = (workspaces, query) => {
+  const q = String(query ?? '')
+    .trim()
+    .toLowerCase()
+  return q ? workspaces.filter((w) => String(w.name).toLowerCase().includes(q)) : workspaces
+}
+
+/** How many workspaces the list shows at once. */
+export const WORKSPACES_PER_PAGE = 10
+
+/**
+ * One page of `items`, counted from 1 and kept within the pages there are, with what the
+ * list says of it: `from`, `to` and `total` (11–20 of 34). Pure.
+ */
+export function pageOf(items, page, size = WORKSPACES_PER_PAGE) {
+  const pages = Math.max(1, Math.ceil(items.length / size))
+  const at = Math.min(Math.max(1, Math.floor(page) || 1), pages)
+  const start = (at - 1) * size
+  const shown = items.slice(start, start + size)
+  return {
+    items: shown,
+    page: at,
+    pages,
+    total: items.length,
+    from: items.length === 0 ? 0 : start + 1,
+    to: start + shown.length,
+  }
+}
+
 /**
  * The Workspaces page's list, in order: Shared, then each open workspace the person can
  * see, the one the tab is in marked `here`. `note` says what stands out: conflicts, or
