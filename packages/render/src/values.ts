@@ -22,6 +22,11 @@ import type { PublishedProperty } from './model.ts'
 
 /** What conversion needs from the published cache. */
 export interface ValueContext<Content = unknown, Media = unknown> {
+  /**
+   * The culture being read (story 456): a block whose element varies by culture
+   * shows its values in it, and a block not exposed in it is left out. Absent, all.
+   */
+  culture?: string | null
   content(key: string): Content | undefined
   /**
    * A form definition by key. Absent until the renderer is given one, which is
@@ -217,6 +222,52 @@ export interface TypedElement<Properties> extends PublishedElement {
   value<Alias extends keyof Properties & string>(alias: Alias): Properties[Alias]
 }
 
+const sameCulture = (a: string | null | undefined, b: string | null | undefined) =>
+  (a ?? '').toLowerCase() === (b ?? '').toLowerCase()
+
+/**
+ * A block's values in the culture being read (story 456): for each alias its value
+ * there, else its invariant one, as Umbraco 13+ reads a block that varies by culture.
+ */
+function valuesIn(values: NonNullable<BlockData['values']>, culture: string | null | undefined) {
+  if (culture === undefined || culture === null || !values.some((v) => v.culture)) return values
+  const out: typeof values = []
+  for (const alias of new Set(values.map((v) => v.alias))) {
+    const own = values.filter((v) => v.alias === alias && (v.segment ?? null) === null)
+    const chosen =
+      own.find((v) => v.culture && sameCulture(v.culture, culture)) ?? own.find((v) => !v.culture)
+    if (chosen) out.push(chosen)
+  }
+  return out
+}
+
+/**
+ * Whether a block shows in the culture being read: Umbraco 15+'s `expose` lists the
+ * cultures each block is in; a value without one, written before it, shows everywhere.
+ */
+function exposedIn(value: unknown, contentKey: string, culture: string | null | undefined) {
+  const parsed = typeof value === 'string' ? safeParse(value) : value
+  const expose = (parsed as { expose?: unknown } | null | undefined)?.expose
+  if (!Array.isArray(expose) || culture === undefined || culture === null) return true
+  return expose.some(
+    (e) =>
+      typeof e === 'object' &&
+      e !== null &&
+      String((e as { contentKey?: unknown }).contentKey ?? '').toLowerCase() ===
+        contentKey.toLowerCase() &&
+      ((e as { culture?: unknown }).culture == null ||
+        sameCulture((e as { culture?: string }).culture, culture)),
+  )
+}
+
+const safeParse = (text: string): unknown => {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return undefined
+  }
+}
+
 function elementFrom(data: BlockData | undefined, context?: ValueContext): PublishedElement | null {
   if (!data) return null
   return new PublishedElement(
@@ -224,7 +275,7 @@ function elementFrom(data: BlockData | undefined, context?: ValueContext): Publi
       key: data.key,
       contentTypeKey: data.contentTypeKey,
       contentTypeAlias: context?.contentTypeAlias?.(data.contentTypeKey) ?? null,
-      properties: (data.values ?? []).map((v) => ({
+      properties: valuesIn(data.values ?? [], context?.culture).map((v) => ({
         alias: v.alias,
         editorAlias: v.editorAlias ?? '',
         culture: v.culture ?? null,
@@ -252,6 +303,7 @@ function blockItems<T extends BlockItem>(
 ): T[] {
   const build = (blocks: Block[]): T[] =>
     blocks.flatMap((block) => {
+      if (block.content && !exposedIn(value, block.content.key, context?.culture)) return []
       const content = elementFrom(block.content, context)
       if (!content) return []
       const { layout } = block

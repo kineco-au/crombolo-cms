@@ -175,6 +175,19 @@ export function createElementPort(
   const refused = (value: object): value is { ok: false; reason: string; status: number } =>
     'ok' in value && value.ok === false
 
+  /** Story 456: a draft may hold no blocks Umbraco refuses. */
+  const blockRefusal = async (input: Parameters<typeof repo.validate>[0]) => {
+    const errors = await repo.validate(input, null, 'blocks')
+    return errors.length > 0
+      ? {
+          ok: false as const,
+          reason: 'One or more properties did not pass validation',
+          status: 400,
+          errors,
+        }
+      : undefined
+  }
+
   return {
     folders: createFolderPort(folders, tree, changed),
 
@@ -219,6 +232,8 @@ export function createElementPort(
     async create(sent, author) {
       const input = await withMenuAlias(sent)
       if (refused(input)) return input
+      const blocked = await blockRefusal(input)
+      if (blocked) return blocked
       try {
         const created = await repo.create(saved({ ...input, userId: await userIdOf(author) }))
         await changed()
@@ -231,6 +246,8 @@ export function createElementPort(
     async update(key, sent, author) {
       const input = await withMenuAlias(sent, key)
       if (refused(input)) return input
+      const blocked = await blockRefusal({ ...input, key })
+      if (blocked) return blocked
       try {
         const updated = await repo.update(saved({ ...input, key, userId: await userIdOf(author) }))
         if (!updated) return notFound()

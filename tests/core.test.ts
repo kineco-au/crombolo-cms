@@ -145,6 +145,18 @@ describe('property values', () => {
     expect(toPublishedValue(RTE, JSON.stringify(rte))).toBe('<p>x</p>')
   })
 
+  test('rich text with blocks keeps them for the page and the Delivery API (story 456)', () => {
+    const blocks = {
+      layout: { [RTE]: [{ contentKey: 'q1' }] },
+      contentData: [{ key: 'q1', contentTypeKey: 'quote', values: [] }],
+      settingsData: [],
+    }
+    expect(toPublishedValue(RTE, JSON.stringify({ markup: '<p>x</p>', blocks }))).toEqual({
+      markup: '<p>x</p>',
+      blocks,
+    })
+  })
+
   test('structured editors get parsed JSON; plain editors get the text as stored', () => {
     expect(toEditorValue('Umbraco.CheckBoxList', '["a","b"]')).toEqual(['a', 'b'])
     expect(toEditorValue('Umbraco.MediaPicker3', 'not json')).toBe('not json')

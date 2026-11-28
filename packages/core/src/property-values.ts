@@ -5,7 +5,7 @@
  */
 
 import { marked } from 'marked'
-import { BLOCK_EDITORS } from './blocks.ts'
+import { BLOCK_EDITORS, readBlocks } from './blocks.ts'
 import { FILE_BODY_EDITOR_ALIAS, fileUploadOf } from './files.ts'
 
 export const RICH_TEXT_EDITOR_ALIAS = 'Umbraco.RichText'
@@ -150,10 +150,18 @@ export function markdownToHtml(text: unknown): string | null {
   return marked.parse(text, { async: false, gfm: true })
 }
 
-/** The value a template receives: rich text is its markup, Markdown its HTML, an upload its URL. */
+/**
+ * The value a template receives: rich text is its markup, or with blocks `{ markup, blocks }`
+ * so they reach the page and the Delivery API (story 456); Markdown its HTML, an upload its URL.
+ */
 export function toPublishedValue(editorAlias: string | undefined, stored: unknown): unknown {
   const value = toEditorValue(editorAlias, stored)
-  if (editorAlias === RICH_TEXT_EDITOR_ALIAS && value) return (value as RichTextValue).markup
+  if (editorAlias === RICH_TEXT_EDITOR_ALIAS && value) {
+    const rich = value as RichTextValue
+    return readBlocks(rich.blocks).length > 0
+      ? { markup: rich.markup, blocks: rich.blocks }
+      : rich.markup
+  }
   if (editorAlias === MARKDOWN_EDITOR_ALIAS && value !== null && value !== undefined)
     return markdownToHtml(value)
   if (editorAlias === UPLOAD_FIELD_EDITOR_ALIAS)

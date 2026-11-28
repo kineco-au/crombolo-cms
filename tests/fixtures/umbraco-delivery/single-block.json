@@ -1,0 +1,56 @@
+{
+  "$comment": "A Single Block (`Umbraco.SingleBlock`, Umbraco 17): one item, shaped as a Block List's items are (`content`, `settings`), or null. Umbraco's documentation shows no Delivery API example; derived from Umbraco's `ApiBlockItem`, the documented Block List item shape. Umbraco 13 has no Single Block (a Block List in single block mode there still answers `{ items }`).",
+  "source": "https://docs.umbraco.com/umbraco-cms/reference/content-delivery-api/property-expansion-and-limiting",
+  "versions": ["17"],
+  "derivedFromSource": true,
+  "property": {
+    "alias": "hero",
+    "editorAlias": "Umbraco.SingleBlock",
+    "config": {
+      "blocks": [
+        {
+          "contentElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000501"
+        }
+      ]
+    }
+  },
+  "contentTypes": {
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000501": "hero"
+  },
+  "culture": null,
+  "stored": {
+    "layout": {
+      "Umbraco.SingleBlock": [
+        {
+          "contentKey": "e1f2a3b4-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    "contentData": [
+      {
+        "key": "e1f2a3b4-0000-4000-8000-000000000001",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000501",
+        "values": [
+          {
+            "alias": "heading",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "Fresh bread"
+          }
+        ]
+      }
+    ],
+    "settingsData": []
+  },
+  "expected": {
+    "content": {
+      "contentType": "hero",
+      "id": "e1f2a3b4-0000-4000-8000-000000000001",
+      "properties": {
+        "heading": "Fresh bread"
+      }
+    },
+    "settings": null
+  }
+}

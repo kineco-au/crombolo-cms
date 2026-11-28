@@ -54,7 +54,8 @@ export type ErrorKind = keyof typeof ERROR_KINDS
 export const OUTCOMES = {
   problems_found: {
     code: 20,
-    description: 'The check found problems: `status`, `types check`, `components check`.',
+    description:
+      'The check found problems: `status`, `types check`, `components check`, `content check`.',
   },
   blocked: {
     code: 21,

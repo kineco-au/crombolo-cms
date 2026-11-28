@@ -2543,6 +2543,30 @@ crombolo content blueprint remove <name> [--type <type>] [--yes]
 
 **Fails with:** `usage`, `internal`, `not_found`, `refused`, `confirmation_required`.
 
+### `crombolo content check`
+
+List the pages whose blocks their next save would refuse. Changes nothing.
+
+```
+crombolo content check
+```
+
+**Output** (bounded, with `-o json`):
+
+- `items` (array of object)
+  - `kind` (string)
+  - `key` (string)
+  - `name` (string)
+  - `problems` (array of object)
+    - `property` (string)
+    - `culture` (string)
+    - `path` (string)
+    - `messages` (array of string)
+
+**Fails with:** `usage`, `internal`.
+
+**Outcomes:** `problems_found`.
+
 ### `crombolo content copy`
 
 Copy a page under another page; --descendants for the branch below it. Each run acts again.
@@ -7114,7 +7138,7 @@ crombolo restart [--profile <profile>] [--env <env>]
 | 8 | `refused` | The site or the remote said no: findings outstanding, a permission, a protected environment. |
 | 9 | `unavailable` | The database or the remote could not be reached. |
 | 10 | `io` | A file could not be read or written. |
-| 20 | `problems_found` | The check found problems: `status`, `types check`, `components check`. |
+| 20 | `problems_found` | The check found problems: `status`, `types check`, `components check`, `content check`. |
 | 21 | `blocked` | Something must be resolved by a person first: `site apply --dry-run`, `upgrade check`. |
 | 22 | `conflicts_found` | A workspace has conflicts to resolve: `workspace conflicts`, `workspace merge`. |
 | 23 | `lossy_unaccepted` | A change loses data, removes or renames, and was not accepted: `workspace merge --accept-lossy`. |

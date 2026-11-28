@@ -8,6 +8,9 @@
  * values under a new event. See docs/data-model.md.
  */
 import {
+  BLOCK_EDITORS,
+  blockTypeKeys,
+  blockValueProblems,
   type DocumentAggregate,
   type DocumentTreeItem,
   type DocumentValidationError,
@@ -23,10 +26,12 @@ import {
   ObjectTypes,
   type Page,
   parseMediaPolicy,
+  propertyMessages,
   STORAGE_COLUMN,
   SYSTEM_MEDIA_TYPE_KEYS,
   SystemNodes,
   toEditorValue,
+  type ValidatedElementType,
   type ValueStorageTypeName,
   type VariantState,
 } from '@crombolo/core'
@@ -338,18 +343,20 @@ export class StaleRevisionError extends Error {
 const revisionString = (head: unknown, value: unknown): string =>
   `${Number(head ?? 0)}.${Number(value ?? 0)}`
 
-const isEmpty = (value: unknown) =>
-  value === null || value === undefined || (typeof value === 'string' && value.trim() === '')
+/** Which rules a validation applies: all of them, or only blocks' (a draft save, story 456). */
+export type ValidationScope = 'all' | 'blocks'
 
 /**
- * Mandatory and pattern rules over a set of values. Invariant properties are
- * checked once; culture-varying ones once per culture given. Pending
- * properties are never checked.
+ * Mandatory and pattern rules over a set of values, and Umbraco's block rules
+ * (story 456) over each block editor's. Invariant properties are checked once;
+ * culture-varying ones once per culture given. Pending properties are never checked.
  */
 function validateValues(
   propertyTypes: readonly PropertyTypeRow[],
   values: readonly DocumentValue[],
   cultures: readonly string[],
+  elementType: (key: string) => ValidatedElementType | undefined = () => undefined,
+  scope: ValidationScope = 'all',
 ): DocumentValidationError[] {
   const errors: DocumentValidationError[] = []
   for (const type of propertyTypes) {
@@ -363,25 +370,40 @@ function validateValues(
           (type.variesByCulture ? v.culture === culture : true) &&
           (v.segment ?? null) === null,
       )
-      const messages: string[] = []
-      if (type.mandatory && (!value || isEmpty(value.value)))
-        messages.push(type.mandatoryMessage || 'Value cannot be empty')
-      if (type.regEx && value && !isEmpty(value.value) && typeof value.value === 'string') {
-        let matches = true
-        try {
-          matches = new RegExp(type.regEx).test(value.value)
-        } catch {
-          matches = true
-        }
-        if (!matches)
-          messages.push(
-            type.regExMessage || 'Value is invalid, it does not match the correct pattern',
-          )
-      }
+      const messages = scope === 'all' ? propertyMessages(type, value?.value) : []
       if (messages.length > 0) errors.push({ alias: type.alias, culture, segment: null, messages })
+      for (const problem of blockValueProblems(
+        type,
+        value?.value,
+        elementType,
+        culture === null ? cultures : [culture],
+      )) {
+        const own =
+          problem.path === ''
+            ? errors.find((e) => e.alias === type.alias && e.culture === culture && !e.path)
+            : undefined
+        if (own) own.messages.push(...problem.messages.filter((m) => !own.messages.includes(m)))
+        else
+          errors.push({
+            alias: type.alias,
+            culture,
+            segment: null,
+            messages: problem.messages,
+            ...(problem.path ? { path: problem.path } : {}),
+          })
+      }
     }
   }
   return errors
+}
+
+const isMandatoryMessage = (
+  propertyTypes: readonly PropertyTypeRow[],
+  alias: string,
+  message: string,
+): boolean => {
+  const type = propertyTypes.find((p) => p.alias === alias)
+  return message === (type?.mandatoryMessage || 'Value cannot be empty')
 }
 
 const keyOf = (
@@ -4226,16 +4248,54 @@ export class DocumentRepository {
       propertyTypes,
       values,
       cultures ?? languages.map((l) => l.isoCode),
+      await this.#elementTypesFor(propertyTypes, values),
     )
     if (errors.length > 0) {
-      const names = errors.map(
-        (e) => `'${propertyTypes.find((p) => p.alias === e.alias)?.name ?? e.alias}'`,
+      const nameOf = (e: DocumentValidationError) =>
+        `'${propertyTypes.find((p) => p.alias === e.alias)?.name ?? e.alias}'`
+      const required = errors.filter(
+        (e) => !e.path && e.messages.every((m) => isMandatoryMessage(propertyTypes, e.alias, m)),
       )
+      const names = [...new Set(errors.map(nameOf))]
       throw new PublishBlockedError(
-        `Required: ${[...new Set(names)].join(', ')} must have a value before publishing.`,
+        required.length === errors.length
+          ? `Required: ${names.join(', ')} must have a value before publishing.`
+          : `Not valid: ${names.join(', ')} must be corrected before publishing.`,
         errors,
       )
     }
+  }
+
+  /**
+   * The element types a set of values' blocks name, at any depth (story 456), as
+   * block validation looks them up.
+   */
+  async #elementTypesFor(
+    propertyTypes: readonly PropertyTypeRow[],
+    values: readonly DocumentValue[],
+  ): Promise<(key: string) => ValidatedElementType | undefined> {
+    const known = new Map<string, ValidatedElementType | null>()
+    const lookup = (key: string) => known.get(key.toLowerCase()) ?? undefined
+    for (let round = 0; round < 16; round++) {
+      const wanted = new Set<string>()
+      for (const value of values) {
+        const type = propertyTypes.find((p) => p.alias === value.alias)
+        if (!type) continue
+        for (const key of blockTypeKeys(type.editorAlias, value.value, lookup))
+          if (!known.has(key.toLowerCase())) wanted.add(key.toLowerCase())
+      }
+      if (wanted.size === 0) break
+      for (const key of wanted) {
+        const node = await this.#nodes.byKey(key)
+        known.set(
+          key,
+          node
+            ? { key, name: node.text ?? key, properties: await this.#propertyTypes(node.id) }
+            : null,
+        )
+      }
+    }
+    return lookup
   }
 
   /**
@@ -4251,6 +4311,7 @@ export class DocumentRepository {
       variants: SaveDocumentInput['variants']
     },
     cultures: readonly string[] | null = null,
+    scope: ValidationScope = 'all',
   ): Promise<DocumentValidationError[]> {
     let contentTypeNodeId: number | undefined
     if (input.contentTypeKey)
@@ -4264,7 +4325,58 @@ export class DocumentRepository {
     const variantCultures = input.variants
       .map((v) => v.culture)
       .filter((c): c is string => typeof c === 'string')
-    return validateValues(propertyTypes, input.values, cultures ?? variantCultures)
+    return validateValues(
+      propertyTypes,
+      input.values,
+      cultures ?? variantCultures,
+      await this.#elementTypesFor(propertyTypes, input.values),
+      scope,
+    )
+  }
+
+  /**
+   * Story 456: the stored items of this kind that hold blocks Umbraco would refuse,
+   * so their next save is refused, with each problem. They keep rendering and stay
+   * published meanwhile; `crombolo content check` and the health check list them.
+   */
+  async storedBlockProblems(): Promise<
+    Array<{ key: string; name: string; errors: DocumentValidationError[] }>
+  > {
+    const rows = await this.#db.q
+      .selectFrom('node as n')
+      .innerJoin('content as c', 'c.node_id', 'n.id')
+      .select(['n.id', 'c.content_type_id'])
+      .where('n.node_object_type', '=', this.objectType)
+      .where('n.trashed', '=', this.#db.dialect.boolValue(false) as boolean)
+      .execute()
+    const typesById = new Map<number, PropertyTypeRow[]>()
+    const ids: number[] = []
+    for (const row of rows) {
+      const typeId = Number(row.content_type_id)
+      if (!typesById.has(typeId)) typesById.set(typeId, await this.#propertyTypes(typeId))
+      if (typesById.get(typeId)?.some((p) => BLOCK_EDITORS.has(p.editorAlias)))
+        ids.push(Number(row.id))
+    }
+    const typeOf = new Map(rows.map((r) => [Number(r.id), Number(r.content_type_id)]))
+    const cultures = (await this.#languages()).map((l) => l.isoCode)
+    const out: Array<{ key: string; name: string; errors: DocumentValidationError[] }> = []
+    for (const slice of slices(ids, 200)) {
+      for (const node of await this.loadCurrent({ ids: slice })) {
+        const propertyTypes = (typesById.get(typeOf.get(node.id) ?? 0) ?? []).filter((p) =>
+          BLOCK_EDITORS.has(p.editorAlias),
+        )
+        const errors = validateValues(
+          propertyTypes,
+          node.values,
+          cultures,
+          await this.#elementTypesFor(propertyTypes, node.values),
+          'blocks',
+        )
+        if (errors.length > 0) out.push({ key: node.key, name: node.name, errors })
+      }
+      await giveWay()
+    }
+    return out
   }
 
   /** Creates and publishes in one go, or refuses before creating anything. */

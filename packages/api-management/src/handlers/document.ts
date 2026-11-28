@@ -20,6 +20,7 @@ import {
   problemDetails,
   problemResponse,
   ROOT_ACCESS,
+  validationPath,
 } from '@crombolo/core'
 import { deniedChildren } from '../authorization.ts'
 import { APP_PREVIEW_PROVIDER, type PreviewPort } from '../ports.ts'
@@ -212,7 +213,8 @@ export async function readBody(ctx: RequestContext): Promise<Record<string, unkn
 /**
  * Umbraco's validation problem: `errors` keyed by JSON path into the request —
  * the value's index when it was sent, a filter expression when it was not — so
- * the editor can mark the exact field.
+ * the editor can mark the exact field. A problem inside a block continues that
+ * path into the block's data (story 456), as Umbraco 14+ does.
  */
 export function validationProblem(
   errors: readonly DocumentValidationError[],
@@ -226,11 +228,7 @@ export function validationProblem(
         (v.culture ?? null) === error.culture &&
         (v.segment ?? null) === error.segment,
     )
-    const q = (s: string | null) => (s === null ? 'null' : `'${s}'`)
-    const path =
-      index >= 0
-        ? `$.values[${index}].value`
-        : `$.values[?(@.alias == '${error.alias}' && @.culture == ${q(error.culture)} && @.segment == ${q(error.segment)})].value`
+    const path = index >= 0 ? `$.values[${index}].value${error.path ?? ''}` : validationPath(error)
     byPath[path] = [...(byPath[path] ?? []), ...error.messages]
   }
   return problemDetails({
@@ -540,8 +538,9 @@ export function registerDocumentHandlers(
   router.handle('PostDocument', async (ctx) => {
     const body = await readBody(ctx)
     const key = typeof body.id === 'string' && body.id ? body.id : crypto.randomUUID()
-    const result = await operations.create(actorOf(ctx), toSaveDocument(key, body))
-    if (!result.ok) return refused(result, 'Could not create the document')
+    const input = toSaveDocument(key, body)
+    const result = await operations.create(actorOf(ctx), input)
+    if (!result.ok) return refused(result, 'Could not create the document', { sent: input.values })
     ctx.notifications.push({ message: 'Document created', category: 'Content', type: 'Success' })
     warn(ctx, result.warnings)
     return created(`${ctx.url.origin}/umbraco/management/api/v1/document/${result.key}`, result.key)
@@ -554,19 +553,18 @@ export function registerDocumentHandlers(
     body: Record<string, unknown>,
     precondition: Precondition,
   ) => {
+    const input = toSaveDocument(key, body)
     const result = await operations.save(
       actorOf(ctx),
       key,
-      {
-        ...toSaveDocument(key, body),
-        // The content type never changes on update.
-        contentTypeKey: existing.contentTypeKey,
-      },
+      // The content type never changes on update.
+      { ...input, contentTypeKey: existing.contentTypeKey },
       precondition,
     )
     if (!result.ok)
       return refused(result, 'Could not save the document', {
         approval: 'The document is waiting for approval',
+        sent: input.values,
       })
     ctx.notifications.push({ message: 'Document saved', category: 'Content', type: 'Success' })
     warn(ctx, result.warnings)

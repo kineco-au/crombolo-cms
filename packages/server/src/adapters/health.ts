@@ -26,6 +26,8 @@ import {
   readWorkflows,
   searchProvidersOf,
   sql,
+  storedBlockProblems,
+  storedProblemLines,
   UserGroupRepository,
   UserRepository,
 } from '@crombolo/data'
@@ -55,6 +57,7 @@ const CHECKS = {
   code: { id: '6f1d4a8e-0047-4c1a-9e7d-000000000009', name: 'Installing code' },
   search: { id: '6f1d4a8e-0047-4c1a-9e7d-00000000000a', name: 'Search providers' },
   approvers: { id: '6f1d4a8e-0047-4c1a-9e7d-00000000000b', name: 'Approval workflows' },
+  blocks: { id: '6f1d4a8e-0047-4c1a-9e7d-00000000000c', name: 'Blocks' },
 } as const
 
 /** Waiting longer than this means nothing is sending: no server is running its jobs, or one is stuck. */
@@ -109,6 +112,11 @@ const GROUPS: HealthCheckGroup[] = [
         ...CHECKS.approvers,
         description:
           'Whether every stage of each approval workflow has someone who could approve it.',
+      },
+      {
+        ...CHECKS.blocks,
+        description:
+          'Pages and Library items whose blocks would be refused on their next save, and where.',
       },
     ],
   },
@@ -416,6 +424,19 @@ export function createDiagnosticsPort(options: HealthCheckOptions): DiagnosticsP
             : `"${f.name}" is a settings page below another page, so no site reads it. Move it directly below its site's top page.`,
         ),
       )
+    },
+    // Story 456: what is stored keeps rendering, but its next save is refused until fixed.
+    [CHECKS.blocks.id]: async () => {
+      const problems = await storedBlockProblems(options.db)
+      if (problems.length === 0)
+        return [result('Success', 'Every page’s blocks would be accepted on its next save.')]
+      return [
+        result(
+          'Warning',
+          `${problems.length} page(s) or Library item(s) hold blocks their next save would refuse; they still show as they are. \`crombolo content check\` lists each one and where.`,
+        ),
+        ...problems.flatMap((p) => storedProblemLines(p).map((line) => result('Warning', line))),
+      ]
     },
     // Story 229: a stage nobody could approve, and the pages waiting at it.
     [CHECKS.approvers.id]: async () => {

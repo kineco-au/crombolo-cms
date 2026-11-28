@@ -14,7 +14,7 @@
  * - **person** — importable, but somebody has to choose. A resolution answers it.
  * - **auto** — what the import will do, reported so it is not a surprise.
  */
-import { ObjectTypes, threeWay } from '@crombolo/core'
+import { type DocumentValue, ObjectTypes, threeWay, validationPath } from '@crombolo/core'
 import {
   type AppliedState,
   appliedValueKey,
@@ -916,6 +916,60 @@ export async function checkBundle(
       },
       findings: out,
     }
+  }
+
+  // Story 456: what a node would hold once written is held to Umbraco's block rules
+  // before anything is written, as a save through the API is; a refusal names
+  // each page, property and path.
+  for (const entry of plan) {
+    if (entry.action !== 'create' && entry.action !== 'update') continue
+    const node = set.nodes.find((n) => n.key === entry.key)
+    if (!node || node.kind === 'element-folder') continue
+    const type = await typeFor(node.contentType)
+    if (!type) continue
+    const keep = new Set(entry.keepLocal ?? [])
+    const handle = (alias: string, culture: string | null | undefined, segment?: string | null) =>
+      appliedValueKey(alias, culture ?? null, segment ?? null)
+    const merged = new Map<string, DocumentValue>()
+    if (entry.action === 'update')
+      for (const v of (await repoFor(node.kind).byKey(node.key))?.values ?? [])
+        merged.set(handle(v.alias, v.culture, v.segment), v)
+    for (const v of node.values) {
+      if (v.environment !== undefined || v.value === undefined) continue
+      if (keep.has(propertyHandle(v.property, v.culture))) continue
+      merged.set(handle(v.property, v.culture, v.segment), {
+        alias: v.property,
+        culture: v.culture,
+        segment: v.segment,
+        value: v.value,
+      })
+    }
+    const errors = await repoFor(node.kind).validate(
+      {
+        contentTypeKey: type.key,
+        values: [...merged.values()],
+        variants: node.variants.map((v) => ({
+          culture: v.culture,
+          segment: v.segment,
+          name: v.name,
+        })),
+      },
+      null,
+      'blocks',
+    )
+    const name = node.variants[0]?.name ?? node.key
+    for (const error of errors)
+      findings.push({
+        kind: 'blocking',
+        code: 'invalid-blocks',
+        subjectType: node.kind === 'media' ? 'media' : 'document',
+        subjectKey: node.key,
+        subjectName: name,
+        propertyAlias: error.alias,
+        culture: error.culture,
+        message: `"${name}" would hold what a save refuses, at ${validationPath(error)}: ${error.messages.join(' ')}`,
+        link: link(node.key),
+      })
   }
 
   const counts = { create: 0, update: 0, unchanged: 0, skip: 0 }

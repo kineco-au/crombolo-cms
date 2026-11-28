@@ -1,0 +1,134 @@
+{
+  "$comment": "Rich text with blocks, written by hand from the page's Rich Text example: `{ markup, blocks }`, each block `content` and `settings` as a Block List item's are, its placeholder naming it by `data-content-id`. Crombolo always answers rich text as Umbraco's JSON tree (`RichTextOutputAsJson`, story 216), so `markup` is a deliberate difference documented in docs/delivery-api.md; `blocks` is compared. Umbraco 13 and 17 document the same shape.",
+  "source": "https://docs.umbraco.com/umbraco-cms/13.latest/reference/content-delivery-api/property-expansion-and-limiting",
+  "versions": ["13", "17"],
+  "derivedFromSource": false,
+  "property": {
+    "alias": "richText",
+    "editorAlias": "Umbraco.RichText",
+    "config": {
+      "blocks": [
+        {
+          "contentElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000601",
+          "settingsElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000602"
+        }
+      ]
+    }
+  },
+  "contentTypes": {
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000601": "quoteBlock",
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000602": "quoteBlockSettings"
+  },
+  "culture": null,
+  "stored": {
+    "markup": "<p>Some text</p><umb-rte-block data-content-key=\"a42d825e-383c-4699-ae7f-eb851c0a5b13\"></umb-rte-block><umb-rte-block data-content-key=\"724ecae7-3118-46a8-8dc2-a9bf9e10efdb\"></umb-rte-block>",
+    "blocks": {
+      "layout": {
+        "Umbraco.RichText": [
+          {
+            "contentKey": "a42d825e-383c-4699-ae7f-eb851c0a5b13",
+            "settingsKey": "a42d825e-383c-4699-ae7f-eb851c0a5c01"
+          },
+          {
+            "contentKey": "724ecae7-3118-46a8-8dc2-a9bf9e10efdb",
+            "settingsKey": "724ecae7-3118-46a8-8dc2-a9bf9e10ec02"
+          }
+        ]
+      },
+      "contentData": [
+        {
+          "key": "a42d825e-383c-4699-ae7f-eb851c0a5b13",
+          "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000601",
+          "values": [
+            {
+              "alias": "quote",
+              "editorAlias": "Umbraco.TextBox",
+              "culture": null,
+              "segment": null,
+              "value": "One"
+            }
+          ]
+        },
+        {
+          "key": "724ecae7-3118-46a8-8dc2-a9bf9e10efdb",
+          "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000601",
+          "values": [
+            {
+              "alias": "quote",
+              "editorAlias": "Umbraco.TextBox",
+              "culture": null,
+              "segment": null,
+              "value": "Two"
+            }
+          ]
+        }
+      ],
+      "settingsData": [
+        {
+          "key": "a42d825e-383c-4699-ae7f-eb851c0a5c01",
+          "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000602",
+          "values": [
+            {
+              "alias": "backgroundColor",
+              "editorAlias": "Umbraco.TextBox",
+              "culture": null,
+              "segment": null,
+              "value": "ce7e00"
+            }
+          ]
+        },
+        {
+          "key": "724ecae7-3118-46a8-8dc2-a9bf9e10ec02",
+          "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000602",
+          "values": [
+            {
+              "alias": "backgroundColor",
+              "editorAlias": "Umbraco.TextBox",
+              "culture": null,
+              "segment": null,
+              "value": "6fa8dc"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "markup": "<p>Some text</p><umb-rte-block data-content-id=\"a42d825e-383c-4699-ae7f-eb851c0a5b13\"></umb-rte-block><umb-rte-block data-content-id=\"724ecae7-3118-46a8-8dc2-a9bf9e10efdb\"></umb-rte-block>",
+    "blocks": [
+      {
+        "content": {
+          "contentType": "quoteBlock",
+          "id": "a42d825e-383c-4699-ae7f-eb851c0a5b13",
+          "properties": {
+            "quote": "One"
+          }
+        },
+        "settings": {
+          "contentType": "quoteBlockSettings",
+          "id": "a42d825e-383c-4699-ae7f-eb851c0a5c01",
+          "properties": {
+            "backgroundColor": "ce7e00"
+          }
+        }
+      },
+      {
+        "content": {
+          "contentType": "quoteBlock",
+          "id": "724ecae7-3118-46a8-8dc2-a9bf9e10efdb",
+          "properties": {
+            "quote": "Two"
+          }
+        },
+        "settings": {
+          "contentType": "quoteBlockSettings",
+          "id": "724ecae7-3118-46a8-8dc2-a9bf9e10ec02",
+          "properties": {
+            "backgroundColor": "6fa8dc"
+          }
+        }
+      }
+    ]
+  },
+  "deliberate": ["markup", "tag", "attributes", "elements"]
+}

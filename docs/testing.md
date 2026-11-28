@@ -623,7 +623,7 @@ Chrome (Playwright, `channel: 'chrome'` by default, headless, no browser downloa
 the container and CI use)
 against a throwaway copy of `apps/site`: its schema and views, a fresh SQLite
 file, a known admin password (`tests/browser/serve.ts`). It is not part of
-`bun test` or `bun run check`; specs are `tests/browser/*.browser.ts`. The
+`bun test` or `bun run check`; specs are `tests/browser/**/*.browser.ts`. The
 site also gets an "Every editor" content type, generated at startup with a
 property for every built-in data type, and a view that renders a crop of its
 image picker. The suite shares that one site, so every test names what it
@@ -642,6 +642,11 @@ different host, so the two sites' sign-in cookies stay apart.
 | `library.browser.ts`          | the Library section: Create offering the site's element types and not just Folder, then an element named, filled, published, and appearing in the tree; and the workspace hint that an element type is not in the Library until that flag is on, silent for one that is and for an ordinary content type                                               |
 | `variants.browser.ts`         | a page that varies by culture written and published in English, then switched to Danish and published through the publish dialog; each rendered under its path-prefix hostname, Danish falling back to English                                                                                                                                          |
 | `block-alias.browser.ts`      | a page's blocks opened in the block editor: an alias shown, one another block in the list has refused, and a page save keeps both (story 253)                                                                                                                                                                                                           |
+| `blocks/block-list.browser.ts` | story 456, against the block site `blocks/site.ts` writes: a block added from the catalogue, filled inline and in its workspace, saved, published and rendered; reordered by dragging with the mouse (Umbraco's sorter follows pointer moves), deleted, a delete taken back at its confirmation; its settings set; the editor's own mandatory and minimum messages, and the server's refusal of a draft saved before the rules (`blocks/seed.ts`, below a page of its own so Content does not open on it) marking that block alone; a block copied and pasted into another property |
+| `blocks/block-grid.browser.ts` | story 456: a block placed in an area that offers only what its allowance allows and no second once full; a block's column span resized by dragging its handle; saved, published and rendered with its areas |
+| `blocks/single-block.browser.ts` | story 456: a Single Block's one block added, filled, saved, published and rendered, no second offered |
+| `blocks/rich-text-blocks.browser.ts` | story 456: a block inserted in rich text from the toolbar, deleted and brought back by the editor's undo, saved, published and rendered |
+| `blocks/variant-blocks.browser.ts` | story 456: a block that varies by culture edited in English and Danish, published in each, each rendered with its own text under its path-prefix hostname |
 
 ### In the pipeline
 

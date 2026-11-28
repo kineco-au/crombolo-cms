@@ -1,0 +1,115 @@
+{
+  "$comment": "Blocks within blocks: a Block List whose block holds a Block List. Umbraco's documentation shows no nested example; the expected output composes the documented Block List shape (an item's `content`/`settings` elements, `{ items }` for a list) at each level, as Umbraco's `ApiBlockListModel` is the value of a block's list property. Derived from that page and Umbraco's own Delivery API models, not copied from an example.",
+  "source": "https://docs.umbraco.com/umbraco-cms/13.latest/reference/content-delivery-api/property-expansion-and-limiting",
+  "versions": ["13", "17"],
+  "derivedFromSource": true,
+  "property": {
+    "alias": "sections",
+    "editorAlias": "Umbraco.BlockList",
+    "config": {
+      "blocks": [
+        {
+          "contentElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000302"
+        }
+      ]
+    }
+  },
+  "contentTypes": {
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000301": "quote",
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000302": "section"
+  },
+  "nestedConfig": {
+    "items": {
+      "blocks": [
+        {
+          "contentElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000301"
+        }
+      ]
+    }
+  },
+  "culture": null,
+  "stored": {
+    "layout": {
+      "Umbraco.BlockList": [
+        {
+          "contentKey": "c3f1a2b4-0000-4000-8000-000000000001"
+        }
+      ]
+    },
+    "contentData": [
+      {
+        "key": "c3f1a2b4-0000-4000-8000-000000000001",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000302",
+        "values": [
+          {
+            "alias": "heading",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "Outside"
+          },
+          {
+            "alias": "items",
+            "editorAlias": "Umbraco.BlockList",
+            "culture": null,
+            "segment": null,
+            "value": {
+              "layout": {
+                "Umbraco.BlockList": [
+                  {
+                    "contentKey": "c3f1a2b4-0000-4000-8000-000000000002"
+                  }
+                ]
+              },
+              "contentData": [
+                {
+                  "key": "c3f1a2b4-0000-4000-8000-000000000002",
+                  "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000301",
+                  "values": [
+                    {
+                      "alias": "text",
+                      "editorAlias": "Umbraco.TextBox",
+                      "culture": null,
+                      "segment": null,
+                      "value": "Inside"
+                    }
+                  ]
+                }
+              ],
+              "settingsData": []
+            }
+          }
+        ]
+      }
+    ],
+    "settingsData": []
+  },
+  "expected": {
+    "items": [
+      {
+        "content": {
+          "contentType": "section",
+          "id": "c3f1a2b4-0000-4000-8000-000000000001",
+          "properties": {
+            "heading": "Outside",
+            "items": {
+              "items": [
+                {
+                  "content": {
+                    "contentType": "quote",
+                    "id": "c3f1a2b4-0000-4000-8000-000000000002",
+                    "properties": {
+                      "text": "Inside"
+                    }
+                  },
+                  "settings": null
+                }
+              ]
+            }
+          }
+        },
+        "settings": null
+      }
+    ]
+  }
+}

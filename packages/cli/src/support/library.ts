@@ -13,6 +13,7 @@ import {
   type DocumentAggregate,
   type DocumentValidationError,
   ObjectTypes,
+  validationPath,
 } from '@crombolo/core'
 import {
   currentSchemaState,
@@ -223,7 +224,8 @@ export function refusedInLibrary(result: Refusal): CliError {
     errors.length > 0
       ? {
           details: errors.map(
-            (e) => `${e.alias}${e.culture ? ` (${e.culture})` : ''}: ${e.messages.join('; ')}`,
+            (e) =>
+              `${e.alias}${e.culture ? ` (${e.culture})` : ''}${e.path ? ` at ${validationPath(e)}` : ''}: ${e.messages.join('; ')}`,
           ),
         }
       : undefined,

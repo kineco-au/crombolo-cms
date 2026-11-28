@@ -602,6 +602,8 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const misplaced = await placement(actor, input.contentTypeKey, input.parentKey)
       if (misplaced) return refuse('invalid', 400, misplaced)
+      const blocked = await repo.validate(input, null, 'blocks')
+      if (blocked.length > 0) return validationRefusal(blocked)
       const check = await checked(input, input.key, input.contentTypeKey, input.parentKey)
       if (isRefusal(check)) return check
       try {
@@ -639,6 +641,9 @@ export function createDocumentOperations(options: DocumentOperationsOptions) {
       if (twice) return refuse('invalid', 400, sharedAlias(twice))
       const unbased = revisionRefusal(actor, precondition)
       if (unbased) return unbased
+      // Story 456: a draft may leave a field empty, but not hold blocks Umbraco refuses.
+      const blocked = await repo.validate({ ...input, key }, null, 'blocks')
+      if (blocked.length > 0) return validationRefusal(blocked)
       const check = await checked(input, key, existing.contentTypeKey, undefined)
       if (isRefusal(check)) return check
       const gate = gateFor(actor)

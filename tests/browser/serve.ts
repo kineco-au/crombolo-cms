@@ -16,6 +16,8 @@ import { packageInRoot, prepareRoot, recordExtension } from '@crombolo/backoffic
 import { DEFAULT_DATA_TYPES, UserGroupRepository } from '@crombolo/data'
 import { createServer, loadConfig, VERSION } from '@crombolo/server'
 import { signIn, V1 } from '../support/harness.ts'
+import { seedBlockProblem } from './blocks/seed.ts'
+import { writeBlockSite } from './blocks/site.ts'
 import {
   BLOCK_ONLY_ELEMENT_TYPE,
   BROWSER_ADMIN,
@@ -168,6 +170,10 @@ name = "Blocks"
 type = "aliasedBlocks"
 `,
 )
+
+// The block editors' site (story 456): a list, a grid with areas, a Single Block, rich text
+// with blocks and a block that varies by culture.
+writeBlockSite(root)
 
 // A bundle with a side panel and its header toggle, for the side-panel test
 // (story 182). The panel counts clicks, so a test can tell its state survived.
@@ -461,6 +467,7 @@ const server = await createServer(
       sections: [...new Set([...admin.sections, 'Site.Section.observations', 'Site.Panel.help'])],
     })
 }
+await seedBlockProblem(server.db, server.schema.nodeState)
 Bun.serve(server.serveOptions)
 console.log(`browser suite server on http://localhost:${port} (site ${root})`)
 

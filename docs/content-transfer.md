@@ -334,6 +334,7 @@ skipped — and findings in three kinds:
 | `missing-dependency` | blocking | a node a value refers to is absent and not carried |
 | `editor-mismatch` | blocking | the property's editor changed, so the value would be stored in the wrong shape |
 | `local-trashed` | blocking | the target is in the recycle bin here, and importing would revive it silently |
+| `invalid-blocks` | blocking | the page would hold blocks a save refuses (story 456): one finding per problem, naming the page, the property and the path into its value, in Umbraco's words. Checked on what the page would hold once written — its values here with the bundle's laid over them — before anything is written ([`api-contract.md`](api-contract.md), "Blocks are validated as Umbraco's are") |
 | `local-edit` | person | it is already here and one property differs; one finding per property (and culture) |
 | `name-collision` | person | a sibling of the same name, so the two would share a URL |
 | `missing-blob` | person | the media file is not in this environment's store |

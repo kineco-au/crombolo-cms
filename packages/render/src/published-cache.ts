@@ -801,6 +801,7 @@ export class PublishedCache {
     const snapshot = await this.snapshot()
     const view = this.#view(snapshot, culture)
     return {
+      culture: culture ?? snapshot.defaultCulture ?? null,
       content: (key) => view?.byKey.get(key.toLowerCase()),
       media: this.#mediaLookup(),
       form: this.#formsIn(snapshot, view, culture ?? null),
@@ -1230,6 +1231,7 @@ export class PublishedCache {
 
       // Pickers and links resolve against this culture's view.
       const context: ValueContext<PublishedContent, PublishedMedia> = {
+        culture,
         content: (key) => view.byKey.get(key.toLowerCase()),
         media,
         // Read lazily: the map is filled just below, with this very context, so an

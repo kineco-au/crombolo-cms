@@ -1197,7 +1197,8 @@ Structured editors hand the client an object, not text. Their values are stored
 as JSON text and parsed on the way back out, by editor alias
 (`JSON_VALUE_EDITORS` in `@crombolo/core`), as Umbraco's value editors do.
 Rich text is always `{ markup, blocks }` for the editor, including a legacy plain
-HTML string, and just its markup for a template, so `model.html('bodyText')`
+HTML string, and its markup for a template — `{ markup, blocks }` when it holds blocks, so
+they reach the view and the Delivery API (story 456) — so `model.html('bodyText')`
 renders it. An upload is stored as its path and edited as `{ src }`; true/false
 reads back as a boolean; a date is the wall-clock time the picker sent, the same on
 a server in any time zone (story 286). An element
@@ -1214,10 +1215,10 @@ cache supplies (`@crombolo/render` `values.ts` and `media.ts`):
 | Element Picker          | `PublishedElement[]`, always a list, dropping any not published in the page's culture; each has its `name`, in that culture |
 | Multi URL Picker        | a promise of `Link[]`, with page and media URLs resolved                                                    |
 | Single Block | one item, as a list's are, or `null` when there is none (story 345). `<Blocks>` takes it as it takes a list |
-| Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, `name` is `null`, as a block has none, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks") |
+| Block List / Block Grid | items with `content` and `settings` as `PublishedElement`s (same `value()`, `name` is `null`, as a block has none, and `contentType.alias` names the element type); grid items add spans, `areaGridColumns` and areas (with their alias and spans), and the list carries `gridColumns`. `<Blocks>` renders them (see "Blocks"). A block whose element type varies by culture shows its values in the page's culture, its invariant ones otherwise, and a block not exposed in that culture is left out, as Umbraco 13+ reads it (story 456) |
 | Media Picker            | a promise of `MediaWithCrops`, one or a list as the data type says; `await model.media(alias)` always lists |
 | Image Cropper           | `ImageCropperValue` (`src`, `crops`, `focalPoint`, `cropUrl()`)                                             |
-| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone), each image's `src` the address of its item's file now, and `{#key}` read as words; a promise when a link or an image names media |
+| Rich text               | the markup, with `/{localLink:…}` links resolved (`#` when gone), each image's `src` the address of its item's file now, and `{#key}` read as words; a promise when a link or an image names media. Rich text holding blocks is a `RichTextValue` instead (story 456): printed, its markup; its `blocks` the items it places, read as a list's are, so a view renders them beside it |
 | Text box / Text area    | the text, with `{#key}` read as words                                                                         |
 | Markdown                | its HTML, GitHub-flavoured (`marked`), as Umbraco's converter gives it, on a page and in a block; `null` when empty. The Delivery API gives the same HTML as a string, and search reads the Markdown's words, not the HTML (story 357) |
 

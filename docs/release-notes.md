@@ -87,6 +87,42 @@ point at `docs/stories/`.
 - **One look for every dialog's buttons:** the action green and last, Cancel, Close or
   Back before it, Delete in red, in the native dialogs and the modals alike.
 
+**Blocks**
+
+- **The block editors refuse what Umbraco's refuse (456).** Block List, Block Grid, Single
+  Block and rich text's blocks are validated on the server as Umbraco validates them:
+  fewer or more blocks than the data type's limits (`Minimum 2 entries, requires 1
+  more.`, `Maximum 3 entries, 1 too many.`), a block or settings type the property does
+  not offer, a grid block where its area's allowance, its limits or `allowAtRoot` keep it
+  out, and every property inside a block, in its content and settings, at any depth and
+  in each culture it is exposed in, for its mandatory and pattern rules, in its own
+  messages. A problem is reported at Umbraco 14+'s path into the block
+  (`$.values[0].value.contentData[1].values[?(@.alias == 'title' …)].value`), so the back
+  office marks that block and that field. Validate, save and publish through the
+  Management API, the command line and Library items refuse them, and so do content files,
+  bundles and a change from another site, before anything is written, naming each page,
+  property and path (`invalid-blocks`). See `docs/api-contract.md`, "Blocks are validated
+  as Umbraco's are".
+  - **`crombolo content check`** lists the pages and Library items whose blocks their
+    next save would refuse, with each problem's path and words (exit 20 when there is
+    one); the health check's **Content › Blocks** entry says the same.
+  - **Blocks that vary by culture** (Umbraco 13+'s `expose`) render and are delivered in
+    the page's culture: a block's values in that culture, its invariant ones otherwise,
+    and a block not exposed there left out. Before, a page showed a varying block's first
+    culture's values in every language.
+  - **The Delivery API's blocks are Umbraco's shape,** compared field by field with
+    Umbraco's documented output (`tests/fixtures/umbraco-delivery/`): a grid area is its
+    alias and its spans from the data type (it was the area's key, spanning the grid), a
+    block's `areaGridColumns` its block type's own, and a block's `content` and
+    `settings` carry no `name`. The deliberate differences are listed in
+    `docs/delivery-api.md`, "Blocks as Umbraco's".
+  - **Rich text's blocks reach the page and the Delivery API.** A page's rich text holding
+    blocks gave a view only its markup and the Delivery API an empty `blocks`; a view now
+    gets a `RichTextValue` (printed, its markup) whose `blocks` are its items, and the
+    Delivery API delivers them.
+  - **The back office's block editors are covered end to end**, in the browser suite's
+    `tests/browser/blocks/`.
+
 ### Migrations
 
 - **107 `AddWorkspaceGroups`** (expand, 451): `workspace_group`, each user group a
@@ -99,6 +135,16 @@ point at `docs/stories/`.
 
 ### Upgrade notes
 
+- **Saves and imports Umbraco would refuse for their blocks are refused now (456).** Content
+  saved before keeps rendering and stays published, but its next save or publish is
+  refused until its blocks are fixed, and a content file, bundle or change from another
+  site holding such blocks is refused whole. Run `crombolo content check` (or the health
+  check's Content group) after upgrading: it lists each page and Library item to fix, and
+  where. A draft may still be saved with an empty top-level field, as before.
+- **A view reading rich text that holds blocks gets a `RichTextValue`** rather than a
+  string (456). Printed, `html()` and `text()` give its markup as before; code that
+  compared the value with a string, or called a string's methods on it, should read
+  `String(value)` or `model.html(alias)`.
 - **Tailwind's base reset now applies to every page (452).** Each page links a generated
   stylesheet that includes Tailwind's preflight, which zeroes margins, makes headings the
   size of body text, takes the bullets and numbers off lists and makes images block-level,

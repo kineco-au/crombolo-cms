@@ -1830,6 +1830,65 @@
       "errors": ["usage", "internal", "not_found", "refused", "confirmation_required"]
     },
     {
+      "name": "content check",
+      "description": "list the pages whose blocks their next save would refuse",
+      "effects": "read_only",
+      "cardinality": "bounded",
+      "output_fields": [
+        {
+          "name": "items",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "fields": [
+              {
+                "name": "kind",
+                "type": "string"
+              },
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "name",
+                "type": "string"
+              },
+              {
+                "name": "problems",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "fields": [
+                    {
+                      "name": "property",
+                      "type": "string"
+                    },
+                    {
+                      "name": "culture",
+                      "type": "string"
+                    },
+                    {
+                      "name": "path",
+                      "type": "string"
+                    },
+                    {
+                      "name": "messages",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "errors": ["usage", "internal"],
+      "outcomes": ["problems_found"]
+    },
+    {
       "name": "content copy",
       "description": "copy a page under another page; --descendants for the branch below it",
       "effects": "non_idempotent",
@@ -17880,7 +17939,7 @@
     {
       "code": 20,
       "name": "problems_found",
-      "description": "The check found problems: `status`, `types check`, `components check`."
+      "description": "The check found problems: `status`, `types check`, `components check`, `content check`."
     },
     {
       "code": 21,

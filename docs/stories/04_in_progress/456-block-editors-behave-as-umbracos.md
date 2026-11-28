@@ -111,29 +111,93 @@ What is not:
 
 ## Acceptance criteria
 
-- [ ] **Too few or too many blocks** in a list or grid are refused on validate and save,
+- [x] **Too few or too many blocks** in a list or grid are refused on validate and save,
       with Umbraco's message, through the Management API, the command line and a content
       file.
-- [ ] **A mandatory field or pattern inside a block**, in content or settings, at any
+- [x] **A mandatory field or pattern inside a block**, in content or settings, at any
       depth, is refused at Umbraco's path, and the back office highlights that block and
       field.
-- [ ] **A block type the property doesn't offer**, and a grid area's allowance broken, are
+- [x] **A block type the property doesn't offer**, and a grid area's allowance broken, are
       refused.
-- [ ] **Variant blocks** save, publish, read and render per culture, as Umbraco's.
-- [ ] **Imports** (content files, bundles, changes from another site) are validated before
+- [x] **Variant blocks** save, publish, read and render per culture, as Umbraco's.
+- [x] **Imports** (content files, bundles, changes from another site) are validated before
       anything is written, and a refusal names every page, property and block path.
-- [ ] **Stored content** keeps rendering; its next save is refused until fixed, and
+- [x] **Stored content** keeps rendering; its next save is refused until fixed, and
       `crombolo content check` and the health check list it beforehand.
-- [ ] **Messages** are Umbraco's wording.
-- [ ] **The browser suite** passes for Block List, Block Grid, Single Block and rich text's
+- [x] **Messages** are Umbraco's wording.
+- [x] **The browser suite** passes for Block List, Block Grid, Single Block and rich text's
       blocks, covering each step in the design.
-- [ ] **Our Delivery API output** matches the hand-written golden files from Umbraco's
+- [x] **Our Delivery API output** matches the hand-written golden files from Umbraco's
       documentation, or each difference is documented.
-- [ ] **Tests:** the validation's pure parts unit tested on both dialects; the suite and
+- [x] **Tests:** the validation's pure parts unit tested on both dialects; the suite and
       golden comparisons in CI.
-- [ ] **Docs:** `docs/delivery-api.md` (any deliberate differences), the release notes
+- [x] **Docs:** `docs/delivery-api.md` (any deliberate differences), the release notes
       (a save Umbraco would refuse is now refused: an upgrade note for content that was
       saved before).
+
+## Built
+
+- **Validation** (`packages/core/src/block-validation.ts`, pure): `blockValueProblems` checks
+  a Block List, Block Grid, Single Block or rich text value — `validationLimit` min (no
+  value counts as none) and max on the root blocks; each block's `contentTypeKey` and its
+  settings' among those the configuration offers; in a grid, `allowAtRoot`, `allowInAreas`,
+  each area's `specifiedAllowance` (element or group) with its limits and the area's own
+  `minAllowed`/`maxAllowed`; and every property of each block's element type, content and
+  settings, for mandatory and pattern, recursing into blocks within blocks. A
+  culture-variant block is checked in each validated culture its `expose` names; a value
+  with no `expose` in every validated culture. An empty block list is empty for a
+  mandatory property. `validateValues` in `packages/data/src/repositories/documents.ts`
+  calls it for every block editor property, loading the element types a value names at
+  any depth (`#elementTypesFor`).
+- **Paths and words:** `DocumentValidationError` gains `path`, the continuation into the
+  value; `validationProblem` appends it to the property's own path, by index when sent
+  (`$.values[0].value.contentData[1].values[?(@.alias == 'title' && @.culture == null &&
+  @.segment == null)].value`), as Umbraco 14+'s block path translators read it. Messages:
+  `Minimum %0% entries, requires %1% more.`, `Maximum %0% entries, %1% too many.`,
+  `<type> is not allowed at this spot.`, `The content amount requirements are not met for
+  one or more areas.`, a property's own mandatory/pattern message else `Value cannot be
+  empty` / `Value is invalid, it does not match the correct pattern`.
+- **Where:** validate, create-and-publish, save-and-publish and publish (all rules); a
+  draft create and save, documents and Library items, refuse block problems (`'blocks'`
+  scope) while a top-level empty field stays a publish rule. The command line prints each
+  problem's full path. Imports: the transfer check (`invalid-blocks`, blocking) validates
+  what each node would hold once written, before anything is written, for content files,
+  `site apply`, bundle install and `content import`; a change from another site is
+  validated once staged, each problem a conflict, so nothing reaches Shared.
+- **Stored content:** `storedBlockProblems` (`packages/data/src/repositories/stored-blocks.ts`)
+  lists pages and Library items whose next save would be refused; `crombolo content check`
+  (exit 20 with findings, `-o json`) and the health check's **Content › Blocks** entry use
+  it. What is stored keeps rendering and stays published.
+- **Variance:** the render layer reads a block's values in the page's culture (falling back
+  to invariant) and leaves out a block not exposed in it (`ValueContext.culture`,
+  `valuesIn`, `exposedIn` in `packages/render/src/values.ts`); before, every language
+  showed a varying block's first culture. Save, publish, read, render and the Delivery API
+  per culture are tested end to end (`tests/block-editors.test.ts`).
+- **Rich text's blocks** never reached a page or the Delivery API (the published value was
+  the markup alone); a rich text value holding blocks is now published as `{ markup,
+  blocks }` (`toPublishedValue`), so views get a `RichTextValue` and the Delivery API its
+  `blocks`.
+- **Delivery API against Umbraco's:** `tests/fixtures/umbraco-delivery/` (list, grid with
+  areas/spans/settings, rich text with blocks — from Umbraco's property expansion page,
+  13 and the current docs alike; nested blocks, Single Block and a variant block in two
+  cultures derived from its documented item shape and behaviour, said in each file).
+  `tests/umbraco-delivery-golden.test.ts` compares field by field and in order. Fixed:
+  a grid area answered its key as `alias` and the grid's columns as its spans; a block's
+  `areaGridColumns` ignored its block type; a block's elements carried `name: ""`.
+  Deliberate differences in `docs/delivery-api.md`, "Blocks as Umbraco's".
+- **Browser suite** `tests/browser/blocks/` (site in `blocks/site.ts`, a draft saved before
+  the rules seeded by `blocks/seed.ts`): list (catalogue, inline, workspace, drag reorder,
+  delete and a delete declined at its confirmation, settings, the editor's mandatory and
+  minimum messages, the server's refusal marking the right block, copy and paste into
+  another property), grid (a block in an area offering only its allowance and no second,
+  a span resized by its handle), Single Block, rich text (insert, delete, undo) and a
+  variant block in two languages. Drag and resize use the mouse in steps, as Umbraco's
+  sorter and scale handler follow pointer moves. Umbraco's list and grid have no undo for a
+  delete — its confirmation is the take-back, which the list journey declines; rich text's
+  editor undo is exercised.
+- **Docs:** `api-contract.md` ("Blocks are validated as Umbraco's are"), `delivery-api.md`,
+  `rendering.md`, `content-transfer.md` (`invalid-blocks`), `changes.md`, `diagnostics.md`,
+  `testing.md`, release notes.
 
 ## Out of scope
 

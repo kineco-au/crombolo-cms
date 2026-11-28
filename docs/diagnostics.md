@@ -22,6 +22,7 @@ the Settings section.
 | E-mail | E-mail delivery | whether a provider is configured, and which features are off until one is |
 | Servers | Servers | every node seen in the last minute, its role, release and schema, and a warning when releases or schema files disagree |
 | Content | Approval workflows | each workflow stage nobody could approve, its groups, and how many pages wait at it (story 229) |
+| Content | Blocks | each page and Library item whose blocks its next save would refuse, with the path into its value and Umbraco's words for each problem; they keep rendering meanwhile. `crombolo content check` lists the same (story 456, [`api-contract.md`](api-contract.md), "Blocks are validated as Umbraco's are") |
 
 The Servers check reads `server.crombolo_version` (migration 034), written by
 every node at boot and on each poll beside the schema version it already wrote.

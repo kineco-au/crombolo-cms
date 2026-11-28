@@ -1,0 +1,122 @@
+{
+  "$comment": "Umbraco's Delivery API output for a Block List, written by hand from its documentation (story 456). The structure, field order, ids and values follow the page's Block List example; its content picker property (`post`) is left out so the comparison needs no other page. Umbraco 13 and 17 document the same shape.",
+  "source": "https://docs.umbraco.com/umbraco-cms/13.latest/reference/content-delivery-api/property-expansion-and-limiting",
+  "alsoSource": "https://docs.umbraco.com/umbraco-cms/reference/content-delivery-api/property-expansion-and-limiting",
+  "versions": ["13", "17"],
+  "derivedFromSource": false,
+  "property": {
+    "alias": "blockList",
+    "editorAlias": "Umbraco.BlockList",
+    "config": {
+      "blocks": [
+        {
+          "contentElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000101",
+          "settingsElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000102"
+        }
+      ]
+    }
+  },
+  "contentTypes": {
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000101": "featuredPost",
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000102": "featuredPostSettings"
+  },
+  "culture": null,
+  "stored": {
+    "layout": {
+      "Umbraco.BlockList": [
+        {
+          "contentKey": "4d5931fb-ad3c-4759-9824-777a2f3c6a85",
+          "settingsKey": "aff73d6b-cfd1-4471-92d8-68fc07fdb6fd"
+        },
+        {
+          "contentKey": "76dabfff-7e86-4404-9a89-1b8274ac4f8e",
+          "settingsKey": "175325ab-b4a0-489d-a196-c1cf32b41ca1"
+        }
+      ]
+    },
+    "contentData": [
+      {
+        "key": "4d5931fb-ad3c-4759-9824-777a2f3c6a85",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000101",
+        "values": [
+          {
+            "alias": "title",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "Free your content with the Delivery API"
+          }
+        ]
+      },
+      {
+        "key": "76dabfff-7e86-4404-9a89-1b8274ac4f8e",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000101",
+        "values": [
+          {
+            "alias": "title",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "Community is key"
+          }
+        ]
+      }
+    ],
+    "settingsData": [
+      {
+        "key": "aff73d6b-cfd1-4471-92d8-68fc07fdb6fd",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000102",
+        "values": [
+          {
+            "alias": "backgroundColor",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "ce7e00"
+          }
+        ]
+      },
+      {
+        "key": "175325ab-b4a0-489d-a196-c1cf32b41ca1",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000102",
+        "values": [
+          {
+            "alias": "backgroundColor",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "6fa8dc"
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "items": [
+      {
+        "content": {
+          "contentType": "featuredPost",
+          "id": "4d5931fb-ad3c-4759-9824-777a2f3c6a85",
+          "properties": { "title": "Free your content with the Delivery API" }
+        },
+        "settings": {
+          "contentType": "featuredPostSettings",
+          "id": "aff73d6b-cfd1-4471-92d8-68fc07fdb6fd",
+          "properties": { "backgroundColor": "ce7e00" }
+        }
+      },
+      {
+        "content": {
+          "contentType": "featuredPost",
+          "id": "76dabfff-7e86-4404-9a89-1b8274ac4f8e",
+          "properties": { "title": "Community is key" }
+        },
+        "settings": {
+          "contentType": "featuredPostSettings",
+          "id": "175325ab-b4a0-489d-a196-c1cf32b41ca1",
+          "properties": { "backgroundColor": "6fa8dc" }
+        }
+      }
+    ]
+  }
+}

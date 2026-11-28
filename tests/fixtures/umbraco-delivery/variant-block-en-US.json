@@ -1,0 +1,126 @@
+{
+  "$comment": "A block that varies by culture (block level variance, Umbraco 15 onwards, the `expose` list), read in one culture. Umbraco's documentation shows no Delivery API example for it; the expected output is derived from Umbraco's own behaviour (its block value converters read each block's values in the requested culture, falling back to the invariant ones, and leave out a block not exposed in that culture), not copied from an example. Umbraco 13 has no block level variance: there a block list varies only as a whole property.",
+  "source": "https://docs.umbraco.com/umbraco-cms/fundamentals/backoffice/variants",
+  "versions": ["17"],
+  "derivedFromSource": true,
+  "property": {
+    "alias": "captions",
+    "editorAlias": "Umbraco.BlockList",
+    "config": {
+      "blocks": [
+        {
+          "contentElementTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000401"
+        }
+      ]
+    }
+  },
+  "contentTypes": {
+    "0e1c4f4e-6b1a-4d8e-9b8e-000000000401": "caption"
+  },
+  "culture": "en-US",
+  "stored": {
+    "layout": {
+      "Umbraco.BlockList": [
+        {
+          "contentKey": "d1e2f3a4-0000-4000-8000-000000000001"
+        },
+        {
+          "contentKey": "d1e2f3a4-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    "contentData": [
+      {
+        "key": "d1e2f3a4-0000-4000-8000-000000000001",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000401",
+        "values": [
+          {
+            "alias": "caption",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": "en-US",
+            "segment": null,
+            "value": "Hello"
+          },
+          {
+            "alias": "caption",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": "da-DK",
+            "segment": null,
+            "value": "Hej"
+          },
+          {
+            "alias": "code",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "A1"
+          }
+        ]
+      },
+      {
+        "key": "d1e2f3a4-0000-4000-8000-000000000002",
+        "contentTypeKey": "0e1c4f4e-6b1a-4d8e-9b8e-000000000401",
+        "values": [
+          {
+            "alias": "caption",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": "en-US",
+            "segment": null,
+            "value": "Only in English"
+          },
+          {
+            "alias": "code",
+            "editorAlias": "Umbraco.TextBox",
+            "culture": null,
+            "segment": null,
+            "value": "B2"
+          }
+        ]
+      }
+    ],
+    "settingsData": [],
+    "expose": [
+      {
+        "contentKey": "d1e2f3a4-0000-4000-8000-000000000001",
+        "culture": "en-US",
+        "segment": null
+      },
+      {
+        "contentKey": "d1e2f3a4-0000-4000-8000-000000000001",
+        "culture": "da-DK",
+        "segment": null
+      },
+      {
+        "contentKey": "d1e2f3a4-0000-4000-8000-000000000002",
+        "culture": "en-US",
+        "segment": null
+      }
+    ]
+  },
+  "expected": {
+    "items": [
+      {
+        "content": {
+          "contentType": "caption",
+          "id": "d1e2f3a4-0000-4000-8000-000000000001",
+          "properties": {
+            "caption": "Hello",
+            "code": "A1"
+          }
+        },
+        "settings": null
+      },
+      {
+        "content": {
+          "contentType": "caption",
+          "id": "d1e2f3a4-0000-4000-8000-000000000002",
+          "properties": {
+            "caption": "Only in English",
+            "code": "B2"
+          }
+        },
+        "settings": null
+      }
+    ]
+  }
+}

@@ -12,7 +12,7 @@
 import type { Principal } from '@crombolo/api-management/domain'
 import { REMOVED_PAGE_PREFIX } from '@crombolo/content'
 import type { DocumentAggregate } from '@crombolo/core'
-import { isFileObjectKey, normaliseUuid, ObjectTypes } from '@crombolo/core'
+import { isFileObjectKey, normaliseUuid, ObjectTypes, validationPath } from '@crombolo/core'
 import {
   ChangeRepository,
   ChangeSourceRepository,
@@ -807,6 +807,23 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
         }
       }
       for (const order of change.orders ?? []) await stageOrder(workspace, order, conflict)
+      // Story 456: a page the change leaves holding blocks a save would refuse is a conflict.
+      for (const page of ordered) {
+        if (page.action === 'delete') continue
+        const here = repo(page.kind, workspace.id)
+        const staged = await here.byKey(page.key)
+        if (!staged) continue
+        const label = `"${page.after?.name ?? page.key}"`
+        for (const error of await here.validate(
+          { key: page.key, values: staged.values, variants: staged.variants },
+          null,
+          'blocks',
+        ))
+          conflict(
+            label,
+            `${label} holds what a save refuses, at ${validationPath(error)}: ${error.messages.join(' ')}`,
+          )
+      }
     }
     const staged = [...(workspace.stagedChanges ?? [])]
     for (const { change } of todo) {

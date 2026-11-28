@@ -12,7 +12,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
-import { ComponentRepository, ContentTypeRepository } from '@crombolo/data'
+import { ComponentRepository, ContentTypeRepository, DataTypeRepository } from '@crombolo/data'
 import { encodePng, REMOTE_API_PATH } from '@crombolo/server'
 import { dialectUnderTest } from './support/db.ts'
 import {
@@ -52,6 +52,33 @@ type = "textstring"
 alias = "intro"
 name = "Intro"
 type = "textstring"
+
+[[property]]
+alias = "tags"
+name = "Tags"
+type = "tags"
+`
+
+const TAG = '6b2f1f0e-3c1d-4a8e-9f00-000000000456'
+const TAG_TOML = `[content-type]
+key = "${TAG}"
+alias = "tag"
+name = "Tag"
+is-element = true
+
+[[property]]
+alias = "label"
+name = "Label"
+type = "textstring"
+`
+const TAGS_TOML = `[data-type]
+alias = "tags"
+name = "Tags"
+editor = "Umbraco.BlockList"
+editor-ui = "Umb.PropertyEditorUi.BlockList"
+
+[[data-type.config.blocks]]
+contentElementTypeKey = "${TAG}"
 `
 
 const WORKSPACES = `${BACKOFFICE}/crombolo/api/workspaces`
@@ -67,10 +94,12 @@ async function site() {
   mkdirSync(join(process.cwd(), 'output'), { recursive: true })
   const root = mkdtempSync(join(process.cwd(), 'output', 'change-transfer-'))
   dirs.push(root)
-  for (const dir of ['schema/content-types', 'components'])
+  for (const dir of ['schema/content-types', 'schema/data-types', 'components'])
     mkdirSync(join(root, dir), { recursive: true })
   writeFileSync(join(root, 'schema', 'schema.toml'), '[schema]\nversion = "1.0.0"\n')
   writeFileSync(join(root, 'schema', 'content-types', 'page.toml'), PAGE_TOML)
+  writeFileSync(join(root, 'schema', 'content-types', 'tag.toml'), TAG_TOML)
+  writeFileSync(join(root, 'schema', 'data-types', 'tags.toml'), TAGS_TOML)
   writeFileSync(join(root, 'components', 'page.tsx'), 'export default () => <main />\n')
   const h = await signedInServer({
     config: {
@@ -402,6 +431,51 @@ describe(`a change moved between sites (${dialectUnderTest})`, () => {
     await target.merge(body.workspace)
     expect(await target.fieldValue(HOME, 'title')).toBe('Spring sale, ours')
     expect(await target.held([made.key])).toEqual([made.key])
+  }, 20_000)
+
+  test('story 456: a change leaving blocks a save would refuse is refused, naming the page and path', async () => {
+    const tags = (...labels: string[]) => {
+      const data = labels.map((label) => ({
+        key: crypto.randomUUID(),
+        contentTypeKey: TAG,
+        values: [
+          {
+            alias: 'label',
+            editorAlias: 'Umbraco.TextBox',
+            culture: null,
+            segment: null,
+            value: label,
+          },
+        ],
+      }))
+      return {
+        layout: { 'Umbraco.BlockList': data.map((d) => ({ contentKey: d.key })) },
+        contentData: data,
+        settingsData: [],
+      }
+    }
+    const made = await madeThere((s, w) =>
+      s.edit(HOME, { tags: tags('Spring', 'Sale') as never }, w),
+    )
+    const target = await site()
+    // The target allows one tag at most: the change would leave Home holding two.
+    const dataTypes = new DataTypeRepository(target.h.server.db)
+    const type = await dataTypes.byAlias('tags')
+    if (!type) throw new Error('no tags data type')
+    await dataTypes.save({
+      ...type,
+      values: [...type.values, { alias: 'validationLimit', value: { max: 1 } }],
+    })
+    const refused = await target.put(made.bundle)
+    expect(refused.status).toBe(409)
+    const says = ((await refused.json()) as { conflicts: Array<{ says: string }> }).conflicts
+      .map((c) => c.says)
+      .join(' ')
+    expect(says).toContain('"Home" holds what a save refuses')
+    expect(says).toContain(
+      "at $.values[?(@.alias == 'tags' && @.culture == null && @.segment == null)].value: Maximum 1 entries, 1 too many.",
+    )
+    expect(await target.fieldValue(HOME, 'tags')).toBeFalsy()
   }, 20_000)
 
   test('story 439: the field the target changed since is held with both values, and answered either way', async () => {

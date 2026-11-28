@@ -157,7 +157,8 @@ async function apiElement(
   return {
     contentType: element.contentType.alias ?? '',
     id: element.key,
-    name: element.name ?? '',
+    // A block has no name, and Umbraco's block element none (story 456); a Library element has one.
+    ...(element.name === null ? {} : { name: element.name }),
     properties: await properties(element, ctx, expand, include ?? { key: '', children: [] }),
   }
 }
@@ -301,16 +302,24 @@ async function gridItem(
   expand: ExpansionNode | undefined,
   include: ExpansionNode | undefined,
 ): Promise<Record<string, unknown>> {
+  // Story 456: as Umbraco's — an area's alias and spans from its block type, and the
+  // columns its areas lay out in, the grid's own when the block type says none.
+  const areaColumns = item.areaGridColumns ?? columns
   const areas = []
   for (const area of item.areas) {
     const items = []
     for (const inner of area.items) items.push(await gridItem(inner, ctx, columns, expand, include))
-    areas.push({ alias: area.key, rowSpan: 1, columnSpan: columns, items })
+    areas.push({
+      alias: area.alias ?? area.key,
+      rowSpan: area.rowSpan ?? 1,
+      columnSpan: area.columnSpan ?? areaColumns,
+      items,
+    })
   }
   return {
     rowSpan: item.rowSpan ?? 1,
     columnSpan: item.columnSpan ?? columns,
-    areaGridColumns: columns,
+    areaGridColumns: areaColumns,
     areas,
     ...(await blockItem(item, ctx, expand, include)),
   }

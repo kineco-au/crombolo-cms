@@ -182,6 +182,12 @@ Management API's (above, "Moving a change without the remote").
   page: `GET <plugin>/api/workspaces/{key}/merge` lists it with both values, the merge is
   refused naming it, and `POST /{key}/conflicts { page, answers }` settles it, `mine` the
   change's value and `theirs` this site's. A change this site lacks is named beside it.
+- **Blocks a save would refuse** (story `456`): once staged, each page the change leaves
+  holding blocks Umbraco would refuse is a conflict naming the page and the path into its
+  value, in Umbraco's words ("\"Home\" holds what a save refuses, at
+  $.values[?(@.alias == 'tags' …)].value: Maximum 1 entries, 1 too many."), so the
+  change is not applied and its workspace stays open for the page to be fixed there
+  ([`api-contract.md`](api-contract.md), "Blocks are validated as Umbraco's are").
 - **Applied** (`PUT changes`), it is staged and merged at once. A conflict leaves the
   workspace open to edit, holding the change, and changes nothing in Shared; a finding
   (`382`) is counted against the target and refused until accepted there (`?accept=`).

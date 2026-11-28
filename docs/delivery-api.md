@@ -189,7 +189,11 @@ Umbraco's shapes, camelCase, nulls written, dates ISO in UTC. A page:
   and elements always carry their properties. A block given an alias on its
   page has `"alias"` beside `content` and `settings`, Crombolo's own (story 253). A
   Single Block is its one item, `{ content, settings }` as a list's are, or `null`
-  (story 345). Rich text is a tree of elements
+  (story 345). A block's `content` and `settings` are `{ contentType, id, properties }`,
+  with no `name`, as Umbraco's are; a grid area is its `alias` and its spans from the data
+  type, and `areaGridColumns` the block type's own or the grid's (story 456). A block whose
+  element type varies by culture answers in the request's culture, and a block not
+  exposed in it is left out. Rich text is a tree of elements
   ("Rich text", below). A member picker is `"(unsupported)"`, as in Umbraco.
   An empty property is `null`.
 - Media answers `path` (names, lowercased, root down, with a trailing slash, as
@@ -200,6 +204,30 @@ Umbraco's shapes, camelCase, nulls written, dates ISO in UTC. A page:
 `properties[picker[properties[$all]]]`, `fields=properties[title]`. `$all`
 expands one level; `fields` never expands. Bad syntax is a 400 problem naming it
 (Umbraco answers 500).
+
+### Blocks as Umbraco's
+
+Our block output is compared, field by field and in field order, with Umbraco's for
+the same content (story 456): `tests/fixtures/umbraco-delivery/` holds Umbraco's
+Delivery API output written by hand from its documentation — a Block List, a Block
+Grid with areas, spans and settings, rich text with blocks, blocks within blocks, a
+Single Block, and a block that varies by culture read in English and in Danish — each
+file citing the page it follows, and `tests/umbraco-delivery-golden.test.ts` compares
+ours with it. Umbraco's documentation prints the list, grid and rich text examples
+(the property expansion page, the same for 13 and 17); it prints none for nesting, a
+Single Block or a varying block, so those three are derived from its documented item
+shape and its own behaviour, and say so in their header.
+
+The differences, each deliberate:
+
+| Where | Umbraco | Crombolo | Why |
+| --- | --- | --- | --- |
+| Rich text | `{ markup, blocks }` by default; the tree with `RichTextOutputAsJson` | always the tree, `blocks` beside it | story 216, below: one form, no switch. Its `blocks` match Umbraco's |
+| A block given an alias on its page | no such field | `"alias"` beside `content` and `settings` | story 253; only where a block has one |
+| A segment | a block's values for the requested segment | the culture's, or the invariant ones | segments are not served ([Not built](#not-built)) |
+
+Umbraco 13 has no Single Block and no block level variance (a block list varies only as
+a whole there), so those files name 17 alone.
 
 ### Rich text
 

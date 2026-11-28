@@ -90,6 +90,38 @@ Validation error keys are **JSON-path expressions into the request model**:
 Matching request entries to errors by the `(alias, culture, segment)` triple is
 how those paths are computed — without it the editor cannot highlight fields.
 
+**Blocks are validated as Umbraco's are** (story 456), and a problem inside one is
+reported at the path Umbraco 14+ uses, continued from the property's own:
+`$.values[0].value.contentData[1].values[?(@.alias == 'title' && @.culture == null && @.segment == null)].value`
+(and `settingsData` for a block's settings; rich text's blocks are under its value's
+`.blocks`). The client's block path translators turn the index into the block's key,
+so the editor marks that block and that field. What is checked, for Block List,
+Block Grid, Single Block and rich text's blocks (`blockValueProblems` in
+`@crombolo/core`, called by the repository's `validate`):
+
+| Rule | Reported at | Message (Umbraco's wording) |
+| --- | --- | --- |
+| fewer blocks than `validationLimit.min` (no value at all counts as none) | the value | `Minimum %0% entries, requires %1% more.` |
+| more than `validationLimit.max` | the value | `Maximum %0% entries, %1% too many.` |
+| a block, or its settings, of a type the configuration does not offer; a grid block at the root that `allowAtRoot` keeps out, or in an area its allowance or `allowInAreas` keeps out | that block's `contentData[n]` / `settingsData[n]` | `<type name> is not allowed at this spot.` |
+| a grid area's `minAllowed`/`maxAllowed`, or a `specifiedAllowance` entry's limits, broken | the block holding the area | `The content amount requirements are not met for one or more areas.` |
+| a property inside a block, in content or settings, at any depth: mandatory, pattern | that property | its own mandatory or pattern message, else `Value cannot be empty` / `Value is invalid, it does not match the correct pattern` |
+
+A block whose element type varies by culture is checked in each culture its value's
+`expose` names, of the cultures being validated; one not exposed in a culture is
+not asked for there. A value written before `expose` existed is checked in every
+culture validated. An empty block list counts as empty for a mandatory property.
+
+**Where it applies.** Validate (both endpoints), and every save and publish. A save of
+a draft may still leave a top-level field empty, as before — that stays a publish
+rule — but it is refused for any block problem, so a draft never holds blocks Umbraco
+would refuse. The same holds for Library items, the command line, content files,
+bundles and a change from another site ([`content-transfer.md`](content-transfer.md),
+"The dry run"; [`changes.md`](changes.md)). Content stored before these rules keeps
+rendering and stays published; its next save is refused until it is fixed, and
+`crombolo content check` and the health check's **Blocks** entry list it ahead
+([`diagnostics.md`](diagnostics.md)).
+
 **Paging** is `{ total, items }` with `skip` (default 0) and `take` (default 100).
 **`skip` must be a multiple of `take`** or Umbraco returns 400 `"Invalid
 skip/take"`; the client relies on that contract.

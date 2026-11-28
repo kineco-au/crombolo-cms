@@ -72,6 +72,11 @@ export interface DocumentValidationError {
   culture: string | null
   segment: string | null
   messages: string[]
+  /**
+   * Story 456: where inside the value, as Umbraco 14+ says it, for a problem in a
+   * block (`.contentData[0].values[?(…)].value`); absent for the value itself.
+   */
+  path?: string
 }
 
 /** What the content tree shows for a document, beyond the generic tree item. */

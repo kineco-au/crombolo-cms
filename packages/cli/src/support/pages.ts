@@ -13,6 +13,7 @@ import {
   type DocumentValue,
   normaliseUuid,
   ObjectTypes,
+  validationPath,
 } from '@crombolo/core'
 import {
   ComponentRepository,
@@ -283,7 +284,8 @@ export function refusedPage(result: Extract<Written, { ok: false }>): CliError {
     errors.length > 0
       ? {
           details: errors.map(
-            (e) => `${e.alias}${e.culture ? ` (${e.culture})` : ''}: ${e.messages.join('; ')}`,
+            (e) =>
+              `${e.alias}${e.culture ? ` (${e.culture})` : ''}${e.path ? ` at ${validationPath(e)}` : ''}: ${e.messages.join('; ')}`,
           ),
         }
       : undefined,
