@@ -1,14 +1,16 @@
 'use client'
 import { DeliveryError, type RouteAnswer } from '@crombolo/delivery-client'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { CMS } from '@/lib/address'
+import { shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import type { DeliveryTypes } from '@/lib/cms-types.gen'
 import { finishSignIn } from '@/lib/members'
 import { leavePreview, previewToken, startPreview } from '@/lib/preview'
 import { MemberProvider, MembersOnly, useMember } from './member'
 import { CmsPage, NotFound } from './page'
+import { PageTitle, Standfirst } from './section-intro'
 import { SiteFooter } from './site-footer'
 import { SiteHeader } from './site-header'
 
@@ -61,7 +63,7 @@ function CmsRoute({ path }: { path: string }) {
     }
   }, [path])
   // The last page stays while the next is read, as a page that loads in place should.
-  if (!shown) return <p className="loading">Loading…</p>
+  if (!shown) return <Loading>Loading…</Loading>
   const { answer } = shown
   switch (answer.kind) {
     case 'page':
@@ -74,12 +76,17 @@ function CmsRoute({ path }: { path: string }) {
       return <MembersOnly refused />
     default:
       return (
-        <header className="page-header">
-          <h1>This page could not be loaded.</h1>
-          <p className="standfirst">Please try again in a moment.</p>
+        <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+          <PageTitle>This page could not be loaded.</PageTitle>
+          <Standfirst>Please try again in a moment.</Standfirst>
         </header>
       )
   }
+}
+
+/** What shows while a page is read: quiet, where the page will be. */
+function Loading({ children }: { children: ReactNode }) {
+  return <p className={`${shell} mt-16 text-muted`}>{children}</p>
 }
 
 /** `/signed-in`: where the site sends a member back to, to finish signing in. */
@@ -96,9 +103,9 @@ function SignedIn() {
     )
   }, [setSignedIn])
   return (
-    <header className="page-header">
-      <h1>{failed ? 'You could not be signed in.' : 'Signing you in…'}</h1>
-      {failed ? <p className="standfirst">Please try signing in again.</p> : null}
+    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+      <PageTitle>{failed ? 'You could not be signed in.' : 'Signing you in…'}</PageTitle>
+      {failed ? <Standfirst>Please try signing in again.</Standfirst> : null}
     </header>
   )
 }
@@ -113,7 +120,7 @@ function StartPreview({ onStart }: { onStart(): void }) {
     onStart()
     history.replaceState(null, '', path.startsWith('/') ? path : '/')
   }, [onStart])
-  return <p className="loading">Opening the preview…</p>
+  return <Loading>Opening the preview…</Loading>
 }
 
 function PreviewBar() {
@@ -122,9 +129,16 @@ function PreviewBar() {
     location.reload()
   }
   return (
-    <aside className="preview-bar" aria-label="Preview">
+    <aside
+      className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 bg-sea px-5 py-2.5 text-sm text-foam"
+      aria-label="Preview"
+    >
       <span>Previewing drafts: visitors do not see these changes yet.</span>
-      <button type="button" onClick={leave}>
+      <button
+        type="button"
+        className="cursor-pointer rounded-full border border-current px-3 py-0.5 hover:bg-foam hover:text-sea motion-safe:transition-colors"
+        onClick={leave}
+      >
         Leave preview
       </button>
     </aside>

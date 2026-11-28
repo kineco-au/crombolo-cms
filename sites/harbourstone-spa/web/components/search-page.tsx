@@ -1,10 +1,11 @@
 import { useSearchParams } from 'next/navigation'
 import { type FormEvent, useState } from 'react'
+import { button, caps, display, field, shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { hrefOf, type Page, text } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
 import { AppLink, navigate } from './app-link'
-import { Eyebrow } from './section-intro'
+import { Eyebrow, PageTitle, Standfirst } from './section-intro'
 
 const PER_PAGE = 10
 
@@ -26,48 +27,60 @@ export function SearchPage({ page }: { page: Page }) {
     navigate(`${hrefOf(page)}?q=${encodeURIComponent(typed.trim())}`)
   }
   return (
-    <header className="page-header">
+    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
       <Eyebrow>{text(page, 'eyebrow')}</Eyebrow>
-      <h1>{text(page, 'title')}</h1>
+      <PageTitle>{text(page, 'title')}</PageTitle>
       <search>
-        <form className="search-form" onSubmit={search}>
+        <form className="mt-8 flex max-w-xl flex-wrap gap-3" onSubmit={search}>
           <input
             type="search"
             name="q"
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             aria-label="Search the site"
+            className={`${field} min-w-48 flex-1`}
           />
-          <button className="button" type="submit">
+          <button className={button()} type="submit">
             Search
           </button>
         </form>
       </search>
       {query && results ? (
-        <p className="standfirst">
+        <Standfirst>
           {results.total === 0
             ? `Nothing matches “${query}”.`
             : `${results.total} ${results.total === 1 ? 'page matches' : 'pages match'} “${query}”.`}
-        </p>
+        </Standfirst>
       ) : !query && text(page, 'standfirst') ? (
-        <p className="standfirst">{text(page, 'standfirst')}</p>
+        <Standfirst>{text(page, 'standfirst')}</Standfirst>
       ) : null}
       {results && results.items.length > 0 ? (
-        <section>
-          <ol className="search-results">
+        <section className="mt-12">
+          <ol className="max-w-2xl">
             {results.items.map((item) => (
-              <li key={item.id}>
+              <li key={item.id} className="border-t border-line py-7">
                 <Eyebrow>{text(item, 'eyebrow')}</Eyebrow>
-                <h2>
-                  <AppLink href={hrefOf(item)}>{text(item, 'title') || item.name}</AppLink>
+                <h2 className={`${display} mt-2 text-2xl`}>
+                  <AppLink
+                    className="hover:text-brass-deep motion-safe:transition-colors"
+                    href={hrefOf(item)}
+                  >
+                    {text(item, 'title') || item.name}
+                  </AppLink>
                 </h2>
-                {/* biome-ignore lint/security/noDangerouslySetInnerHtml: escaped by the CMS but for the <mark>s. */}
-                <p dangerouslySetInnerHTML={{ __html: item.excerpt }} />
+                <p
+                  className="mt-3 text-muted [&_mark]:bg-transparent [&_mark]:font-medium [&_mark]:text-ink"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: escaped by the CMS but for the <mark>s.
+                  dangerouslySetInnerHTML={{ __html: item.excerpt }}
+                />
               </li>
             ))}
           </ol>
           {pages > 1 ? (
-            <nav className="search-pages" aria-label="Search results pages">
+            <nav
+              className={`${caps} flex max-w-2xl items-baseline justify-between border-t border-line pt-7 text-muted [&_a]:text-brass-deep`}
+              aria-label="Search results pages"
+            >
               {at > 1 ? <AppLink href={link(at - 1)}>Previous</AppLink> : <span />}
               <span>
                 Page {at} of {pages}

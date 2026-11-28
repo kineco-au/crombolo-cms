@@ -1,3 +1,4 @@
+import { display, prose, shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { image, type PageOf, richText } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
@@ -9,7 +10,7 @@ import { Eyebrow, PageHeader } from './section-intro'
 /** The form, drawn by the app from the site's own definition (story 056). */
 function FreshForm({ id }: { id: string }) {
   const form = useLoad(id, () => cms.form(id))
-  if (!form) return <p>Loading the form…</p>
+  if (!form) return <p className="text-muted">Loading the form…</p>
   return <EnquiryForm form={form as unknown as FormDefinition} />
 }
 
@@ -22,13 +23,13 @@ export function ContactPage({ page }: { page: PageOf<'contactPage'> }) {
   return (
     <>
       <PageHeader page={page} />
-      <section className="contact">
-        <div className="contact__form">{id ? <FreshForm id={id} /> : null}</div>
-        <aside className="contact__aside">
+      <section className={`${shell} grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr] md:gap-16`}>
+        <div>{id ? <FreshForm id={id} /> : null}</div>
+        <aside>
           <Eyebrow>{page.properties.asideEyebrow}</Eyebrow>
-          <h2>{page.properties.asideHeading}</h2>
-          <RichText value={richText(page, 'asideBody')} className="prose" />
-          <Picture media={image(page, 'asideImage')} />
+          <h2 className={`${display} mt-3 text-3xl`}>{page.properties.asideHeading}</h2>
+          <RichText value={richText(page, 'asideBody')} className={`${prose} mt-5`} />
+          <Picture media={image(page, 'asideImage')} className="mt-8 h-56 w-full object-cover" />
         </aside>
       </section>
     </>

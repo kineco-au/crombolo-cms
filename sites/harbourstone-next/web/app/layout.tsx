@@ -6,11 +6,11 @@ import './globals.css'
 
 /**
  * The shell every page shares. The two faces come from Google Fonts, as on the
- * TSX Harbourstone; `globals.css` names a fallback for each.
+ * TSX Harbourstone; the theme in `globals.css` names a fallback for each.
  */
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="antialiased">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Outfit:wght@300;400;500&display=swap"
         />
       </head>
-      <body>
+      <body className="bg-paper font-sans leading-normal font-light text-ink selection:bg-selection selection:text-ink">
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />

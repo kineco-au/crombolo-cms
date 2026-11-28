@@ -1,8 +1,9 @@
 import type { PageProps } from '@crombolo/crombolo'
 import { BottlingCard } from '../shared/bottling.tsx'
+import { button, display, shell } from '../shared/classes.ts'
 import { Figures, highlightsOf } from '../shared/highlights.tsx'
 import { Layout } from '../shared/layout.tsx'
-import { Eyebrow, SectionIntro } from '../shared/section-intro.tsx'
+import { Eyebrow, Prose, SectionIntro } from '../shared/section-intro.tsx'
 
 export default async function HomePage({ model, nav }: PageProps) {
   const hero = (await model.media('heroImage'))[0]
@@ -13,35 +14,41 @@ export default async function HomePage({ model, nav }: PageProps) {
   const bottlings = range ? nav.children(range) : []
   return (
     <Layout model={model} nav={nav}>
-      <section class="hero">
+      <section class="relative flex min-h-[88vh] items-end bg-sea pt-28 pb-16 text-foam">
         {hero ? (
           <img
-            class="hero__image"
+            class="absolute inset-0 size-full object-cover"
             src={hero.cropUrl({ width: 1600, height: 900 })}
             alt={hero.name}
           />
         ) : null}
-        <div class="hero__text">
+        <div
+          class="absolute inset-0 bg-linear-to-t from-sea/90 via-sea/50 via-35% to-sea/10"
+          aria-hidden="true"
+        />
+        <div class={`${shell} relative`}>
           <Eyebrow tone="light">{model.text('eyebrow')}</Eyebrow>
-          <h1>{model.text('title')}</h1>
-          <p class="strapline">{model.text('strapline')}</p>
+          <h1 class={`${display} mt-4 text-6xl leading-none sm:text-7xl lg:text-8xl`}>
+            {model.text('title')}
+          </h1>
+          <p class="mt-5 max-w-lg text-lg">{model.text('strapline')}</p>
           {range && model.hasValue('heroCtaLabel') ? (
-            <a class="button button--light" href={range.url}>
+            <a class={`${button('light')} mt-8`} href={range.url}>
               {model.text('heroCtaLabel')}
             </a>
           ) : null}
         </div>
       </section>
 
-      <section class="split">
+      <section class={`${shell} grid items-center gap-10 py-20 md:grid-cols-2 md:gap-12 md:py-28`}>
         <div>
           <SectionIntro eyebrow={model.text('styleEyebrow')} heading={model.text('styleHeading')} />
-          <div class="prose">{model.html('styleIntro')}</div>
+          <Prose>{model.html('styleIntro')}</Prose>
           <Figures items={highlightsOf(model.value('stats'))} />
         </div>
         {styleImage ? (
           <img
-            class="split__image"
+            class="h-112 w-full object-cover"
             src={styleImage.cropUrl({ width: 1200, height: 800 })}
             alt={styleImage.name}
           />
@@ -49,18 +56,23 @@ export default async function HomePage({ model, nav }: PageProps) {
       </section>
 
       {range ? (
-        <section class="band">
-          <SectionIntro eyebrow={model.text('rangeEyebrow')} heading={model.text('rangeHeading')} />
-          <ul class="bottlings bottlings--brief">
-            {bottlings.map((bottling) => (
-              <BottlingCard bottling={bottling} />
-            ))}
-          </ul>
-          {model.hasValue('rangeCtaLabel') ? (
-            <a class="button" href={range.url}>
-              {model.text('rangeCtaLabel')}
-            </a>
-          ) : null}
+        <section class="bg-foam py-20 md:py-28">
+          <div class={shell}>
+            <SectionIntro
+              eyebrow={model.text('rangeEyebrow')}
+              heading={model.text('rangeHeading')}
+            />
+            <ul class="mt-10 grid gap-5 md:grid-cols-2">
+              {bottlings.map((bottling) => (
+                <BottlingCard bottling={bottling} />
+              ))}
+            </ul>
+            {model.hasValue('rangeCtaLabel') ? (
+              <a class={`${button()} mt-8`} href={range.url}>
+                {model.text('rangeCtaLabel')}
+              </a>
+            ) : null}
+          </div>
         </section>
       ) : null}
     </Layout>

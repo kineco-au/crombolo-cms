@@ -1,5 +1,6 @@
 'use client'
 import { type FormEvent, useState } from 'react'
+import { caps, field as fieldClasses } from '@/lib/classes'
 
 interface Rule {
   field: string
@@ -88,10 +89,15 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
     }
   }
 
-  if (state === 'sent') return <p role="status">{message}</p>
+  if (state === 'sent')
+    return (
+      <p role="status" className="font-display text-2xl leading-snug">
+        {message}
+      </p>
+    )
 
   return (
-    <form className="crombolo-form" onSubmit={submit} noValidate>
+    <form className="grid gap-6" onSubmit={submit} noValidate>
       {fields
         .filter((field) => shown(field, answers))
         .map((field) => {
@@ -106,6 +112,7 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
             required: field.mandatory,
             'aria-invalid': error ? true : undefined,
             'aria-describedby': described || undefined,
+            className: field.type === 'dataConsent' ? undefined : fieldClasses,
           }
           const control =
             field.type === 'longAnswer' ? (
@@ -131,6 +138,7 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
             ) : field.type === 'dataConsent' ? (
               <input
                 {...common}
+                className="mt-1 size-4 shrink-0 accent-brass-deep"
                 type="checkbox"
                 value="true"
                 checked={answers[field.alias] === 'true'}
@@ -147,20 +155,26 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
               />
             )
           return (
-            <div className={`crombolo-field crombolo-field--${field.type}`} key={field.alias}>
+            <div className="grid gap-2" key={field.alias}>
               {field.type === 'dataConsent' ? (
-                <label htmlFor={id}>
+                <label htmlFor={id} className="flex items-start gap-3 text-[0.9375rem] text-ink">
                   {control} {field.caption}
                 </label>
               ) : (
                 <>
-                  <label htmlFor={id}>{field.caption}</label>
+                  <label htmlFor={id} className={`${caps} tracking-[0.14em] text-muted`}>
+                    {field.caption}
+                  </label>
                   {control}
                 </>
               )}
-              {field.helpText ? <p id={`${id}-help`}>{field.helpText}</p> : null}
+              {field.helpText ? (
+                <p id={`${id}-help`} className="text-sm text-muted">
+                  {field.helpText}
+                </p>
+              ) : null}
               {error ? (
-                <p id={`${id}-error`} className="crombolo-field__error">
+                <p id={`${id}-error`} className="text-sm text-wine">
                   {error}
                 </p>
               ) : null}
@@ -170,8 +184,16 @@ export function EnquiryForm({ form }: { form: FormDefinition }) {
       {form.submit.honeypot ? (
         <input type="text" name={form.submit.honeypot} tabIndex={-1} autoComplete="off" hidden />
       ) : null}
-      {state === 'failed' ? <p role="alert">{message}</p> : null}
-      <button className="button" type="submit" disabled={state === 'sending'}>
+      {state === 'failed' ? (
+        <p role="alert" className="border border-wine bg-wine/5 p-4 text-wine">
+          {message}
+        </p>
+      ) : null}
+      <button
+        className={`${caps} mt-2 min-h-11 cursor-pointer justify-self-start bg-ink px-6 text-foam hover:bg-brass-deep disabled:cursor-wait disabled:opacity-60 motion-safe:transition-colors`}
+        type="submit"
+        disabled={state === 'sending'}
+      >
         {form.submitLabel ?? 'Send'}
       </button>
     </form>

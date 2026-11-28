@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react'
+import { shell } from '@/lib/classes'
 import { cms } from '@/lib/cms'
 import { childrenOf, hrefOf } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
@@ -40,37 +41,42 @@ export function SiteHeader() {
     if (searchPage) navigate(`${hrefOf(searchPage)}?q=${encodeURIComponent(query.trim())}`)
   }
   return (
-    <header className="masthead">
-      <div className="masthead__inner">
-        <AppLink className="wordmark" href="/">
+    <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur-md">
+      <div
+        className={`${shell} flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3 md:gap-x-8 md:py-4`}
+      >
+        <AppLink className="font-display text-xl tracking-wide sm:text-2xl" href="/">
           <Wordmark />
         </AppLink>
         <NavLinks links={links} />
-        {searchPage ? (
-          <search className="masthead__search">
-            <form onSubmit={search}>
-              <input
-                type="search"
-                name="q"
-                placeholder="Search"
-                aria-label="Search the site"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </form>
-          </search>
-        ) : null}
-        <MemberButton />
+        <div className="flex items-center gap-4 md:gap-6">
+          {searchPage ? (
+            <search>
+              <form onSubmit={search}>
+                <input
+                  type="search"
+                  name="q"
+                  placeholder="Search"
+                  aria-label="Search the site"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="w-28 rounded-none border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus-visible:border-brass sm:w-36 sm:focus-visible:w-52 motion-safe:transition-all"
+                />
+              </form>
+            </search>
+          ) : null}
+          <MemberButton />
+        </div>
       </div>
     </header>
   )
 }
 
 /** A mark with two colours in it: part of the design, not a value an editor reproduces. */
-export function Wordmark() {
+export function Wordmark({ plain }: { plain?: boolean }) {
   return (
     <>
-      Harbour<span>stone</span>
+      Harbour<span className={plain ? undefined : 'text-brass-deep'}>stone</span>
     </>
   )
 }

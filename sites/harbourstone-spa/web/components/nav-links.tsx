@@ -9,14 +9,17 @@ export function NavLinks({
 }) {
   const path = usePathname()
   return (
-    <nav aria-label="Primary">
+    <nav
+      aria-label="Primary"
+      className="order-last flex w-full gap-x-3 overflow-x-auto [scrollbar-width:none] justify-between md:order-none md:w-auto md:justify-start md:gap-x-7"
+    >
       {links.map((link) => {
         const here = link.exact ? path === link.href : path.startsWith(link.href)
         return (
           <AppLink
             key={link.href}
             href={link.href}
-            className={here ? 'here' : undefined}
+            className="shrink-0 py-1 text-xs font-medium tracking-[0.12em] text-muted uppercase md:tracking-caps hover:text-brass-deep aria-[current=page]:text-brass-deep motion-safe:transition-colors"
             aria-current={here ? 'page' : undefined}
           >
             {link.label}

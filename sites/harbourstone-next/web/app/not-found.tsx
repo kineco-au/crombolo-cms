@@ -1,4 +1,5 @@
 import { CmsPage } from '@/components/page'
+import { display, shell } from '@/lib/classes'
 import { crombolo } from '@/lib/crombolo'
 
 /** The CMS's own not-found page when it has one. */
@@ -7,8 +8,8 @@ export default async function NotFound() {
   return page ? (
     <CmsPage page={page} />
   ) : (
-    <header className="page-header">
-      <h1>Page not found</h1>
+    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+      <h1 className={`${display} text-5xl leading-none md:text-7xl`}>Page not found</h1>
     </header>
   )
 }

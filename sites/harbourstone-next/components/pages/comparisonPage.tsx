@@ -1,5 +1,6 @@
 import type { PageProps } from '@crombolo/crombolo'
 import { BottlingCard } from '../shared/bottling.tsx'
+import { shell } from '../shared/classes.ts'
 import { Layout } from '../shared/layout.tsx'
 import { PageHeader } from '../shared/section-intro.tsx'
 
@@ -16,8 +17,8 @@ export default function ComparisonPage({ model, nav }: PageProps) {
   return (
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
-      <section>
-        <ul class="bottlings">
+      <section class={shell}>
+        <ul class="mt-10 grid gap-5 md:grid-cols-2">
           {range.map((bottling) => (
             <BottlingCard bottling={bottling} />
           ))}

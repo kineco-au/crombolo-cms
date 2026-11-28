@@ -1,4 +1,5 @@
 import type { ApiElement } from '@crombolo/delivery-client'
+import { caps, display } from '@/lib/classes'
 import { elements, hrefOf, image, type Page, specOf, text } from '@/lib/content'
 import { AppLink } from './app-link'
 import { Picture } from './picture'
@@ -6,11 +7,11 @@ import { Picture } from './picture'
 export function TastingNotes({ notes }: { notes: ApiElement[] }) {
   if (notes.length === 0) return null
   return (
-    <dl className="tasting">
+    <dl className="mt-6 grid gap-3 text-sm">
       {notes.map((note) => (
         <div key={note.id}>
-          <dt>{text(note, 'aspect')}</dt>
-          <dd>{text(note, 'note')}</dd>
+          <dt className="font-medium">{text(note, 'aspect')}</dt>
+          <dd className="text-muted">{text(note, 'note')}</dd>
         </div>
       ))}
     </dl>
@@ -21,18 +22,31 @@ export function TastingNotes({ notes }: { notes: ApiElement[] }) {
 export function BottlingCard({ bottling, detailed }: { bottling: Page; detailed?: boolean }) {
   const bottle = image(bottling, 'bottleImage')
   return (
-    <li className="bottling-card">
+    <li
+      className={`border border-line bg-card ${detailed ? 'grid sm:grid-cols-[minmax(0,2fr)_3fr]' : ''}`}
+    >
       {detailed && bottle ? (
-        <AppLink className="bottling-card__image" href={hrefOf(bottling)}>
-          <Picture media={bottle} sizes="(min-width: 48rem) 25vw, 50vw" />
+        <AppLink className="block bg-foam" href={hrefOf(bottling)}>
+          <Picture
+            media={bottle}
+            className="h-96 w-full object-cover sm:h-full"
+            sizes="(min-width: 48rem) 20vw, 100vw"
+          />
         </AppLink>
       ) : null}
-      <div className="bottling-card__text">
-        <p className="eyebrow">{specOf(bottling)}</p>
-        <h3>
-          <AppLink href={hrefOf(bottling)}>{text(bottling, 'title') || bottling.name}</AppLink>
+      <div className="p-6">
+        <p className={`${caps} text-brass-deep`}>{specOf(bottling)}</p>
+        <h3 className={`${display} mt-2 text-3xl`}>
+          <AppLink
+            className="hover:text-brass-deep motion-safe:transition-colors"
+            href={hrefOf(bottling)}
+          >
+            {text(bottling, 'title') || bottling.name}
+          </AppLink>
         </h3>
-        {text(bottling, 'summary') ? <p>{text(bottling, 'summary')}</p> : null}
+        {text(bottling, 'summary') ? (
+          <p className="mt-3 text-muted">{text(bottling, 'summary')}</p>
+        ) : null}
         {detailed ? <TastingNotes notes={elements(bottling, 'tastingNotes')} /> : null}
       </div>
     </li>

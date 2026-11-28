@@ -1,4 +1,6 @@
 import type { PublishedContent, PublishedElement } from '@crombolo/crombolo'
+import { display } from './classes.ts'
+import { Eyebrow } from './section-intro.tsx'
 
 /**
  * The line over a bottling's name: kind, strength, and either an age or a
@@ -15,11 +17,11 @@ export function specOf(bottling: PublishedContent): string {
 export function TastingNotes({ notes }: { notes: PublishedElement[] }) {
   if (notes.length === 0) return null
   return (
-    <dl class="tasting">
+    <dl class="mt-6 grid gap-3">
       {notes.map((note) => (
         <div>
-          <dt>{note.text('aspect')}</dt>
-          <dd>{note.text('note')}</dd>
+          <dt class="text-sm font-medium">{note.text('aspect')}</dt>
+          <dd class="text-sm text-muted">{note.text('note')}</dd>
         </div>
       ))}
     </dl>
@@ -40,18 +42,29 @@ export async function BottlingCard({
   const bottle = (await bottling.media('bottleImage'))[0]
   const notes = (bottling.value('tastingNotes') ?? []) as PublishedElement[]
   return (
-    <li class="bottling-card">
+    <li class="flex flex-col border border-line bg-card">
       {detailed && bottle ? (
-        <a class="bottling-card__image" href={bottling.url}>
-          <img src={bottle.cropUrl({ width: 760, height: 1140 })} alt={bottle.name} />
+        <a class="block bg-foam" href={bottling.url}>
+          <img
+            class="h-96 w-full object-cover"
+            src={bottle.cropUrl({ width: 760, height: 1140 })}
+            alt={bottle.name}
+          />
         </a>
       ) : null}
-      <div class="bottling-card__text">
-        <p class="eyebrow">{specOf(bottling)}</p>
-        <h3>
-          <a href={bottling.url}>{bottling.text('title')}</a>
+      <div class="p-6">
+        <Eyebrow>{specOf(bottling)}</Eyebrow>
+        <h3 class={`${display} mt-2 text-3xl leading-tight`}>
+          <a
+            class="no-underline hover:text-brass-deep motion-safe:transition-colors"
+            href={bottling.url}
+          >
+            {bottling.text('title')}
+          </a>
         </h3>
-        {bottling.hasValue('summary') ? <p>{bottling.text('summary')}</p> : null}
+        {bottling.hasValue('summary') ? (
+          <p class="mt-3 text-muted">{bottling.text('summary')}</p>
+        ) : null}
         {detailed ? <TastingNotes notes={notes} /> : null}
       </div>
     </li>

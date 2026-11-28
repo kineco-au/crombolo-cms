@@ -1,5 +1,6 @@
 import { RichText } from '@crombolo/next-integration/components'
 import { Suspense } from 'react'
+import { display, prose, shell } from '@/lib/classes'
 import { image, type Page, richText, text } from '@/lib/content'
 import { crombolo } from '@/lib/crombolo'
 import { EnquiryForm, type FormDefinition } from './enquiry-form'
@@ -17,19 +18,19 @@ export function ContactPage({ page }: { page: Page }) {
   return (
     <>
       <PageHeader page={page} />
-      <section className="contact">
-        <div className="contact__form">
+      <section className={`${shell} grid gap-12 pt-12 pb-16 md:grid-cols-[3fr_2fr] md:gap-16`}>
+        <div>
           {picked?.id ? (
-            <Suspense fallback={<p>Loading the form…</p>}>
+            <Suspense fallback={<p className="text-muted">Loading the form…</p>}>
               <FreshForm id={picked.id} />
             </Suspense>
           ) : null}
         </div>
-        <aside className="contact__aside">
+        <aside>
           <Eyebrow>{text(page, 'asideEyebrow')}</Eyebrow>
-          <h2>{text(page, 'asideHeading')}</h2>
-          <RichText value={richText(page, 'asideBody')} className="prose" />
-          <Picture media={image(page, 'asideImage')} />
+          <h2 className={`${display} mt-3 text-3xl`}>{text(page, 'asideHeading')}</h2>
+          <RichText value={richText(page, 'asideBody')} className={`${prose} mt-5`} />
+          <Picture media={image(page, 'asideImage')} className="mt-8 h-56 w-full object-cover" />
         </aside>
       </section>
     </>

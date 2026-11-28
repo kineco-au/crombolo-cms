@@ -1,3 +1,4 @@
+import { shell } from '@/lib/classes'
 import { childrenOf, type Page } from '@/lib/content'
 import { useLoad } from '@/lib/use-load'
 import { BottlingCard } from './bottling'
@@ -8,8 +9,8 @@ export function WhiskyList({ page }: { page: Page }) {
   return (
     <>
       <PageHeader page={page} />
-      <section>
-        <ul className="bottlings">
+      <section className={shell}>
+        <ul className="mt-10 grid gap-6 lg:grid-cols-2">
           {(bottlings ?? []).map((bottling) => (
             <BottlingCard key={bottling.id} bottling={bottling} detailed />
           ))}

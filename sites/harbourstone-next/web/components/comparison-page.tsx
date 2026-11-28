@@ -1,5 +1,6 @@
 import { cromboloImage } from '@crombolo/next-integration/image-loader'
 import { Suspense } from 'react'
+import { shell } from '@/lib/classes'
 import { elements, hrefOf, image, type Page, text } from '@/lib/content'
 import { crombolo } from '@/lib/crombolo'
 import { type Bottling, Compare } from './compare'
@@ -39,7 +40,7 @@ export async function ComparisonPage({ page }: { page: Page }) {
     <>
       <PageHeader page={page} />
       {/* The selection lives in the address, which only the browser knows. */}
-      <Suspense fallback={<p>Loading the comparison…</p>}>
+      <Suspense fallback={<p className={`${shell} text-muted`}>Loading the comparison…</p>}>
         <Compare bottlings={all} />
       </Suspense>
     </>

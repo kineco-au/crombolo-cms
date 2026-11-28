@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { shell } from '@/lib/classes'
 import { hrefOf, siteTree } from '@/lib/content'
 import { NavLinks } from './nav-links'
 
@@ -17,16 +18,24 @@ export async function SiteHeader() {
       .map((page) => ({ href: hrefOf(page), label: page.name, exact: false })),
   ]
   return (
-    <header className="masthead">
-      <div className="masthead__inner">
-        <Link className="wordmark" href={hrefOf(home)}>
+    <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur-md">
+      <div
+        className={`${shell} flex flex-wrap items-center justify-between gap-x-4 gap-y-3 py-3 md:gap-x-8 md:py-4`}
+      >
+        <Link className="font-display text-xl tracking-wide sm:text-2xl" href={hrefOf(home)}>
           <Wordmark />
         </Link>
         <NavLinks links={links} />
         {searchPage ? (
-          <search className="masthead__search">
+          <search>
             <form action={hrefOf(searchPage)} method="get">
-              <input type="search" name="q" placeholder="Search" aria-label="Search the site" />
+              <input
+                type="search"
+                name="q"
+                placeholder="Search"
+                aria-label="Search the site"
+                className="w-28 rounded-none border border-line bg-card px-2.5 py-1.5 text-sm text-ink outline-none focus-visible:border-brass sm:w-36 sm:focus-visible:w-52 motion-safe:transition-all"
+              />
             </form>
           </search>
         ) : null}
@@ -36,10 +45,10 @@ export async function SiteHeader() {
 }
 
 /** A mark with two colours in it: part of the design, not a value an editor reproduces. */
-export function Wordmark() {
+export function Wordmark({ plain }: { plain?: boolean }) {
   return (
     <>
-      Harbour<span>stone</span>
+      Harbour<span className={plain ? undefined : 'text-brass-deep'}>stone</span>
     </>
   )
 }

@@ -1,7 +1,8 @@
 import type { PageProps, PublishedElement } from '@crombolo/crombolo'
 import { specOf, TastingNotes } from '../shared/bottling.tsx'
+import { display, shell } from '../shared/classes.ts'
 import { Layout } from '../shared/layout.tsx'
-import { Eyebrow } from '../shared/section-intro.tsx'
+import { Eyebrow, Prose, Standfirst } from '../shared/section-intro.tsx'
 
 export default async function Expression({ model, nav }: PageProps) {
   const bottle = (await model.media('bottleImage'))[0]
@@ -9,21 +10,29 @@ export default async function Expression({ model, nav }: PageProps) {
   const range = nav.parent(model)
   return (
     <Layout model={model} nav={nav}>
-      <article class="bottling">
-        <div class="bottling__image">
+      <article
+        class={`${shell} grid items-start gap-10 pt-12 pb-16 md:grid-cols-[minmax(0,2fr)_3fr] md:gap-12`}
+      >
+        <div class="border border-line bg-foam">
           {bottle ? (
-            <img src={bottle.cropUrl({ width: 760, height: 1140 })} alt={bottle.name} />
+            <img
+              class="w-full"
+              src={bottle.cropUrl({ width: 760, height: 1140 })}
+              alt={bottle.name}
+            />
           ) : null}
         </div>
-        <div class="bottling__text">
+        <div>
           <Eyebrow>{specOf(model)}</Eyebrow>
-          <h1>{model.text('title')}</h1>
-          {model.hasValue('summary') ? <p class="standfirst">{model.text('summary')}</p> : null}
-          <div class="prose">{model.html('bodyText')}</div>
+          <h1 class={`${display} mt-3 text-5xl leading-none md:text-6xl`}>{model.text('title')}</h1>
+          {model.hasValue('summary') ? <Standfirst>{model.text('summary')}</Standfirst> : null}
+          <Prose>{model.html('bodyText')}</Prose>
           <TastingNotes notes={notes} />
           {range ? (
-            <p class="back">
-              <a href={range.url}>Back to {range.text('title')}</a>
+            <p class="mt-10 text-xs font-medium tracking-caps text-brass-deep uppercase">
+              <a class="hover:text-ink motion-safe:transition-colors" href={range.url}>
+                Back to {range.text('title')}
+              </a>
             </p>
           ) : null}
         </div>

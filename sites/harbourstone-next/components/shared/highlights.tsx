@@ -9,8 +9,8 @@ export function highlightsOf(value: unknown): BlockItem[] {
 function Figure({ content }: BlockProps) {
   return (
     <div>
-      <dt>{content.text('heading')}</dt>
-      <dd>{content.text('detail')}</dd>
+      <dt class="font-display text-3xl">{content.text('heading')}</dt>
+      <dd class="mt-1 text-sm text-muted">{content.text('detail')}</dd>
     </div>
   )
 }
@@ -22,7 +22,7 @@ function Figure({ content }: BlockProps) {
 export function Figures({ items }: { items: BlockItem[] }) {
   if (items.length === 0) return null
   return (
-    <dl class="figures">
+    <dl class="mt-10 grid grid-cols-2 gap-6 border-t border-line pt-6">
       <Blocks items={items} components={{ highlight: Figure }} />
     </dl>
   )
@@ -32,7 +32,7 @@ export function Figures({ items }: { items: BlockItem[] }) {
 export function HighlightRows({ items }: { items: BlockItem[] }) {
   if (items.length === 0) return null
   return (
-    <ul class="highlight-rows">
+    <ul class="mt-8">
       <Blocks items={items} />
     </ul>
   )

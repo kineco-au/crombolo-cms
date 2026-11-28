@@ -1,3 +1,4 @@
+import { shell } from '@/lib/classes'
 import type { Page } from '@/lib/content'
 import { ComparisonPage } from './comparison-page'
 import { ContactPage } from './contact-page'
@@ -5,7 +6,7 @@ import { ContentPage } from './content-page'
 import { Expression } from './expression'
 import { HomePage } from './home-page'
 import { SearchPage } from './search-page'
-import { PageHeader } from './section-intro'
+import { Eyebrow, PageHeader, PageTitle, Standfirst } from './section-intro'
 import { WhiskyList } from './whisky-list'
 
 /** A page from the CMS, through the component for its content type. */
@@ -34,10 +35,10 @@ export function CmsPage({ page }: { page: Page }) {
 export function NotFound({ page }: { page: Page | null }) {
   if (page) return <CmsPage page={page} />
   return (
-    <header className="page-header">
-      <p className="eyebrow">Not found</p>
-      <h1>There is no page here.</h1>
-      <p className="standfirst">It may have moved, or the address may be mistyped.</p>
+    <header className={`${shell} pt-16 pb-6 md:pt-24`}>
+      <Eyebrow>Not found</Eyebrow>
+      <PageTitle>There is no page here.</PageTitle>
+      <Standfirst>It may have moved, or the address may be mistyped.</Standfirst>
     </header>
   )
 }

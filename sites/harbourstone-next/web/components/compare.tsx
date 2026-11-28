@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { caps, display, shell } from '@/lib/classes'
 
 export interface Bottling {
   id: string
@@ -55,6 +56,9 @@ function aspectRows(bottlings: readonly Bottling[]): Row[] {
     value: (b) => b.notes.find((n) => n.aspect === aspect)?.note ?? '',
   }))
 }
+
+/** A cell of the side-by-side table. */
+const cell = 'border-b border-ink/10 p-3 text-left align-top'
 
 /** Whether the chosen bottlings differ on a row: what is worth reading across. */
 const differs = (row: Row, chosen: readonly Bottling[]) =>
@@ -106,9 +110,9 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
     choose(chosenIds.includes(id) ? chosenIds.filter((c) => c !== id) : [...chosenIds, id])
 
   return (
-    <div className="compare">
-      <section className="compare__picker" aria-labelledby={`${ids}-pick`}>
-        <h2 id={`${ids}-pick`} className="visually-hidden">
+    <div className={`${shell} grid gap-10 pt-6 pb-16`}>
+      <section aria-labelledby={`${ids}-pick`}>
+        <h2 id={`${ids}-pick`} className="sr-only">
           Choose up to {MOST}
         </h2>
         <Categories
@@ -126,10 +130,14 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
           chosen={chosenIds}
           onToggle={toggle}
         />
-        <p className="compare__status" role="status">
+        <p className="mt-4 text-center" role="status">
           {chosen.length === 0 ? 'Nothing chosen yet.' : `${chosen.length} of ${MOST} chosen.`}{' '}
           {chosen.length > 0 ? (
-            <button type="button" className="compare__clear" onClick={() => choose([])}>
+            <button
+              type="button"
+              className="cursor-pointer text-sm underline underline-offset-2 hover:text-brass-deep"
+              onClick={() => choose([])}
+            >
               Clear
             </button>
           ) : null}
@@ -138,21 +146,21 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
 
       {chosen.length > 0 ? (
         <section aria-labelledby={`${ids}-table`}>
-          <h2 id={`${ids}-table`} className="visually-hidden">
+          <h2 id={`${ids}-table`} className="sr-only">
             Side by side
           </h2>
           {chosen.length > 1 ? (
-            <p className="compare__legend">
-              <span className="compare__differs-key" /> Rows where they differ are marked.
+            <p className="mb-4 flex items-center gap-2 text-sm text-muted">
+              <span className="inline-block size-4 bg-sand" /> Rows where they differ are marked.
             </p>
           ) : null}
-          <div className="compare__table-wrap">
-            <table className="compare__table">
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full table-fixed border-collapse">
               <thead>
                 <tr>
-                  <td />
+                  <td className={`${cell} w-36`} />
                   {chosen.map((b) => (
-                    <th key={b.id} scope="col">
+                    <th key={b.id} scope="col" className={cell}>
                       {b.bottle ? (
                         <Image
                           src={b.bottle.src}
@@ -160,22 +168,29 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
                           width={b.bottle.width || 760}
                           height={b.bottle.height || 1140}
                           sizes="12rem"
+                          className="mb-3 aspect-[2/3] w-full max-w-32 object-cover"
                         />
                       ) : null}
-                      <Link href={b.href}>{b.title}</Link>
+                      <Link
+                        className={`${display} text-xl hover:text-brass-deep motion-safe:transition-colors`}
+                        href={b.href}
+                      >
+                        {b.title}
+                      </Link>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr
-                    key={row.label}
-                    className={differs(row, chosen) ? 'compare__differs' : undefined}
-                  >
-                    <th scope="row">{row.label}</th>
+                  <tr key={row.label} className={differs(row, chosen) ? 'bg-sand' : undefined}>
+                    <th scope="row" className={`${cell} font-medium`}>
+                      {row.label}
+                    </th>
                     {chosen.map((b) => (
-                      <td key={b.id}>{row.value(b) || '—'}</td>
+                      <td key={b.id} className={cell}>
+                        {row.value(b) || '—'}
+                      </td>
                     ))}
                   </tr>
                 ))}
@@ -184,10 +199,10 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
                 <tr>
                   <td />
                   {chosen.map((b) => (
-                    <td key={b.id}>
+                    <td key={b.id} className="p-3">
                       <button
                         type="button"
-                        className="compare__remove"
+                        className="cursor-pointer text-sm underline underline-offset-2 hover:text-brass-deep"
                         onClick={() => toggle(b.id)}
                         aria-label={`Remove ${b.title}`}
                       >
@@ -199,24 +214,28 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
               </tfoot>
             </table>
           </div>
-          <ul className="compare__cards">
+          <ul className="grid gap-6 md:hidden">
             {chosen.map((b) => (
-              <li key={b.id} className="compare__card">
-                <h3>
+              <li key={b.id} className="border border-line bg-card p-5">
+                <h3 className={`${display} text-2xl`}>
                   <Link href={b.href}>{b.title}</Link>
                 </h3>
-                <dl>
+                <dl className="mt-3 text-sm">
                   {rows.map((row) => (
                     <div
                       key={row.label}
-                      className={differs(row, chosen) ? 'compare__differs' : undefined}
+                      className={`grid grid-cols-[7rem_1fr] gap-2 p-1.5 ${differs(row, chosen) ? 'bg-sand' : ''}`}
                     >
-                      <dt>{row.label}</dt>
+                      <dt className="font-medium">{row.label}</dt>
                       <dd>{row.value(b) || '—'}</dd>
                     </div>
                   ))}
                 </dl>
-                <button type="button" className="compare__remove" onClick={() => toggle(b.id)}>
+                <button
+                  type="button"
+                  className="mt-4 cursor-pointer text-sm underline underline-offset-2 hover:text-brass-deep"
+                  onClick={() => toggle(b.id)}
+                >
                   Remove {b.title}
                 </button>
               </li>
@@ -227,6 +246,10 @@ export function Compare({ bottlings }: { bottlings: Bottling[] }) {
     </div>
   )
 }
+
+/** The round buttons either side of the carousel, gone on a phone, where a thumb scrolls it. */
+const nudge =
+  'hidden size-10 cursor-pointer rounded-full border border-line bg-foam text-2xl leading-none text-ink disabled:cursor-default disabled:opacity-30 sm:block motion-safe:transition-opacity'
 
 /**
  * The category headers: tabs, with an underline that slides to the one chosen.
@@ -264,7 +287,12 @@ function Categories(props: {
     list.current?.querySelector<HTMLElement>(`[data-category="${CSS.escape(next)}"]`)?.focus()
   }
   return (
-    <div className="compare__tabs" role="tablist" aria-label="Kind" ref={list}>
+    <div
+      className="relative mb-6 flex justify-center-safe gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]"
+      role="tablist"
+      aria-label="Kind"
+      ref={list}
+    >
       {props.categories.map((category, index) => {
         const on = category === props.current
         return (
@@ -277,16 +305,19 @@ function Categories(props: {
             aria-controls={`${props.id}-panel`}
             tabIndex={on ? 0 : -1}
             data-category={category}
-            className={on ? 'compare__tab compare__tab--on' : 'compare__tab'}
+            className="group flex-none cursor-pointer px-4 py-3 tracking-wide text-muted hover:text-ink aria-selected:text-ink motion-safe:transition-colors"
             onClick={() => props.onChoose(category)}
             onKeyDown={(event) => move(event, index)}
           >
-            {category} <span className="compare__tab-count">{props.counts[index]}</span>
+            {category}{' '}
+            <span className="ml-1.5 inline-block min-w-[1.4em] rounded-full bg-muted px-1.5 text-center text-xs leading-relaxed text-foam group-aria-selected:bg-brass-deep motion-safe:transition-colors">
+              {props.counts[index]}
+            </span>
           </button>
         )
       })}
       <span
-        className="compare__tab-bar"
+        className="absolute -bottom-px left-0 h-[3px] bg-brass transition-[transform,width] duration-400 ease-[cubic-bezier(0.65,0,0.35,1)] motion-reduce:transition-none"
         aria-hidden="true"
         style={{ transform: `translateX(${bar.left}px)`, width: `${bar.width}px` }}
       />
@@ -324,27 +355,38 @@ function Carousel(props: {
     el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: smooth ? 'smooth' : 'auto' })
   }
   return (
-    <div className="compare__carousel" role="tabpanel" id={props.id} aria-label={props.label}>
+    <div
+      className="relative grid items-center gap-2 sm:grid-cols-[auto_1fr_auto]"
+      role="tabpanel"
+      id={props.id}
+      aria-label={props.label}
+    >
       <button
         type="button"
-        className="compare__nudge compare__nudge--back"
+        className={nudge}
         aria-label="Earlier bottlings"
         disabled={ends.start}
         onClick={() => page(-1)}
       >
         ‹
       </button>
-      <ul className="compare__track" ref={track} onScroll={update}>
+      <ul
+        className="grid auto-cols-[minmax(12rem,15rem)] grid-flow-col justify-center-safe gap-4 overflow-x-auto overscroll-x-contain scroll-px-1 px-1 pt-1 pb-4 snap-x snap-mandatory"
+        ref={track}
+        onScroll={update}
+      >
         {props.bottlings.map((b, index) => {
           const on = props.chosen.includes(b.id)
           const full = !on && props.chosen.length >= MOST
           return (
-            <li key={b.id} className="compare__slide" style={{ animationDelay: `${index * 60}ms` }}>
+            <li
+              key={b.id}
+              className="snap-start motion-safe:animate-slide-in"
+              style={{ animationDelay: `${index * 60}ms` }}
+            >
               <button
                 type="button"
-                className={
-                  on ? 'compare__card-choice compare__card-choice--on' : 'compare__card-choice'
-                }
+                className="group grid size-full cursor-pointer justify-items-center gap-1.5 rounded border border-line bg-card px-3 pt-4 pb-5 text-center hover:enabled:-translate-y-1 hover:enabled:shadow-[0_12px_24px_-16px_rgb(26_22_18/0.45)] disabled:cursor-not-allowed disabled:opacity-45 aria-pressed:border-brass-deep aria-pressed:ring-2 aria-pressed:ring-brass aria-pressed:ring-inset motion-safe:transition motion-safe:duration-250"
                 aria-pressed={on}
                 disabled={full}
                 title={full ? `Up to ${MOST} at once: remove one first` : undefined}
@@ -352,7 +394,7 @@ function Carousel(props: {
               >
                 {b.bottle ? (
                   <Image
-                    className="compare__card-image"
+                    className="aspect-[2/3] w-full max-w-36 object-cover group-hover:group-enabled:scale-[1.04] motion-safe:transition-transform motion-safe:duration-400"
                     src={b.bottle.src}
                     alt=""
                     width={b.bottle.width || 760}
@@ -360,24 +402,29 @@ function Carousel(props: {
                     sizes="9rem"
                   />
                 ) : null}
-                <span className="compare__choice-name">{b.title}</span>
-                <span className="eyebrow">
+                <span className="mt-1 font-medium">{b.title}</span>
+                <span className={`${caps} text-brass-deep`}>
                   {[b.abv, b.age ? `${b.age} years` : b.batch ? `Batch ${b.batch}` : '']
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
-                <span className="compare__card-mark" aria-hidden="true">
+                <span
+                  className="mt-1 text-sm text-brass-deep group-aria-pressed:font-medium"
+                  aria-hidden="true"
+                >
                   {on ? '✓ Comparing' : '+ Compare'}
                 </span>
               </button>
             </li>
           )
         })}
-        {props.bottlings.length === 0 ? <li>Nothing of this kind yet.</li> : null}
+        {props.bottlings.length === 0 ? (
+          <li className="text-muted">Nothing of this kind yet.</li>
+        ) : null}
       </ul>
       <button
         type="button"
-        className="compare__nudge compare__nudge--on"
+        className={nudge}
         aria-label="Later bottlings"
         disabled={ends.end}
         onClick={() => page(1)}
