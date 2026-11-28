@@ -22,11 +22,49 @@ export const PALETTE = [
   '#4d5a9b',
 ]
 
-/** A workspace's colour: the same for the same key, everywhere. Pure. */
-export function colourOf(key) {
+/** Each colour's name, for a person who can't see it, in the palette's order. */
+export const PALETTE_NAMES = ['Blue', 'Plum', 'Green', 'Amber', 'Violet', 'Red', 'Teal', 'Indigo']
+
+/** The colour a workspace is given while its owner hasn't chosen one: from its key. Pure. */
+export function givenColour(key) {
   let hash = 0
   for (const ch of String(key)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
   return PALETTE[hash % PALETTE.length]
+}
+
+/** The colours owners chose, by workspace key, as the list last said. */
+const chosenColours = new Map()
+
+/** Keeps the colours the workspaces' owners chose, so every place shows that one. */
+export function rememberColours(workspaces) {
+  for (const w of workspaces ?? []) {
+    if (!w?.key) continue
+    if (w.colour) chosenColours.set(String(w.key).toLowerCase(), w.colour)
+    else chosenColours.delete(String(w.key).toLowerCase())
+  }
+}
+
+/** A workspace's colour: the one its owner chose, or the one its key gives it. */
+export function colourOf(key) {
+  return chosenColours.get(String(key).toLowerCase()) ?? givenColour(key)
+}
+
+/**
+ * Rows grouped by colour, in the palette's order, keeping their order within a colour;
+ * each marked where a new colour starts. Pure but for the colours remembered.
+ */
+export function groupedByColour(rows) {
+  const at = (row) => {
+    const i = PALETTE.indexOf(colourOf(row.key))
+    return i === -1 ? PALETTE.length : i
+  }
+  return rows
+    .map((row, i) => ({ row, i, at: at(row) }))
+    .sort((a, b) => a.at - b.at || a.i - b.i)
+    .map(({ row, at: colour }, i, all) => ({
+      ...row,
+      startsColour: i > 0 && all[i - 1].at !== colour,
+    }))
 }
 
 const DARK_INK = '#1f1d1a'
@@ -444,7 +482,13 @@ export const workspacesApi = {
   mine: () => call('/mine'),
   // Shared is listed first for tools (story 447); the back office shows only workspaces.
   list: () =>
-    call('').then((body) => ({ ...body, items: (body.items ?? []).filter((w) => !w.shared) })),
+    call('').then((body) => {
+      const items = (body.items ?? []).filter((w) => !w.shared)
+      rememberColours(items)
+      return { ...body, items }
+    }),
+  /** Its colour, `#rrggbb`, or null for the one it is given. */
+  colour: (key, colour) => call(`/${key}`, { method: 'PATCH', body: { colour } }),
   open: (name, more = {}) => call('', { method: 'POST', body: { name, ...more } }),
   describe: (key, description) => call(`/${key}`, { method: 'PATCH', body: { description } }),
   rename: (key, name) => call(`/${key}`, { method: 'PATCH', body: { name } }),

@@ -13,9 +13,12 @@ import {
   colourOf,
   controlsFor,
   fileLink,
+  givenColour,
   inkOn,
   mergeRows,
   mergeSections,
+  PALETTE,
+  PALETTE_NAMES,
   whoSees,
   workspaceFacts,
   workspacesApi,
@@ -140,6 +143,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     _detail: { state: true },
     _merge: { state: true },
     _summary: { state: true },
+    _palette: { state: true },
   }
 
   #mine = { enabled: false, required: false }
@@ -578,6 +582,63 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       }`
   }
 
+  /** Its owner's choice of its colour, from the palette, or the one it is given. */
+  async #chooseColour(view, colour) {
+    this._palette = false
+    try {
+      await workspacesApi.colour(view.key, colour)
+      await this.#list()
+      workspacesChanged()
+      this._status = 'Saved.'
+    } catch (error) {
+      this._status = error.message
+    }
+  }
+
+  #colourPicker(view) {
+    const now = colourOf(view.key)
+    return html`<span class="colour">
+      <button
+        type="button"
+        class="dot chooser"
+        style=${`background:${now}`}
+        aria-label="Choose its colour"
+        title="Choose its colour"
+        aria-expanded=${this._palette ? 'true' : 'false'}
+        @click=${() => {
+          this._palette = !this._palette
+        }}
+      ></button>
+      ${
+        this._palette
+          ? html`<div class="palette" role="group" aria-label="Its colour">
+              ${PALETTE.map(
+                (colour, i) =>
+                  html`<button
+                    type="button"
+                    class="swatch"
+                    style=${`background:${colour}`}
+                    aria-label=${PALETTE_NAMES[i]}
+                    title=${PALETTE_NAMES[i]}
+                    aria-pressed=${view.colour === colour ? 'true' : 'false'}
+                    @click=${() => this.#chooseColour(view, colour)}
+                  ></button>`,
+              )}
+              <button
+                type="button"
+                class="given"
+                aria-pressed=${view.colour ? 'false' : 'true'}
+                title="The colour it was given when made, rather than one chosen"
+                @click=${() => this.#chooseColour(view, null)}
+              >
+                <span class="swatch" style=${`background:${givenColour(view.key)}`}></span> Automatic
+              </button>
+            </div>`
+          : nothing
+      }
+    </span>`
+  }
+
   #workspace(view) {
     const current = here(this.#mine)
     const owner = view.mine === true
@@ -590,7 +651,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       changes: changes.length,
     })
     return html`<section class="detail"><div class="head">
-        <span class="dot" style=${`background:${colourOf(view.key)}`}></span>
+        ${owner ? this.#colourPicker(view) : html`<span class="dot" style=${`background:${colourOf(view.key)}`}></span>`}
         ${
           owner
             ? html`<input
@@ -1046,6 +1107,61 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     h3 {
       margin: 0;
       font-size: inherit;
+      font-weight: 700;
+    }
+    .colour {
+      position: relative;
+      display: inline-flex;
+    }
+    .dot.chooser {
+      padding: 0;
+      cursor: pointer;
+      outline-offset: 2px;
+    }
+    .palette {
+      position: absolute;
+      z-index: 5;
+      top: calc(100% + 6px);
+      left: -6px;
+      display: grid;
+      grid-template-columns: repeat(4, 24px);
+      gap: 6px;
+      padding: var(--uui-size-space-3);
+      border: 1px solid var(--uui-color-border);
+      border-radius: var(--uui-border-radius);
+      background: var(--uui-color-surface);
+      box-shadow: var(--uui-shadow-depth-3, 0 4px 12px rgb(0 0 0 / 0.15));
+    }
+    .palette .swatch {
+      width: 24px;
+      height: 24px;
+      border: 2px solid transparent;
+      border-radius: 50%;
+      padding: 0;
+      cursor: pointer;
+    }
+    .palette .swatch[aria-pressed='true'] {
+      border-color: var(--uui-color-text);
+    }
+    .palette .given {
+      grid-column: 1 / -1;
+      display: inline-flex;
+      align-items: center;
+      gap: var(--uui-size-space-2);
+      border: none;
+      background: none;
+      padding: 0;
+      font: inherit;
+      font-size: var(--uui-type-small-size);
+      color: var(--uui-color-text);
+      cursor: pointer;
+    }
+    .palette .given .swatch {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+    }
+    .palette .given[aria-pressed='true'] {
       font-weight: 700;
     }
     .merged-badge {

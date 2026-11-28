@@ -72,6 +72,8 @@ export interface Workspace {
   tellOthers: boolean
   /** What it is for, in its owner's words. */
   description: string | null
+  /** The colour its owner chose, `#rrggbb`; null for the one the back office gives it. */
+  colour: string | null
 }
 
 /** A move, reorder or delete waiting for the merge, with where its page stood (story 380). */
@@ -440,6 +442,15 @@ export class WorkspaceRepository {
   }
 
   /** What it is for, changed by its owner; empty clears it. */
+  /** Its colour, or null to go back to the one it is given. */
+  async setColour(id: number, colour: string | null): Promise<void> {
+    await this.#db.q
+      .updateTable('workspace')
+      .set({ colour, updated_at: DbDate.toDb(new Date()) })
+      .where('id', '=', id)
+      .execute()
+  }
+
   async setDescription(id: number, description: string | null): Promise<void> {
     await this.#db.q
       .updateTable('workspace')
@@ -821,6 +832,7 @@ export class WorkspaceRepository {
       visibility?: string | null
       tell_others?: unknown
       description?: string | null
+      colour?: string | null
     }>,
   ): Promise<Workspace[]> {
     if (rows.length === 0) return []
@@ -866,6 +878,7 @@ export class WorkspaceRepository {
       visibility: row.visibility === 'editors' ? 'editors' : 'members',
       tellOthers: row.tell_others === undefined ? true : fromDbBool(row.tell_others),
       description: row.description ?? null,
+      colour: row.colour ?? null,
     }))
   }
 }

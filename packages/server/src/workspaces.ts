@@ -345,6 +345,8 @@ export interface WorkspaceView {
   visibility: 'members' | 'editors'
   /** What it is for, in its owner's words. */
   description: string | null
+  /** The colour its owner chose, `#rrggbb`; null for the one it is given. */
+  colour: string | null
   /** Whether the person asking is in it, and may change it. */
   member: boolean
   ownerKey: string
@@ -372,6 +374,15 @@ function privacyOf(asked: Record<string, unknown>): { visibility?: 'members' | '
     : {}
 }
 
+/** The colour a request asks for: `#rrggbb`, null to clear, undefined for none asked, false when not one. */
+function colourOf(asked: Record<string, unknown>): string | null | undefined | false {
+  if (!('colour' in asked)) return undefined
+  if (asked.colour === null) return null
+  return typeof asked.colour === 'string' && /^#[0-9a-f]{6}$/i.test(asked.colour)
+    ? asked.colour.toLowerCase()
+    : false
+}
+
 /** What a request says a workspace is for: undefined when it says nothing, null to clear it. */
 function descriptionOf(asked: Record<string, unknown>): string | null | undefined {
   if (asked.description === null) return null
@@ -383,6 +394,7 @@ const viewOf = (workspace: Workspace, principal: Principal, conflicts = 0): Work
   key: workspace.key,
   visibility: workspace.visibility,
   description: workspace.description,
+  colour: workspace.colour ?? null,
   member: mayUse(workspace, principal),
   name: workspace.name,
   ownerKey: workspace.ownerKey,
@@ -408,6 +420,7 @@ export const SHARED_VIEW = {
   shared: true,
   visibility: 'editors',
   description: 'What the site holds and serves.',
+  colour: null,
   member: false,
   ownerKey: null,
   memberKeys: [],
@@ -1309,9 +1322,13 @@ export function createWorkspacesApi(
           }
           if (Object.keys(privacy).length > 0)
             await audit(principal, 'Privacy', found, `Privacy of "${found.name}" changed`, client)
+          // Its colour, chosen by its owner; null goes back to the one it is given.
+          const colour = colourOf(asked)
+          if (colour === false) return refused('A colour is #rrggbb, or null.', 400)
+          if (colour !== undefined) await workspaces.setColour(found.id, colour)
           if (
             asked.name === undefined &&
-            (Object.keys(privacy).length > 0 || description !== undefined)
+            (Object.keys(privacy).length > 0 || description !== undefined || colour !== undefined)
           )
             return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
           const name = nameOf(asked)

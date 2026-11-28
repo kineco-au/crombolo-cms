@@ -1056,6 +1056,7 @@ export interface CoreTables {
     url: string
   }
   workspace: {
+    colour: string | null
     created_at: Timestamp
     description: string | null
     id: Generated<number>

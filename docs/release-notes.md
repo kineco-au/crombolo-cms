@@ -8,6 +8,13 @@ point at `docs/stories/`.
 
 ### Features
 
+- **A workspace's colour is its owner's to choose,** from the palette, beside its name on
+  its page; Automatic goes back to the one it was given. `PATCH /{key} { colour }`
+  (`#rrggbb`, or null). The workspaces list groups workspaces by colour, finds them by
+  name, pages ten at a time, filters Mine or All, switches from each row, and folds its
+  Merged section, which looks back 30, 60, 90 or 180 days. A merge stays on its
+  workspace and shows what it merged, with links to each page and file, and opens again
+  from the Merged section.
 - **Tailwind's typography plugin ships with the CMS.** `@plugin "@tailwindcss/typography";`
   in a site's `css/tailwind.css` works with nothing installed, so `prose` styles rich-text
   and Markdown bodies on any site, a bundle's included. A `@plugin` the site can't
@@ -62,6 +69,8 @@ point at `docs/stories/`.
 
 - **107 `AddWorkspaceGroups`** (expand, 451): `workspace_group`, each user group a
   workspace is shared with, by key, with when it was added.
+- **109 `AddWorkspaceColour`** (expand): a workspace's `colour`, empty until its owner
+  chooses one.
 - **108 `FileTypeWording`** (expand, 450): the File type's description becomes "A content
   file" and its body's description is removed, as the type now ships. A site that
   installed 0.84.0 had the first wording, which no longer matched the built-in type.

@@ -14,6 +14,7 @@ import {
   chooseWorkspace,
   colourOf,
   filtered,
+  groupedByColour,
   inkOn,
   MERGED_DAYS,
   mergedWithin,
@@ -156,7 +157,10 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       : mayEnter
         ? `Switch to ${row.name}`
         : 'You may look at it, not work in it'
-    return html`<div class="row" aria-current=${row.key === this._chosen ? 'true' : 'false'}>
+    return html`<div
+      class=${row.startsColour ? 'row colour-start' : 'row'}
+      aria-current=${row.key === this._chosen ? 'true' : 'false'}
+    >
       <button type="button" class="pick" @click=${() => showWorkspace(row.key)}>
         <span
           class=${row.here ? 'here' : 'there'}
@@ -254,7 +258,8 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       current,
       workspaces: named(filtered(this.#workspaces, this._filter), this._query),
     })
-    const shown = pageOf(rows, this._page)
+    // Grouped by colour, so a team's workspaces in one colour sit together.
+    const shown = pageOf(groupedByColour(rows), this._page)
     return html`<nav aria-label="Workspaces">
       <div class="head">
         <span>Workspaces</span>
@@ -463,6 +468,9 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     .row[aria-current='true'] {
       background: var(--crombolo-terracotta-tint, var(--uui-color-surface-alt));
       font-weight: 700;
+    }
+    .row.colour-start {
+      margin-top: var(--uui-size-space-3);
     }
     .row:has(> .pick) {
       gap: var(--uui-size-space-1);

@@ -151,6 +151,9 @@ export async function undoMediaMemberUploads(db: Db): Promise<void> {
   // 059, forms in the Library (story 239), 058, bundle schema picks (story
   // 226), and 057, site settings types (story 058): columns on tables that stay.
   // 072, what each extension did (story 327): a table of its own.
+  // 109, a workspace's colour: a column on a table that stays.
+  await db.exec('ALTER TABLE workspace DROP COLUMN colour')
+  await db.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceColour'")
   // 108, the File type's wording (story 450): rows that stay.
   await db.exec("DELETE FROM migration_history WHERE name = 'FileTypeWording'")
   // 107, a workspace shared with user groups (story 451): a table of its own.
