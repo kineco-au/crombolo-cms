@@ -107,4 +107,22 @@
   & :not(pre) > code {
     @apply rounded bg-panel px-1.5 py-0.5 box-decoration-clone wrap-anywhere;
   }
+
+  /* The plugin's rules that name .prose itself, which @apply leaves naming it. */
+  & > :first-child {
+    margin-top: 0;
+  }
+  & > :last-child {
+    margin-bottom: 0;
+  }
+  & > ul > li p {
+    margin-top: 0.75em;
+    margin-bottom: 0.75em;
+  }
+  & > :is(ul, ol) > li > p:first-child {
+    margin-top: 1.25em;
+  }
+  & > :is(ul, ol) > li > p:last-child {
+    margin-bottom: 1.25em;
+  }
 }
