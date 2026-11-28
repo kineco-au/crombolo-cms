@@ -698,7 +698,7 @@ describe('the starter', () => {
   test('has two columns only when there is something for the second', () => {
     const page = read('pages/contentPage.tsx')
     expect(page).toContain("model.hasValue('sidebarText')")
-    expect(page).toContain('<aside>')
+    expect(page).toContain('<aside')
   })
 
   test('ships placeholder pages that show both layouts, and a search page', () => {

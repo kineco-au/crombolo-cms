@@ -1,0 +1,16 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Each colour is light-dark(light, dark): the page sets scheme-light-dark, so the
+   reader's setting picks one and no class needs a dark: twin. */
+@theme {
+  --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-ink: light-dark(#16181d, #eceae4);
+  --color-muted: light-dark(#5a606b, #a3a8b1);
+  --color-rule: light-dark(#d9dce1, #33373e);
+  --color-paper: light-dark(#fbfaf7, #141619);
+  --color-panel: light-dark(#f1efe9, #1d2024);
+  --color-accent: light-dark(#c2410c, #fb923c);
+}

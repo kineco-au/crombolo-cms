@@ -57,4 +57,4 @@ The first start adds the database, unless it is on Postgres, with `media/`, `log
 
 ## Where to look first
 
-Restyle `components/shared/` and `css/`, then replace the text in the back office.
+Restyle the Tailwind classes in `components/shared/` and the colours in `css/tailwind.css`, then replace the text in the back office.

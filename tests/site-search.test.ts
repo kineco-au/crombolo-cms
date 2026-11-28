@@ -704,13 +704,13 @@ describe(`the starter's search page (${process.env.CROMBOLO_DB ?? 'sqlite'})`, (
 
     const results = await visit('/search?q=coffee')
     expect(results).toContain('1 page matches “coffee”.')
-    expect(results).toContain('<a href="/about">About us</a>')
+    expect(results).toMatch(/<a [^>]*href="\/about"[^>]*>About us<\/a>/)
     expect(results).toContain('We roast <mark>coffee</mark> daily.')
     // The search page is left out of its own results.
     expect(await visit('/search?q=search')).toContain('Nothing matches “search”.')
 
     const front = await visit('/')
-    expect(front).toContain('<search><form class="site-search" action="/search"')
+    expect(front).toMatch(/<search[^>]*><form action="\/search"/)
     expect(front).not.toContain('>Search</a>')
   })
 })

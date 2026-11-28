@@ -32,12 +32,12 @@ export function SiteHeader({
           content: page,
         }))
   return (
-    <header class="site-header">
-      <div class="container site-header__inner">
-        <a class="site-name" href={home.url}>
+    <header class="border-b border-line">
+      <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-8 gap-y-3 px-5 py-4">
+        <a class="text-xl font-bold text-ink" href={home.url}>
           {siteName}
         </a>
-        <nav aria-label="Primary">
+        <nav class="flex flex-wrap gap-x-5 gap-y-1" aria-label="Primary">
           {shown.map((link) => {
             const page = link.content
             const here = page
@@ -47,6 +47,7 @@ export function SiteHeader({
               : false
             return link.url ? (
               <a
+                class="text-muted hover:text-ink aria-[current=page]:font-semibold aria-[current=page]:text-ink"
                 href={link.url}
                 target={link.target ?? undefined}
                 aria-current={here ? 'page' : undefined}
@@ -54,14 +55,20 @@ export function SiteHeader({
                 {link.label}
               </a>
             ) : (
-              <span>{link.label}</span>
+              <span class="text-muted">{link.label}</span>
             )
           })}
         </nav>
         {searchPage ? (
-          <search>
-            <form class="site-search" action={searchPage.url} method="get">
-              <input type="search" name="q" placeholder="Search" aria-label="Search the site" />
+          <search class="w-full sm:w-auto">
+            <form action={searchPage.url} method="get">
+              <input
+                class="w-full rounded-md border border-line px-3 py-1.5 placeholder:text-muted focus:outline-2 focus:outline-accent sm:w-48"
+                type="search"
+                name="q"
+                placeholder="Search"
+                aria-label="Search the site"
+              />
             </form>
           </search>
         ) : null}

@@ -66,8 +66,10 @@ describe('Plain Signal', () => {
     for (const section of ['Health', 'Planet', 'Discovery', 'Contact'])
       expect(html).toContain(`>${section}</a>`)
     expect(html).not.toContain('>Site Settings<')
-    const lead = html.indexOf('card--lead')
-    expect(html.indexOf('A second pair of eyes on every mammogram')).toBeGreaterThan(lead)
+    const main = html.slice(html.indexOf('<main'))
+    expect(/<h2[^>]*><a[^>]*>([^<]+)/.exec(main)?.[1]).toBe(
+      'A second pair of eyes on every mammogram',
+    )
     for (const headline of [
       'The forecast that learned from forty years of weather',
       'The implant that gave Casey Harrell his voice back',

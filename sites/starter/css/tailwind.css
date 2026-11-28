@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-ink: #1f2933;
+  --color-muted: #616e7c;
+  --color-accent: #2f6fde;
+  --color-surface: #f5f7fa;
+  --color-line: #e4e7eb;
+}

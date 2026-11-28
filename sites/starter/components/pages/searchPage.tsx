@@ -1,5 +1,5 @@
 import { type PageProps, search } from '@crombolo/crombolo'
-import { Layout } from '../shared/layout.tsx'
+import { heading, Layout } from '../shared/layout.tsx'
 
 const PER_PAGE = 10
 
@@ -17,25 +17,38 @@ export default async function SearchPage(props: PageProps) {
 
   return (
     <Layout {...props}>
-      <h1>{model.text('title') || model.name}</h1>
+      <h1 class={heading}>{model.text('title') || model.name}</h1>
       <search>
-        <form class="search-form" action={model.url} method="get">
-          <input type="search" name="q" value={query} aria-label="Search the site" />
-          <button type="submit">Search</button>
+        <form class="mb-6 flex max-w-xl gap-2" action={model.url} method="get">
+          <input
+            class="min-w-0 flex-1 rounded-md border border-line px-3 py-2 focus:outline-2 focus:outline-accent"
+            type="search"
+            name="q"
+            value={query}
+            aria-label="Search the site"
+          />
+          <button
+            class="cursor-pointer rounded-md bg-accent px-4 py-2 font-medium text-white hover:brightness-110"
+            type="submit"
+          >
+            Search
+          </button>
         </form>
       </search>
       {query ? (
-        <p class="search-summary">
+        <p class="text-muted">
           {results.total === 0
             ? `Nothing matches “${query}”.`
             : `${results.total} ${results.total === 1 ? 'page matches' : 'pages match'} “${query}”.`}
         </p>
       ) : null}
-      <ol class="search-results">
+      <ol class="mt-2 divide-y divide-line">
         {results.items.map((item) => (
-          <li>
-            <a href={item.url}>{item.content.text('title') || item.name}</a>
-            <p>
+          <li class="py-4">
+            <a class="text-lg font-semibold text-accent hover:underline" href={item.url}>
+              {item.content.text('title') || item.name}
+            </a>
+            <p class="mt-1 text-muted [&_mark]:bg-transparent [&_mark]:font-semibold [&_mark]:text-ink">
               {item.excerpt.map((segment) =>
                 segment.match ? <mark>{segment.text}</mark> : segment.text,
               )}
@@ -44,12 +57,20 @@ export default async function SearchPage(props: PageProps) {
         ))}
       </ol>
       {pages > 1 ? (
-        <nav class="search-pages" aria-label="Search results pages">
-          {page > 1 ? <a href={link(page - 1)}>Previous</a> : null}
-          <span>
+        <nav class="mt-6 flex items-center gap-6" aria-label="Search results pages">
+          {page > 1 ? (
+            <a class="text-accent hover:underline" href={link(page - 1)}>
+              Previous
+            </a>
+          ) : null}
+          <span class="text-muted">
             Page {page} of {pages}
           </span>
-          {page < pages ? <a href={link(page + 1)}>Next</a> : null}
+          {page < pages ? (
+            <a class="text-accent hover:underline" href={link(page + 1)}>
+              Next
+            </a>
+          ) : null}
         </nav>
       ) : null}
     </Layout>

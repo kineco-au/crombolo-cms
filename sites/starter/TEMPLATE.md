@@ -6,4 +6,4 @@
 
 ## Where to look first
 
-Restyle `components/shared/` and the stylesheet in `css/`, then replace the placeholder text in the back office or with `crombolo content update`.
+Restyle the Tailwind classes in `components/shared/` and the colours in `css/tailwind.css`, then replace the placeholder text in the back office or with `crombolo content update`.

@@ -32,6 +32,11 @@ interface ApiForm {
 
 type Errors = Record<string, string>
 
+const note = 'text-sm text-muted'
+const problem = 'text-sm font-medium text-accent'
+const input =
+  'w-full rounded border border-rule bg-transparent px-3 py-2 text-ink focus:outline-2 focus:outline-accent aria-invalid:border-accent'
+
 /** Whether one condition rule holds for what has been typed so far. */
 function holds(rule: { operator: string; value?: string }, answer: string): boolean {
   const expected = rule.value ?? ''
@@ -88,12 +93,11 @@ export default function ContactForm({ alias }: { alias: string }) {
       .catch(() => setFailed(true))
   }, [alias])
 
-  if (failed)
-    return <p className="form-note">The form could not be loaded. Please try again shortly.</p>
-  if (!form) return <p className="form-note">Loading the form…</p>
+  if (failed) return <p className={note}>The form could not be loaded. Please try again shortly.</p>
+  if (!form) return <p className={note}>Loading the form…</p>
   if (done)
     return (
-      <p className="form-done" role="status">
+      <p className="rounded-r border-l-3 border-accent bg-panel px-5 py-4" role="status">
         {done}
       </p>
     )
@@ -141,7 +145,7 @@ export default function ContactForm({ alias }: { alias: string }) {
   }
 
   return (
-    <form className="contact-form" onSubmit={send} noValidate>
+    <form className="grid gap-5" onSubmit={send} noValidate>
       {fields
         .filter((field) => shown(field, answers))
         .map((field) => (
@@ -153,8 +157,12 @@ export default function ContactForm({ alias }: { alias: string }) {
             onChange={(value) => set(field.alias, value)}
           />
         ))}
-      {errors[''] ? <p className="field__error">{errors['']}</p> : null}
-      <button type="submit" disabled={sending}>
+      {errors[''] ? <p className={problem}>{errors['']}</p> : null}
+      <button
+        type="submit"
+        disabled={sending}
+        className="cursor-pointer justify-self-start rounded bg-ink px-6 py-2.5 font-semibold text-paper hover:bg-accent disabled:cursor-default disabled:opacity-60"
+      >
         {sending ? 'Sending…' : (form.submitLabel ?? 'Send')}
       </button>
     </form>
@@ -183,10 +191,11 @@ function Field({
   let control: React.ReactNode
   if (field.type === 'dataConsent')
     return (
-      <div className={error ? 'field field--consent field--error' : 'field field--consent'}>
-        <label>
+      <div className="grid gap-1.5">
+        <label className="flex items-baseline gap-2.5">
           <input
             {...common}
+            className="size-4 shrink-0 translate-y-0.5 accent-accent"
             type="checkbox"
             checked={value === 'on'}
             onChange={(event) => onChange(event.target.checked ? 'on' : '')}
@@ -194,7 +203,7 @@ function Field({
           {field.caption}
         </label>
         {error ? (
-          <p className="field__error" id={`${id}-error`}>
+          <p className={problem} id={`${id}-error`}>
             {error}
           </p>
         ) : null}
@@ -204,6 +213,7 @@ function Field({
     control = (
       <textarea
         {...common}
+        className={input}
         rows={field.rows ?? 5}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -211,7 +221,12 @@ function Field({
     )
   else if (field.type === 'dropdown')
     control = (
-      <select {...common} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        {...common}
+        className={input}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {(field.options ?? []).map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -223,6 +238,7 @@ function Field({
     control = (
       <input
         {...common}
+        className={input}
         type={field.type === 'email' ? 'email' : 'text'}
         autoComplete={field.autocomplete}
         placeholder={field.placeholder}
@@ -231,19 +247,19 @@ function Field({
       />
     )
   return (
-    <div className={error ? 'field field--error' : 'field'}>
-      <label htmlFor={id}>
+    <div className="grid gap-1.5">
+      <label className="font-medium" htmlFor={id}>
         {field.caption}
         {field.mandatory ? <span aria-hidden="true"> *</span> : null}
       </label>
       {control}
       {field.helpText && !error ? (
-        <p className="field__help" id={`${id}-help`}>
+        <p className={note} id={`${id}-help`}>
           {field.helpText}
         </p>
       ) : null}
       {error ? (
-        <p className="field__error" id={`${id}-error`}>
+        <p className={problem} id={`${id}-error`}>
           {error}
         </p>
       ) : null}
