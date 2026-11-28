@@ -134,6 +134,19 @@ describe('the classes a view uses', () => {
     expect(found).toEqual([...found].sort())
   })
 
+  test('include arbitrary variants with brackets inside, and two bracket groups', () => {
+    const classes = [
+      '[&_[data-field]]:mt-2',
+      '[&>[role=status]]:hidden',
+      '[&_p[role=alert]]:text-red-600',
+      '[&_div:has(input)]:grid-cols-[auto_1fr]',
+      'md:[&:nth-of-type(even)>img]:-order-1',
+      '[&_input:not([type=checkbox])]:border',
+    ]
+    const found = classCandidates(`<div className="${classes.join(' ')}"></div>`)
+    for (const candidate of classes) expect(found).toContain(candidate)
+  })
+
   test('are styled on the page with no import or build, linked once before the site’s CSS', async () => {
     const { visit } = await site()
     const { html, address, css } = await linked(visit)
@@ -220,6 +233,22 @@ describe('the site’s own css/tailwind.css', () => {
     expect(css).toContain('.italic {')
     // The input is not what is served at its address.
     expect(css).not.toContain('@import')
+  })
+
+  test('names a plugin the CMS ships, which a site with no modules of its own still gets', async () => {
+    const { root, config } = siteFiles({
+      classes: 'prose prose-lg',
+      input: '@import "tailwindcss";\n@plugin "@tailwindcss/typography";\n',
+    })
+    const tailwind = new SiteTailwind({
+      siteDir: root,
+      componentsDir: config.componentsDir as string,
+      stylesheetsDir: config.stylesheetsDir as string,
+    })
+    await tailwind.refresh()
+    const css = tailwind.current()?.css ?? ''
+    expect(css).toContain('.prose {')
+    expect(css).toContain('.prose-lg {')
   })
 
   test('that does not compile is said with its line, and the last good stylesheet stays', async () => {

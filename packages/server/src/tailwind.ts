@@ -25,8 +25,11 @@ const MAX_CANDIDATE = 200
 
 /** Splits text where no class can continue. */
 const SEPARATORS = /[\s"'`\\<>{};=]+/
-/** A class with an arbitrary value, which may hold quotes and commas: `content-['a']`, `grid-cols-[1fr,2fr]`. */
-const ARBITRARY = /[\w\-:!@./*&>#%]*\[[^\s\]]+\][\w\-:/!.%]*/g
+/**
+ * A class with an arbitrary value or variant, which may hold quotes, commas, `=`, `>` and
+ * one level of brackets: `content-['a']`, `grid-cols-[1fr,2fr]`, `[&>[role=status]]:hidden`.
+ */
+const ARBITRARY = /[\w\-:!@./*&>#%]*\[(?:[^\s[\]]|\[[^\s[\]]*\])+\][\w\-:/!.%[\]&>=()_]*/g
 const LEADING = /^[^A-Za-z0-9\-!@*[]+/
 const TRAILING = /[^A-Za-z0-9\])%!*]+$/
 
@@ -132,9 +135,26 @@ function packageStylesheet(id: string, siteDir: string): string {
   return join(dir, style)
 }
 
-/** How the compiler reads `@plugin` and `@config`: a module, resolved from where it is named. */
+/**
+ * Resolved from where it is named, or else from the CMS's own packages: a site run from a
+ * copy or installed as a bundle has no modules of its own, and the plugins the CMS ships
+ * (`@tailwindcss/typography`) work there too.
+ */
+export function resolvePlugin(id: string, base: string): string {
+  try {
+    return Bun.resolveSync(id, base)
+  } catch (error) {
+    try {
+      return Bun.resolveSync(id, import.meta.dir)
+    } catch {
+      throw error
+    }
+  }
+}
+
+/** How the compiler reads `@plugin` and `@config`: a module, resolved as `resolvePlugin` does. */
 async function loadModule(id: string, base: string) {
-  const path = Bun.resolveSync(id, base)
+  const path = resolvePlugin(id, base)
   const module = (await import(path)) as { default?: unknown }
   // biome-ignore lint/suspicious/noExplicitAny: the compiler takes a plugin or a config, whichever it is.
   return { path, base: dirname(path), module: (module.default ?? module) as any }

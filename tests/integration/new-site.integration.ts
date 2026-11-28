@@ -311,7 +311,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(html).toContain('Welcome to Crombolo')
     expect(html).toContain('components/contentPage.tsx')
     // The logo is the page's image, and its bytes are where the page says.
-    const logo = /<img src="([^"]+)" alt="Crombolo logo"/.exec(html)?.[1]
+    const logo = /<img[^>]* src="([^"]+)"[^>]* alt="Crombolo logo"/.exec(html)?.[1]
     expect(logo).toBeDefined()
     const image = await fetch(new URL(logo?.replaceAll('&amp;', '&') ?? '', first.url))
     expect(image.status).toBe(200)

@@ -8,6 +8,10 @@ point at `docs/stories/`.
 
 ### Features
 
+- **Tailwind's typography plugin ships with the CMS.** `@plugin "@tailwindcss/typography";`
+  in a site's `css/tailwind.css` works with nothing installed, so `prose` styles rich-text
+  and Markdown bodies on any site, a bundle's included. A `@plugin` the site can't
+  resolve falls back to the CMS's own packages.
 - **A workspace shared with user groups (451).** Its owner shares a workspace with one or
   more user groups as well as people, and everyone in a group, now or later, can see and
   work in it; someone removed from the group no longer can. `POST /{key}/groups
