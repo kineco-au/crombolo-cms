@@ -15,6 +15,8 @@ import {
   colourOf,
   filtered,
   inkOn,
+  MERGED_DAYS,
+  mergedWithin,
   named,
   pageOf,
   workspaceRows,
@@ -31,6 +33,18 @@ import {
 } from './workspaces-state.js'
 
 const FILTER_KEY = 'crombolo.workspaces.filter'
+const MERGED_DAYS_KEY = 'crombolo.workspaces.mergedDays'
+const MERGED_OPEN_KEY = 'crombolo.workspaces.mergedOpen'
+
+/** A choice this browser kept, if it is one of `allowed`; else `fallback`. */
+const remembered = (key, allowed, fallback) => {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? 'null')
+    return allowed.includes(value) ? value : fallback
+  } catch {
+    return fallback
+  }
+}
 
 /** The list's filter as this browser last left it: Mine unless All was chosen. */
 const readFilter = () => {
@@ -53,6 +67,8 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     _filter: { state: true },
     _query: { state: true },
     _page: { state: true },
+    _mergedDays: { state: true },
+    _mergedOpen: { state: true },
   }
 
   #mine = { enabled: false, required: false }
@@ -67,6 +83,14 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     this._filter = readFilter()
     this._query = ''
     this._page = 1
+    this._mergedDays = remembered(MERGED_DAYS_KEY, MERGED_DAYS, MERGED_DAYS[0])
+    this._mergedOpen = remembered(MERGED_OPEN_KEY, [true, false], true)
+  }
+
+  #remember(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch {}
   }
 
   #setFilter(filter) {
@@ -103,16 +127,17 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     this.#workspaces = (await workspacesApi.list().catch(() => ({ items: [] }))).items ?? []
   }
 
+  /** The latest changes, from which the Merged section picks the merges within its days. */
   async #mergedLately() {
     const base = (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(
       /\/$/,
       '',
     )
-    const response = await fetch(`${base}/crombolo/api/changes?take=20`, {
+    const response = await fetch(`${base}/crombolo/api/changes?take=200`, {
       credentials: 'include',
     }).catch(() => undefined)
     const changes = response?.ok ? ((await response.json()).items ?? []) : []
-    return changes.filter((c) => c.kind === 'merge').slice(0, 8)
+    return changes.filter((c) => c.kind === 'merge')
   }
 
   /** Moves this tab into a workspace, or Shared, and shows the screen there again. */
@@ -163,6 +188,63 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
         <uui-icon name="icon-enter"></uui-icon>
       </button>
     </div>`
+  }
+
+  #mergedSection() {
+    const merged = mergedWithin(this.#merged, this._mergedDays)
+    return html`<div class="head merged">
+        <button
+          type="button"
+          class="fold"
+          aria-expanded=${this._mergedOpen ? 'true' : 'false'}
+          aria-controls="merged-list"
+          @click=${() => {
+            this._mergedOpen = !this._mergedOpen
+            this.#remember(MERGED_OPEN_KEY, this._mergedOpen)
+          }}
+        >
+          <uui-symbol-expand .open=${this._mergedOpen}></uui-symbol-expand>
+          <span>Merged</span>
+          <span class="count">${merged.length}</span>
+        </button>
+        <select
+          aria-label="Merged within"
+          .value=${String(this._mergedDays)}
+          @change=${(event) => {
+            this._mergedDays = Number(event.currentTarget.value)
+            this.#remember(MERGED_DAYS_KEY, this._mergedDays)
+          }}
+        >
+          ${MERGED_DAYS.map(
+            (days) =>
+              html`<option value=${days} ?selected=${days === this._mergedDays}>Last ${days} days</option>`,
+          )}
+        </select>
+      </div>
+      ${
+        this._mergedOpen
+          ? html`<div id="merged-list" class="merged-list">
+              ${
+                merged.length === 0
+                  ? html`<p class="none">No workspace was merged in the last ${this._mergedDays} days.</p>`
+                  : merged.map(
+                      (c) =>
+                        html`<button
+                          type="button"
+                          class="row gone"
+                          aria-current=${chosenChange() === c.id ? 'true' : 'false'}
+                          title="See what it merged"
+                          @click=${() => showMerged(c.id)}
+                        >
+                          <span class="dot" style=${c.workspaceKey ? `background:${colourOf(c.workspaceKey)}` : ''}></span>
+                          <span class="name">${String(c.name ?? 'A workspace').replace(/^Merged\s+/i, '')}</span>
+                          <span class="note">${day(c.startedAt)}</span>
+                        </button>`,
+                    )
+              }
+            </div>`
+          : nothing
+      }`
   }
 
   render() {
@@ -234,25 +316,7 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
             </div>`
           : nothing
       }
-      ${
-        this.#merged.length > 0
-          ? html`<div class="head merged"><span>Merged</span></div>
-              ${this.#merged.map(
-                (c) =>
-                  html`<button
-                    type="button"
-                    class="row gone"
-                    aria-current=${chosenChange() === c.id ? 'true' : 'false'}
-                    title="See what it merged"
-                    @click=${() => showMerged(c.id)}
-                  >
-                    <span class="dot" style=${c.workspaceKey ? `background:${colourOf(c.workspaceKey)}` : ''}></span>
-                    <span class="name">${String(c.name ?? 'A workspace').replace(/^Merged\s+/i, '')}</span>
-                    <span class="note">${day(c.startedAt)}</span>
-                  </button>`,
-              )}`
-          : nothing
-      }
+      ${this.#mergedSection()}
     </nav>`
   }
 
@@ -336,7 +400,49 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       cursor: default;
     }
     .head.merged {
+      gap: var(--uui-size-space-2);
       margin-top: var(--uui-size-space-5);
+    }
+    .fold {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--uui-size-space-2);
+      border: none;
+      background: none;
+      padding: 0;
+      font: inherit;
+      color: inherit;
+      text-transform: inherit;
+      letter-spacing: inherit;
+      cursor: pointer;
+    }
+    .fold uui-symbol-expand {
+      font-size: 10px;
+    }
+    .count {
+      padding: 0 6px;
+      border-radius: 8px;
+      background: var(--uui-color-surface-alt);
+      font-weight: 400;
+    }
+    .head.merged select {
+      font: inherit;
+      font-size: var(--uui-type-small-size);
+      text-transform: none;
+      letter-spacing: normal;
+      font-weight: 400;
+      color: var(--uui-color-text);
+      border: 1px solid var(--uui-color-border);
+      border-radius: var(--uui-border-radius);
+      background: var(--uui-color-surface);
+      padding: 1px 4px;
+    }
+    .merged-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-height: 40vh;
+      overflow-y: auto;
     }
     .row {
       display: flex;

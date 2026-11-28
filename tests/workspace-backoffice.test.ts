@@ -139,6 +139,7 @@ import {
   inWorkspace,
   markOf,
   menuFor,
+  mergedWithin,
   mergeRows,
   mergeSections,
   named,
@@ -596,6 +597,21 @@ describe('who sees a workspace (story 451)', () => {
     )
     expect(fileLink('schema/types/offer.json')).toBe('section/content/structure')
     expect(fileLink('css/site.css')).toBe('section/content/code')
+  })
+
+  test('the Merged section shows the merges within the days chosen, newest first', () => {
+    const now = Date.parse('2026-11-28T12:00:00Z')
+    const ago = (days: number) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString()
+    const changes = [
+      { id: 'a', kind: 'merge', startedAt: ago(40) },
+      { id: 'b', kind: 'merge', startedAt: ago(2) },
+      { id: 'c', kind: 'edit', startedAt: ago(1) },
+      { id: 'd', kind: 'merge', startedAt: ago(200) },
+    ]
+    const ids = (days: number) => mergedWithin(changes, days, now).map((c: { id: string }) => c.id)
+    expect(ids(30)).toEqual(['b'])
+    expect(ids(60)).toEqual(['b', 'a'])
+    expect(ids(180)).toEqual(['b', 'a'])
   })
 
   test('the list finds a workspace by any part of its name, whatever its case', () => {

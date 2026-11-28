@@ -320,6 +320,17 @@ export function fileLink(path) {
   return 'section/content/code'
 }
 
+/** How far back the list's Merged section looks, in days: the choices, the first the default. */
+export const MERGED_DAYS = [30, 60, 90, 180]
+
+/** The merges among `changes` made within the last `days`, newest first. Pure. */
+export function mergedWithin(changes, days, now = Date.now()) {
+  const since = now - days * 24 * 60 * 60 * 1000
+  return changes
+    .filter((c) => c.kind === 'merge' && new Date(c.startedAt).getTime() >= since)
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+}
+
 /** The workspaces the list's filter shows: every one (`all`), or those the person is in. Pure. */
 export const filtered = (workspaces, filter) =>
   filter === 'all' ? workspaces : workspaces.filter((w) => w.member)
