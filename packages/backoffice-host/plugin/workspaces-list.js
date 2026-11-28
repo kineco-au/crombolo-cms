@@ -1,14 +1,26 @@
 /**
  * The sidebar at Workspaces: Shared, set apart, then every workspace the person can see,
  * each name on its colour, a green dot by the one this tab is in, and the ones merged
- * lately below. Choosing a row shows that
+ * lately below. A filter shows the person's own (Mine: theirs, or shared with them) or
+ * All they can see, Mine at first, the choice kept in this browser. Choosing a row shows that
  * workspace beside the list; the tab moves only when asked there.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { colourOf, inkOn, workspaceRows, workspacesApi } from './workspace-client.js'
+import { colourOf, filtered, inkOn, workspaceRows, workspacesApi } from './workspace-client.js'
 import { here, newWorkspace } from './workspace-switch.js'
 import { chosenWorkspace, showWorkspace, watchWorkspaces } from './workspaces-state.js'
+
+const FILTER_KEY = 'crombolo.workspaces.filter'
+
+/** The list's filter as this browser last left it: Mine unless All was chosen. */
+const readFilter = () => {
+  try {
+    return localStorage.getItem(FILTER_KEY) === 'all' ? 'all' : 'mine'
+  } catch {
+    return 'mine'
+  }
+}
 
 const day = (iso) => {
   const at = new Date(iso)
@@ -19,6 +31,7 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
   static properties = {
     _ready: { state: true },
     _chosen: { state: true },
+    _filter: { state: true },
   }
 
   #mine = { enabled: false, required: false }
@@ -30,6 +43,14 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     super()
     this._ready = false
     this._chosen = chosenWorkspace()
+    this._filter = readFilter()
+  }
+
+  #setFilter(filter) {
+    this._filter = filter
+    try {
+      localStorage.setItem(FILTER_KEY, filter)
+    } catch {}
   }
 
   async connectedCallback() {
@@ -80,7 +101,20 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
           <uui-icon name="icon-add"></uui-icon>
         </uui-button>
       </div>
-      ${workspaceRows({ current, workspaces: this.#workspaces }).map(
+      <div class="filter" role="group" aria-label="Which workspaces">
+        ${[
+          ['mine', 'Mine'],
+          ['all', 'All'],
+        ].map(
+          ([value, label]) =>
+            html`<button
+              type="button"
+              aria-pressed=${this._filter === value ? 'true' : 'false'}
+              @click=${() => this.#setFilter(value)}
+            >${label}</button>`,
+        )}
+      </div>
+      ${workspaceRows({ current, workspaces: filtered(this.#workspaces, this._filter) }).map(
         (row) =>
           html`<button
             type="button"
@@ -145,6 +179,28 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }
+    .filter {
+      display: inline-flex;
+      align-self: start;
+      margin: 0 var(--uui-size-space-3) var(--uui-size-space-3);
+      border: 1px solid var(--uui-color-border);
+      border-radius: var(--uui-border-radius);
+      overflow: hidden;
+    }
+    .filter button {
+      border: none;
+      margin: 0;
+      padding: var(--uui-size-space-1) var(--uui-size-space-4);
+      background: var(--uui-color-surface);
+      color: var(--uui-color-text);
+      font: inherit;
+      font-size: var(--uui-type-small-size);
+      cursor: pointer;
+    }
+    .filter button[aria-pressed='true'] {
+      background: var(--uui-color-selected);
+      color: var(--uui-color-selected-contrast);
     }
     .head.merged {
       margin-top: var(--uui-size-space-5);

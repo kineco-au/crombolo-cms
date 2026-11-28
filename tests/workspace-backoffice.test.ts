@@ -132,6 +132,7 @@ import {
   contrast,
   controlsFor,
   currentWorkspace,
+  filtered,
   headerFor,
   inkOn,
   inWorkspace,
@@ -551,6 +552,15 @@ describe("a workspace's colour and Shared's grid", () => {
 })
 
 describe('who sees a workspace (story 451)', () => {
+  test("the list's filter: Mine is those the person is in, All is every one they can see", () => {
+    const list = [
+      { key: 'a', member: true },
+      { key: 'b', member: false },
+    ]
+    expect(filtered(list, 'mine').map((w: { key: string }) => w.key)).toEqual(['a'])
+    expect(filtered(list, 'all').map((w: { key: string }) => w.key)).toEqual(['a', 'b'])
+  })
+
   test('who sees it is said in words: its owner and the administrators, then the rest', () => {
     expect(whoSees({ visibility: 'members' })).toBe('Its owner and the administrators')
     expect(whoSees({ visibility: 'editors' })).toBe(

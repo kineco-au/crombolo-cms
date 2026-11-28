@@ -53,7 +53,7 @@ dialog.crombolo-workspace-dialog label > span:first-child { padding-top: 7px; }
 dialog.crombolo-workspace-dialog label > input, dialog.crombolo-workspace-dialog label > textarea { min-width: 0; width: 100%; box-sizing: border-box; }
 dialog.crombolo-workspace-dialog label > [role='group'] { justify-self: start; }
 dialog.crombolo-workspace-dialog .field { display: grid; grid-template-columns: 12rem minmax(0, 1fr); align-items: start; column-gap: var(--uui-size-space-4, 16px); }
-dialog.crombolo-workspace-dialog .field > span:first-child { padding-top: 7px; }
+dialog.crombolo-workspace-dialog .field > span:first-child { padding-top: 0; }
 dialog.crombolo-workspace-dialog .field .audience > [role='group'] { justify-self: start; }
 `
 

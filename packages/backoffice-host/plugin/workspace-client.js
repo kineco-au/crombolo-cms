@@ -274,6 +274,10 @@ export function whoSees(view, groups = [], people = []) {
   return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
 }
 
+/** The workspaces the list's filter shows: every one (`all`), or those the person is in. Pure. */
+export const filtered = (workspaces, filter) =>
+  filter === 'all' ? workspaces : workspaces.filter((w) => w.member)
+
 /**
  * The Workspaces page's list, in order: Shared, then each open workspace the person can
  * see, the one the tab is in marked `here`. `note` says what stands out: conflicts, or
