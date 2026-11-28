@@ -238,7 +238,15 @@ export class UmbWorkspaceSplitViewVariantSelectorElement<
 				this.#datasetContext &&
 				isNameablePropertyDatasetContext(this.#datasetContext)
 			) {
-				this.#datasetContext.setName(this.#joinName(target.value, this._suffix));
+				// A name typed with an ending the type offers takes that ending: "llms.txt" is llms + .txt.
+				const typed = this._suffixes ? this.#splitName(target.value) : undefined;
+				if (typed?.suffix) {
+					this._suffix = typed.suffix;
+					this.#datasetContext.setName(target.value);
+					target.value = typed.stem;
+				} else {
+					this.#datasetContext.setName(this.#joinName(target.value, this._suffix));
+				}
 			}
 		}
 	}
