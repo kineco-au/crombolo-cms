@@ -19,6 +19,9 @@ point at `docs/stories/`.
 
 ### Fixes
 
+- **The container image builds between releases.** It packs this checkout's packages
+  whether or not the registry holds their version (`publish-packages.ts --dry-run
+  --pack-all`); after a release, when it did, the image was built with nothing in it.
 - **Next.js 16.4.6** for new sites' front ends (`crombolo init --next`, and the demos):
   16.4.3, pinned before, has a security advisory, and Next.js refuses to build with it.
 

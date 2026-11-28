@@ -14,11 +14,16 @@ import { ROOT } from './packages.ts'
 const PACKED = join(ROOT, 'output', 'packages')
 const LOCAL = join(ROOT, 'docker', 'image', 'local')
 
-const packed = Bun.spawnSync(['bun', 'run', 'scripts/publish-packages.ts', '--dry-run'], {
-  cwd: ROOT,
-  stdout: 'inherit',
-  stderr: 'inherit',
-})
+// Every package, published or not: after a release they all are, and the image is still
+// this checkout's.
+const packed = Bun.spawnSync(
+  ['bun', 'run', 'scripts/publish-packages.ts', '--dry-run', '--pack-all'],
+  {
+    cwd: ROOT,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  },
+)
 if (packed.exitCode !== 0) process.exit(packed.exitCode ?? 1)
 
 for (const name of readdirSync(LOCAL))

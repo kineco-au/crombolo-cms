@@ -2,6 +2,7 @@
  * Publishes the workspace to npm as one fixed-version set.
  *
  *   bun run scripts/publish-packages.ts --dry-run
+ *   bun run scripts/publish-packages.ts --dry-run --pack-all   # every package, published or not
  *   bun run scripts/publish-packages.ts
  *
  * Packs with Bun, which substitutes `workspace:*` for the concrete version, then
@@ -54,6 +55,13 @@ const CLI = '@crombolo/cli'
 
 const args = Bun.argv.slice(2)
 const dryRun = args.includes('--dry-run')
+// What this checkout holds, whether or not the registry has its version: the image's own
+// packages (`image-context.ts`), which after a release are all on the registry already.
+const packAll = args.includes('--pack-all')
+if (packAll && !dryRun) {
+  console.error('--pack-all packs only: run it with --dry-run.')
+  process.exit(2)
+}
 const tagIndex = args.indexOf('--tag')
 const tag = (tagIndex === -1 ? undefined : args[tagIndex + 1]) ?? 'latest'
 // Provenance is signed from the CI identity; npm refuses it anywhere else.
@@ -131,7 +139,7 @@ const skipped: string[] = []
 
 for (const pkg of packages) {
   const { name, version } = pkg.manifest
-  if ((await publishedVersions(name)).has(version)) {
+  if (!packAll && (await publishedVersions(name)).has(version)) {
     console.log(`skip     ${name}@${version} (already on the registry)`)
     skipped.push(`${name}@${version}`)
     continue
