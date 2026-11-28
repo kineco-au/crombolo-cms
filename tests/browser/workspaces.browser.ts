@@ -189,9 +189,15 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   const place = page.locator('crombolo-workspaces-page')
   await place.getByRole('button', { name: 'Cancel' }).click()
   await expect(page).not.toHaveURL(/view=merge/)
-  await place.getByRole('button', { name: 'Merge into Shared' }).click()
-  await expect(merging.locator('h2')).toHaveText('Merge Spring offers into Shared')
-  await place.getByRole('button', { name: 'Merge into Shared' }).click()
+  // With no conflicts it links to all its changes, read only, and Merge there merges.
+  await place.getByRole('button', { name: 'View all changes' }).click()
+  await expect(page).toHaveURL(/view=changes/)
+  await expect(merging.locator('h2')).toHaveText('Changes in Spring offers')
+  await expect(merging.locator('details.item').first().locator('summary')).toContainText(
+    `${NAME} sale`,
+  )
+  await expect(place.getByRole('button', { name: /Keep/ })).toHaveCount(0)
+  await place.getByRole('button', { name: 'Merge into Shared', exact: true }).click()
   await expect(place).toContainText('Merged into Shared')
   await expect.poll(() => sharedName(page, key), { timeout: 10_000 }).toBe(`${NAME} sale`)
   await expect(switchButton(page)).toContainText('Shared', { timeout: 15_000 })

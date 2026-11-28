@@ -721,8 +721,13 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     </div></section>
       ${
         readOnly
-          ? html`<uui-button slot="actions" look="secondary" label="Back" @click=${() => showWorkspace(view.key)}>Back</uui-button>
-              <uui-button slot="actions" look="primary" color="positive" label="Merge into Shared…" @click=${() => showWorkspace(view.key, 'merge')}>Merge into Shared…</uui-button>`
+          ? html`${says ? html`<span slot="footer-info" class="hint" role="status">${says}</span>` : nothing}
+              <uui-button slot="actions" look="secondary" label="Back" @click=${() => showWorkspace(view.key)}>Back</uui-button>
+              ${
+                ready
+                  ? html`<uui-button slot="actions" look="primary" color="positive" label="Merge into Shared" ?disabled=${done} @click=${() => this.#mergeNow(view)}>Merge into Shared</uui-button>`
+                  : html`<uui-button slot="actions" look="primary" color="positive" label="Merge into Shared…" @click=${() => showWorkspace(view.key, 'merge')}>Merge into Shared…</uui-button>`
+              }`
           : html`<span slot="footer-info" class="hint" role="status">
                 ${says || (left.length > 0 ? `${left.join(' and ')} first.` : 'Once merged, the workspace is closed and its changes are in Shared.')}
               </span>
