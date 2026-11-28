@@ -1,5 +1,4 @@
 import type { BlockProps, Link } from '@crombolo/crombolo'
-import { buttons, wrap } from '../shared/styles.ts'
 
 /** A photograph sits faded behind the words; artwork shows as it is, beside them where there is room and below where there is not. */
 export default async function HeroBlock({ content }: BlockProps) {
@@ -21,7 +20,7 @@ export default async function HeroBlock({ content }: BlockProps) {
         />
       ) : null}
       <div
-        class={`${wrap} z-10 col-start-1 row-start-1 self-center py-12 ${asItIs ? 'max-xl:pb-0' : ''}`}
+        class={`page-column z-10 col-start-1 row-start-1 self-center py-12 ${asItIs ? 'max-xl:pb-0' : ''}`}
       >
         <p class="mb-2 text-sm tracking-wider text-white/80 uppercase">{content.text('eyebrow')}</p>
         <h1
@@ -32,12 +31,12 @@ export default async function HeroBlock({ content }: BlockProps) {
         <p class="max-w-xl text-xl/8 text-white/85">{content.text('text')}</p>
         <p class="mt-8 flex flex-wrap gap-3">
           {primary ? (
-            <a class={buttons.light} href={primary.url}>
+            <a class="btn-light" href={primary.url}>
               {primary.name}
             </a>
           ) : null}
           {secondary ? (
-            <a class={buttons.outline} href={secondary.url}>
+            <a class="btn-outline" href={secondary.url}>
               {secondary.name}
             </a>
           ) : null}

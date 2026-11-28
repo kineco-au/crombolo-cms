@@ -1,5 +1,4 @@
 import type { PageProps, PublishedContent } from '@crombolo/crombolo'
-import { buttons } from './styles.ts'
 
 type Props = Pick<PageProps, 'model' | 'nav' | 'dictionary'>
 
@@ -41,13 +40,13 @@ export function StepLinks({ model, nav, dictionary }: Props) {
   return (
     <div class="mt-12 flex flex-wrap justify-between gap-4">
       {previous ? (
-        <a class={buttons.quiet} rel="prev" href={previous.url}>
+        <a class="btn-quiet" rel="prev" href={previous.url}>
           <small class="block text-xs opacity-80">{dictionary('steps.previous')}</small>
           {previous.name}
         </a>
       ) : null}
       {next ? (
-        <a class={`${buttons.primary} ms-auto text-right`} rel="next" href={next.url}>
+        <a class={`btn-primary ms-auto text-right`} rel="next" href={next.url}>
           <small class="block text-xs opacity-80">{dictionary('steps.next')}</small>
           {next.name}
         </a>

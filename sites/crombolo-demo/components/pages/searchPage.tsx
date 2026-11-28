@@ -1,7 +1,6 @@
 import { type PageProps, search } from '@crombolo/crombolo'
 import { Layout } from '../shared/layout.tsx'
 import { Pager } from '../shared/pager.tsx'
-import { buttons, h1, narrow } from '../shared/styles.ts'
 
 const PER_PAGE = 10
 
@@ -17,8 +16,8 @@ export default async function SearchPage(props: PageProps) {
   const pages = Math.ceil(results.total / PER_PAGE)
   return (
     <Layout {...props}>
-      <header class={`${narrow} pt-12 pb-8`}>
-        <h1 class={h1}>{model.text('title')}</h1>
+      <header class={`text-column pt-12 pb-8`}>
+        <h1 class="heading-display">{model.text('title')}</h1>
         <search>
           <form class="mt-4 flex max-w-lg gap-2" action={model.url} method="get">
             <input
@@ -28,7 +27,7 @@ export default async function SearchPage(props: PageProps) {
               value={query}
               aria-label={dictionary('search.placeholder')}
             />
-            <button class={buttons.primary} type="submit">
+            <button class="btn-primary" type="submit">
               {dictionary('search.button')}
             </button>
           </form>
@@ -41,7 +40,7 @@ export default async function SearchPage(props: PageProps) {
           </p>
         ) : null}
       </header>
-      <div class={narrow}>
+      <div class="text-column">
         <ol>
           {results.items.map((item) => (
             <li class="border-t border-line py-5">

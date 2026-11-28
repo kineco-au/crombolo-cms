@@ -1,7 +1,6 @@
 import type { PageProps } from '@crombolo/crombolo'
 import { categoryKey } from '../shared/categories.ts'
 import { Layout } from '../shared/layout.tsx'
-import { eyebrow, h1, lead, narrow, prose, wideImage } from '../shared/styles.ts'
 
 export default async function Feature(props: PageProps) {
   const { model, nav, dictionary } = props
@@ -10,9 +9,9 @@ export default async function Feature(props: PageProps) {
   const category = String(model.value('category'))
   return (
     <Layout {...props}>
-      <article class={`${narrow} pt-12`}>
+      <article class={`text-column pt-12`}>
         {list ? (
-          <p class={eyebrow}>
+          <p class="eyebrow">
             <a
               class="text-green no-underline hover:text-terracotta"
               href={`${list.url}?category=${category}`}
@@ -21,16 +20,16 @@ export default async function Feature(props: PageProps) {
             </a>
           </p>
         ) : null}
-        <h1 class={h1}>{model.text('title')}</h1>
-        <p class={lead}>{model.text('summary')}</p>
+        <h1 class="heading-display">{model.text('title')}</h1>
+        <p class="lede">{model.text('summary')}</p>
         {image ? (
           <img
-            class={wideImage}
+            class="wide-image"
             src={image.cropUrl({ width: 1200, height: 640 })}
             alt={image.name}
           />
         ) : null}
-        <div class={prose}>{model.html('body')}</div>
+        <div class="prose-site">{model.html('body')}</div>
       </article>
     </Layout>
   )

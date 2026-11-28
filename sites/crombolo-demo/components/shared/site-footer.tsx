@@ -1,6 +1,5 @@
 import { usePage } from '@crombolo/crombolo'
 import { SocialIcon } from './social-icon.tsx'
-import { wrap } from './styles.ts'
 
 /** The footer, from the site's settings page, which editors change in Content. */
 export function SiteFooter({ siteName }: { siteName: string }) {
@@ -12,7 +11,7 @@ export function SiteFooter({ siteName }: { siteName: string }) {
   ]
   return (
     <footer class="bg-panel py-10">
-      <div class={`${wrap} grid grid-cols-1 gap-8 sm:grid-cols-[1fr_auto]`}>
+      <div class={`page-column grid grid-cols-1 gap-8 sm:grid-cols-[1fr_auto]`}>
         <div>
           <p class="mb-1 font-serif text-xl font-bold">{siteName}</p>
           <p>{settings?.text('tagline')}</p>

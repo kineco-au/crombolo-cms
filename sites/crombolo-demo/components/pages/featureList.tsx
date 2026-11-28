@@ -2,7 +2,6 @@ import type { PageProps } from '@crombolo/crombolo'
 import { CATEGORIES, categoryKey } from '../shared/categories.ts'
 import { Layout } from '../shared/layout.tsx'
 import { PageHeader } from '../shared/page-header.tsx'
-import { chip, eyebrow, filters, wrap } from '../shared/styles.ts'
 
 /** The features below this page, narrowed by `?category=` to one of `CATEGORIES`. */
 export default async function FeatureList(props: PageProps) {
@@ -15,14 +14,14 @@ export default async function FeatureList(props: PageProps) {
   return (
     <Layout {...props}>
       <PageHeader model={model} />
-      <div class={wrap}>
-        <nav class={filters} aria-label={dictionary('features.filter')}>
-          <a class={chip} href={model.url} aria-current={chosen ? undefined : 'true'}>
+      <div class="page-column">
+        <nav class="filter-bar" aria-label={dictionary('features.filter')}>
+          <a class="chip" href={model.url} aria-current={chosen ? undefined : 'true'}>
             {dictionary('features.all')}
           </a>
           {CATEGORIES.map((name) => (
             <a
-              class={chip}
+              class="chip"
               href={`${model.url}?category=${name}`}
               aria-current={name === chosen ? 'true' : undefined}
             >
@@ -42,7 +41,7 @@ export default async function FeatureList(props: PageProps) {
                     alt=""
                   />
                 ) : null}
-                <p class={eyebrow}>{dictionary(categoryKey(String(feature.value('category'))))}</p>
+                <p class="eyebrow">{dictionary(categoryKey(String(feature.value('category'))))}</p>
                 <h2 class="font-serif text-2xl/snug font-bold">
                   <a class="text-ink no-underline hover:text-green" href={feature.url}>
                     {feature.text('title')}

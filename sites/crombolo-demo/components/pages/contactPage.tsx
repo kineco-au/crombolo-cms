@@ -1,7 +1,6 @@
 import { Form, type PageProps, type SchemaForm } from '@crombolo/crombolo'
 import { Layout } from '../shared/layout.tsx'
 import { PageHeader } from '../shared/page-header.tsx'
-import { prose, wrap } from '../shared/styles.ts'
 
 /**
  * The CMS draws the form's markup, so it is styled from here, by element. No selector
@@ -27,11 +26,11 @@ export default function ContactPage(props: PageProps) {
   return (
     <Layout {...props}>
       <PageHeader model={model} />
-      <section class={`${wrap} grid grid-cols-1 gap-12 md:grid-cols-5`}>
+      <section class={`page-column grid grid-cols-1 gap-12 md:grid-cols-5`}>
         <div class={`md:col-span-3 ${FORM}`}>
           {form ? <Form form={form} submission={submission} /> : null}
         </div>
-        <aside class={`${prose} md:col-span-2`}>{model.html('aside')}</aside>
+        <aside class={`prose-site md:col-span-2`}>{model.html('aside')}</aside>
       </section>
     </Layout>
   )
