@@ -54,6 +54,9 @@ point at `docs/stories/`.
 
 - **107 `AddWorkspaceGroups`** (expand, 451): `workspace_group`, each user group a
   workspace is shared with, by key, with when it was added.
+- **108 `FileTypeWording`** (expand, 450): the File type's description becomes "A content
+  file" and its body's description is removed, as the type now ships. A site that
+  installed 0.84.0 had the first wording, which no longer matched the built-in type.
 
 ### Upgrade notes
 

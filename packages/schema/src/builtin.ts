@@ -115,7 +115,7 @@ export function builtInContentTypeSchema(def: BuiltInContentType): SchemaContent
           key: p.key,
           alias: p.alias,
           name: p.name,
-          description: p.description,
+          ...(p.description ? { description: p.description } : {}),
           type: dataTypeAliasOf(p.dataTypeKey),
           mandatory: false,
           variesByCulture: false,

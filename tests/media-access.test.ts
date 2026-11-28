@@ -1143,6 +1143,7 @@ describe(`the migration (${dialectUnderTest})`, () => {
       'AddMemberManager',
       'AddSharedLinks',
       'AddWorkspaceGroups',
+      'FileTypeWording',
     ])
     const found = await new MediaAccessRepository(db).byUrl(photo.src)
     expect(found?.key).toBe(photo.key)

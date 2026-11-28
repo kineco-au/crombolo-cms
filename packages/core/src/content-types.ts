@@ -188,7 +188,8 @@ export interface SystemPropertyModel {
   key: string
   alias: string
   name: string
-  description: string
+  /** None is null, as a property with no description is stored. */
+  description: string | null
   dataTypeKey: string
 }
 
@@ -408,7 +409,7 @@ export const FILE_PROPERTIES: readonly SystemPropertyModel[] = [
     key: FILE_BODY_PROPERTY_KEY,
     alias: FILE_BODY_ALIAS,
     name: 'Body',
-    description: '',
+    description: null,
     dataTypeKey: FILE_BODY_DATA_TYPE_KEY,
   },
 ]

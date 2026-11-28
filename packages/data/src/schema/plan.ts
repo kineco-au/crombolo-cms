@@ -50,6 +50,7 @@ import { environmentValuesMigration } from './environment-values.ts'
 import { exchangeActorMigration } from './exchange-actor.ts'
 import { extensionActivityMigration } from './extension-activity.ts'
 import { extensionSettingsMigration } from './extension-settings.ts'
+import { fileTypeWordingMigration } from './file-type-wording.ts'
 import { formLibraryMigration } from './form-library.ts'
 import { formPermissionPrefixMigration } from './form-permission-prefix.ts'
 import { formPermissionsMigration } from './form-permissions.ts'
@@ -229,4 +230,5 @@ export const cromboloPlan = new MigrationPlan([
   memberManagerMigration,
   sharedLinksMigration,
   workspaceGroupsMigration,
+  fileTypeWordingMigration,
 ])

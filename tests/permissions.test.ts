@@ -222,6 +222,7 @@ describe('the media verbs (story 088)', () => {
       'AddMemberManager',
       'AddSharedLinks',
       'AddWorkspaceGroups',
+      'FileTypeWording',
     ])
     const held = async (key: string) =>
       (

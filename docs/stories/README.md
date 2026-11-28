@@ -400,7 +400,7 @@ requests, only server-side and build-time front ends can call it.
 | `371` | Pages served as Markdown | could | M | abandoned | superseded by 450 |
 | `449` | A site's public files edited in the back office | could | M | abandoned | superseded by 450 |
 | `450` | A content item served as a file | should | L | done | 284, 377, 381 |
-| `452` | Tailwind on every site | should | L | in progress | 260, 337 |
+| `452` | Tailwind on every site | should | L | done | 260, 337 |
 
 ### Epic P — The command line
 
