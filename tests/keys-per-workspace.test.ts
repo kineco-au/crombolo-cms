@@ -19,6 +19,10 @@ afterEach(async () => {
 
 /** Each file's raw queries by key, and why each answers the right row once keys repeat. */
 const REVIEWED: Record<string, { count: number; why: string }> = {
+  'packages/data/src/schema/file-type-wording.ts': {
+    count: 2,
+    why: 'the File type and its body: every copy, which ships with the same wording',
+  },
   'packages/content/src/media-operations.ts': {
     count: 1,
     why: 'a media type, never workspace-made',

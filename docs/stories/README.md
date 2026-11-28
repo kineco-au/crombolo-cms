@@ -603,3 +603,4 @@ it.
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |
 | `447` | Shared answers the workspace routes | should | M | done | 379, 401, 408, 446 |
 | `451` | A workspace shared with user groups | should | M | done | 384, 386 |
+| `454` | Extensions in a workspace | should | XL | backlog | 311, 312, 323, 378, 384 |

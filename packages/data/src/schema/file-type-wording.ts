@@ -17,17 +17,14 @@ export const fileTypeWordingMigration: Migration = {
   kind: 'expand',
   release: '0.85.0',
   async up(db: Db) {
-    const node = await db.q
-      .selectFrom('node')
-      .select('id')
-      .where('unique_id', '=', SYSTEM_CONTENT_TYPE_KEYS.File)
-      .executeTakeFirst()
-    if (node)
-      await db.q
-        .updateTable('content_type')
-        .set({ description: 'A content file' })
-        .where('node_id', '=', node.id)
-        .execute()
+    // Every copy of the type, Shared's and a workspace's: the wording is the same.
+    await db.q
+      .updateTable('content_type')
+      .set({ description: 'A content file' })
+      .where('node_id', 'in', (eb) =>
+        eb.selectFrom('node').select('id').where('unique_id', '=', SYSTEM_CONTENT_TYPE_KEYS.File),
+      )
+      .execute()
     await db.q
       .updateTable('property_type')
       .set({ description: null })
