@@ -249,28 +249,28 @@ describe('a Folder', () => {
   test('holds Files and Folders that answer at its name exactly; it answers nothing itself', async () => {
     const { make, folder, page, visit, h } = await site()
     await page('Home')
-    const docs = await folder('Docs v1.2')
+    const docs = await folder('Docs-V1')
     expect(docs.response.status, await docs.response.clone().text()).toBe(201)
     const guide = await make('agents.md', '# For agents', { parent: docs.key })
     expect(guide.response.status, await guide.response.clone().text()).toBe(201)
     const deeper = await folder('api', { parent: docs.key })
     expect(deeper.response.status, await deeper.response.clone().text()).toBe(201)
     await make('openapi.json', '{"openapi":"3.1.0"}', { parent: deeper.key })
-    const served = await visit('/Docs%20v1.2/agents.md')
+    const served = await visit('/Docs-V1/agents.md')
     expect(served.status).toBe(200)
     expect(served.headers.get('content-type')).toBe('text/markdown; charset=utf-8')
     expect(await served.text()).toBe('# For agents')
-    expect(await (await visit('/Docs%20v1.2/api/openapi.json')).text()).toBe('{"openapi":"3.1.0"}')
+    expect(await (await visit('/Docs-V1/api/openapi.json')).text()).toBe('{"openapi":"3.1.0"}')
     // Its name is kept exactly, never made a slug.
     expect((await visit('/docs-v1-2/agents.md')).status).toBe(404)
     expect((await visit('/Docs%20v1.2')).status).toBe(404)
-    expect((await visit('/Docs%20v1.2/api')).status).toBe(404)
+    expect((await visit('/Docs-V1/api')).status).toBe(404)
     // The first page is still the home page, a Folder at the root never is.
     expect(await (await visit('/')).text()).toContain('The page')
     const urls = await h.json<Array<{ urlInfos: Array<{ url: string }> }>>(
       `${V1}/document/urls?id=${guide.key}`,
     )
-    expect(urls[0]?.urlInfos[0]?.url).toBe('/Docs%20v1.2/agents.md')
+    expect(urls[0]?.urlInfos[0]?.url).toBe('/Docs-V1/agents.md')
     // Out of menus and the sitemap.
     const cache = h.server.cache
     const shown = (await cache.navigation(null)).root().find((c) => c.key === docs.key)
@@ -297,12 +297,15 @@ describe('a Folder', () => {
     })
     expect(refused.status).toBe(400)
     expect(await problemOf(refused)).toContain('Only a File or a Folder can go inside a Folder')
+    // Letters, digits and hyphens only (or .well-known): no spaces, dots or anything else.
     for (const [name, said] of [
-      ['a/b', '/ ? #'],
-      ['what?', '/ ? #'],
-      ['.hidden', 'dot'],
-      [' spaced', 'space'],
-      ['..', "can't be named"],
+      ['a/b', 'letters, digits and hyphens'],
+      ['what?', 'letters, digits and hyphens'],
+      ['.hidden', 'letters, digits and hyphens'],
+      [' spaced', 'letters, digits and hyphens'],
+      ['two words', 'letters, digits and hyphens'],
+      ['v1.2', 'letters, digits and hyphens'],
+      ['..', 'letters, digits and hyphens'],
     ] as const) {
       const bad = await folder(name, { publish: false })
       expect(bad.response.status, name).toBe(400)
@@ -312,15 +315,18 @@ describe('a Folder', () => {
     }
     const wellKnown = await folder('.well-known')
     expect(wellKnown.response.status).toBe(201)
-    expect((await folder('.inner', { parent: wellKnown.key })).response.status).toBe(201)
-    expect((await folder('v1.exe', { publish: false })).response.status).toBe(201)
+    expect((await folder('.inner', { parent: wellKnown.key })).response.status).toBe(400)
+    expect((await folder('v1.exe', { publish: false })).response.status).toBe(400)
+    expect((await folder('release-2-notes', { publish: false })).response.status).toBe(201)
     // Two items at one address, whichever is a Folder.
-    await make('notes.txt', 'x')
-    const clash = await folder('Notes.txt', { publish: false })
+    await make('notes', undefined)
+    const clash = await folder('Notes', { publish: false })
     expect(clash.response.status).toBe(400)
-    expect(await problemOf(clash.response)).toContain('"notes.txt"')
+    expect(await problemOf(clash.response)).toContain('"notes"')
     expect(nameProblem('docs', null, { folder: true })).toBeUndefined()
     expect(nameProblem('a#b', null, { folder: true })).toContain("A Folder's name")
+    expect(nameProblem('docs v2', null, { folder: true })).toContain('no spaces or dots')
+    expect(nameProblem('.well-known', null, { folder: true })).toBeUndefined()
   })
 
   test('beside a folder File from before it, which still holds and serves its Files', async () => {

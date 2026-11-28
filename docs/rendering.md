@@ -2550,8 +2550,8 @@ Whoever may create content under a page may make one.
 **The Folder type** is built in too (`fileFolder`, "Folder"), with no fields. It
 is offered right after File wherever File is, and may go wherever a File may. It
 holds Files and Folders: its name is a segment of their addresses, exact and
-never a slug, under the same name rules as a File's except that any ending is
-allowed (`v1.2` is a Folder's name). It answers nothing at its own address, has
+never a slug. A Folder's name is letters, digits and hyphens only, with no spaces
+or dots, except `.well-known`, for the files the web expects there. It answers nothing at its own address, has
 the folder icon in the tree, and is never in a menu built with `visibleOnly`, nor
 in the sitemap. The Delivery API lists it as any item, with no `body`.
 

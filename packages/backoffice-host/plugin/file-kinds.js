@@ -92,11 +92,15 @@ export const isUpload = (value) =>
 
 /**
  * Why a File can't have this name, or undefined when it can. A Folder's name
- * (`{ folder: true }`) is held to the same rules, but may have any ending. Pure.
+ * (`{ folder: true }`) is letters, digits and hyphens only, or `.well-known`. Pure.
  */
 export function nameProblem(name, parentName, { folder = false } = {}) {
   const noun = folder ? 'Folder' : 'File'
   if (typeof name !== 'string' || name.length === 0) return `A ${noun} needs a name.`
+  if (folder)
+    return name === WELL_KNOWN || /^[A-Za-z0-9-]+$/.test(name)
+      ? undefined
+      : `A Folder's name can only have letters, digits and hyphens in it, no spaces or dots (or be ${WELL_KNOWN}).`
   if (name !== name.trim()) return `A ${noun}'s name can't start or end with a space.`
   if (/[/?#\\]/.test(name))
     return `A ${noun}'s name is one part of its address, so it can't have / ? # or \\ in it.`
@@ -106,7 +110,6 @@ export function nameProblem(name, parentName, { folder = false } = {}) {
   if (name === '.' || name === '..') return `A ${noun} can't be named ${name}.`
   if (name.startsWith('.') && name !== WELL_KNOWN && parentName !== WELL_KNOWN)
     return `A ${noun}'s name can't start with a dot, except inside ${WELL_KNOWN}.`
-  if (folder) return undefined
   const extension = extensionOf(name)
   if (extension && !kindOf(name))
     return `${extension} isn't a kind of File this site serves. Use one of: ${FILE_EXTENSIONS.join(', ')}.`
