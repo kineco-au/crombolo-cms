@@ -8,6 +8,7 @@
 import { DocumentTypeService } from '@umbraco-cms/backoffice/external/backend-api'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal'
+import { actionButtons } from './dialog-actions.js'
 import { componentName, filterTree, templateTree, withAllowed } from './template-picker-model.js'
 
 const base = () =>
@@ -205,7 +206,7 @@ export default class CromboloTemplatePickerModalElement extends UmbModalBaseElem
         }
         ${this._problem ? html`<p role="alert">${this._problem}</p>` : nothing}
       </uui-box>
-      <uui-button slot="actions" label="Close" @click=${() => this._rejectModal()}>Close</uui-button>
+      ${actionButtons({ kind: 'secondary', label: 'Close', onClick: () => this._rejectModal() })}
     </umb-body-layout>`
   }
 

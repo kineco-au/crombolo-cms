@@ -8,6 +8,7 @@ import { PartialViewService } from '@umbraco-cms/backoffice/external/backend-api
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement, umbOpenModal } from '@umbraco-cms/backoffice/modal'
 import { UMB_PARTIAL_VIEW_PICKER_MODAL } from '@umbraco-cms/backoffice/partial-view'
+import { actionButtons } from './dialog-actions.js'
 import { componentName, partFileName } from './view-parts.js'
 
 export default class CromboloPersonalisedPartModalElement extends UmbModalBaseElement {
@@ -81,18 +82,10 @@ export default class CromboloPersonalisedPartModalElement extends UmbModalBaseEl
           }}></uui-input>
         ${this._message ? html`<p class="problem" role="alert">${this._message}</p>` : nothing}
       </uui-box>
-      <uui-button slot="actions" label="Cancel" @click=${() => this._rejectModal()}
-        >Cancel</uui-button
-      >
-      <uui-button
-        slot="actions"
-        look="primary"
-        color="positive"
-        label="Make it"
-        ?disabled=${this._busy}
-        @click=${() => this.#make()}
-        >Make it</uui-button
-      >
+      ${actionButtons(
+        { kind: 'secondary', label: 'Cancel', onClick: () => this._rejectModal() },
+        { kind: 'primary', label: 'Make it', disabled: this._busy, onClick: () => this.#make() },
+      )}
     </umb-body-layout>`
   }
 

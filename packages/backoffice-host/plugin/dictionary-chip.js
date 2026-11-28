@@ -4,6 +4,7 @@
  * in each language, which someone with Translation can change.
  */
 import { css, html, LitElement, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { actionButtons } from './dialog-actions.js'
 import {
   dictionaryWord,
   dictionaryWords,
@@ -139,20 +140,19 @@ export class CromboloDictionaryChipElement extends LitElement {
       }}>
         <uui-dialog-layout headline=${this.name}>
         ${this.#overlay()}
-          <uui-button slot="actions" look="secondary" label="Close" @click=${this.#close}>Close</uui-button>
-          ${
-            this._item?.mayChange
-              ? html`<uui-button
-                  slot="actions"
-                  look="primary"
-                  color="positive"
-                  label="Save"
-                  .state=${this._saving ? 'waiting' : undefined}
-                  @click=${this.#save}
-                  >Save</uui-button
-                >`
-              : nothing
-          }
+          ${actionButtons(
+            {
+              kind: 'secondary',
+              label: this._item?.mayChange ? 'Cancel' : 'Close',
+              onClick: this.#close,
+            },
+            this._item?.mayChange && {
+              kind: 'primary',
+              label: 'Save',
+              state: this._saving ? 'waiting' : undefined,
+              onClick: this.#save,
+            },
+          )}
         </uui-dialog-layout>
       </dialog>`
   }

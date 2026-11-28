@@ -4,6 +4,7 @@
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal'
+import { actionButtons } from './dialog-actions.js'
 import { readViewAs, reloadBackOffice, startViewAs } from './view-as.js'
 import { PANEL_NOTE, startButton } from './view-as-words.js'
 
@@ -77,18 +78,15 @@ export default class CromboloViewAsModalElement extends UmbModalBaseElement {
             : html`<uui-loader></uui-loader>`
       }
       ${this._message ? html`<p class="problem" role="alert">${this._message}</p>` : nothing}
-      <uui-button slot="actions" label="Cancel" @click=${() => this._rejectModal()}
-        >Cancel</uui-button
-      >
-      <uui-button
-        slot="actions"
-        look="primary"
-        color="positive"
-        label=${button.label}
-        ?disabled=${this._busy || !button.enabled}
-        @click=${() => this.#start()}
-        >${button.label}</uui-button
-      >
+      ${actionButtons(
+        { kind: 'secondary', label: 'Cancel', onClick: () => this._rejectModal() },
+        {
+          kind: 'primary',
+          label: button.label,
+          disabled: this._busy || !button.enabled,
+          onClick: () => this.#start(),
+        },
+      )}
     </umb-body-layout>`
   }
 

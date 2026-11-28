@@ -9,6 +9,7 @@
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { ask } from './ask.js'
+import { actionElement } from './dialog-actions.js'
 import { pageDialog } from './dialog-styles.js'
 import {
   chooseWorkspace,
@@ -344,31 +345,24 @@ export function newWorkspace() {
     el('label', {}, el('span', {}, 'Description'), description),
     el('div', { class: 'field' }, el('span', {}, 'Shared with'), audience),
     status,
-    el(
-      'button',
-      {
-        type: 'button',
-        slot: 'actions',
-        'data-primary': true,
-        on: {
-          click: async () => {
-            try {
-              const opened = await workspacesApi.open(name.value.trim(), {
-                description: description.value.trim(),
-                visibility: draft.visibility,
-              })
-              for (const key of draft.groups) await workspacesApi.shareGroup(opened.key, key)
-              for (const key of draft.people) await workspacesApi.share(opened.key, key)
-              box.close()
-              enter(opened)
-            } catch (error) {
-              status.textContent = error.message
-            }
-          },
-        },
+    actionElement({
+      kind: 'primary',
+      label: 'Create',
+      onClick: async () => {
+        try {
+          const opened = await workspacesApi.open(name.value.trim(), {
+            description: description.value.trim(),
+            visibility: draft.visibility,
+          })
+          for (const key of draft.groups) await workspacesApi.shareGroup(opened.key, key)
+          for (const key of draft.people) await workspacesApi.share(opened.key, key)
+          box.close()
+          enter(opened)
+        } catch (error) {
+          status.textContent = error.message
+        }
       },
-      'Create',
-    ),
+    }),
   )
   name.focus()
 }

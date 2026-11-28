@@ -7,6 +7,7 @@
 import { UmbCurrentUserRepository } from '@umbraco-cms/backoffice/current-user'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { actionButtons } from './dialog-actions.js'
 
 const endpoint = (providerName) =>
   `${(document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(/\/$/, '')}/management/api/v1/user/current/2fa/${encodeURIComponent(providerName)}`
@@ -89,7 +90,7 @@ export default class CromboloTwoFactorSetupElement extends UmbLitElement {
     if (!this._setup)
       return this._error
         ? html`<p class="error">${this._error}</p>
-            <div slot="actions"><uui-button label="Close" @click=${() => this.close()}></uui-button></div>`
+            ${actionButtons({ kind: 'secondary', label: 'Close', onClick: () => this.close() })}`
         : html`<uui-loader-bar></uui-loader-bar>`
     return html`<form id="setup" @submit=${this.#submit} novalidate>
         <p>Scan this code with your authenticator app, then enter the six-digit code it shows.</p>
@@ -101,21 +102,27 @@ export default class CromboloTwoFactorSetupElement extends UmbLitElement {
         </uui-form-layout-item>
         ${this._error ? html`<p class="error">${this._error}</p>` : nothing}
       </form>
-      <div slot="actions">
-        <uui-button label="Cancel" @click=${() => this.close()}></uui-button>
-        <uui-button type="submit" form="setup" look="primary" color="positive" label="Turn on" .state=${this._busy ? 'waiting' : undefined}
-          @click=${() => this.renderRoot.querySelector('#setup')?.requestSubmit()}></uui-button>
-      </div>`
+      ${actionButtons(
+        { kind: 'secondary', label: 'Cancel', onClick: () => this.close() },
+        {
+          kind: 'primary',
+          label: 'Turn on',
+          type: 'submit',
+          form: 'setup',
+          state: this._busy ? 'waiting' : undefined,
+          onClick: () => this.renderRoot.querySelector('#setup')?.requestSubmit(),
+        },
+      )}`
   }
 
   #renderCodes() {
     return html`<p>Two-factor sign-in is on. Keep these recovery codes somewhere safe: each one
         signs you in once if you lose your phone. They will not be shown again.</p>
       <ul class="codes">${this._codes.map((code) => html`<li><code>${code}</code></li>`)}</ul>
-      <div slot="actions">
-        <uui-button label="Copy codes" @click=${this.#copy}></uui-button>
-        <uui-button look="primary" label="Done" @click=${this.#done}></uui-button>
-      </div>`
+      ${actionButtons(
+        { kind: 'secondary', label: 'Copy codes', onClick: this.#copy },
+        { kind: 'primary', label: 'Done', onClick: this.#done },
+      )}`
   }
 
   static styles = css`

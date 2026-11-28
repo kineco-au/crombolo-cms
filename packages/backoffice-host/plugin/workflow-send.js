@@ -12,6 +12,7 @@ import {
   UmbWorkspaceActionBase,
   UmbWorkspaceActionMenuItemBase,
 } from '@umbraco-cms/backoffice/workspace'
+import { actionButtons } from './dialog-actions.js'
 import { pageApproval, sendForApproval } from './workflow-client.js'
 import { maySend, scheduleFor } from './workflow-send-model.js'
 
@@ -170,19 +171,19 @@ class CromboloSendForApprovalDialogElement extends LitElement {
             </div>`
           : nothing
       }
-        <uui-button slot="actions" look="secondary" label="Cancel" @click=${() => this.#done(undefined)}>Cancel</uui-button>
-        <uui-button
-          slot="actions"
-          look="primary"
-          label=${title}
-          @click=${() =>
-            this.#done({
-              comment: this._comment,
-              publishAt: this._publishAt,
-              unpublishAt: this._unpublishAt,
-            })}
-          >${title}</uui-button
-        >
+        ${actionButtons(
+          { kind: 'secondary', label: 'Cancel', onClick: () => this.#done(undefined) },
+          {
+            kind: 'primary',
+            label: title,
+            onClick: () =>
+              this.#done({
+                comment: this._comment,
+                publishAt: this._publishAt,
+                unpublishAt: this._unpublishAt,
+              }),
+          },
+        )}
       </uui-dialog-layout>
     </dialog>`
   }

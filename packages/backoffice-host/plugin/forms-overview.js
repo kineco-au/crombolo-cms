@@ -21,6 +21,7 @@ import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification'
 import { readOnlyWords } from './definition-tree-model.js'
+import { actionButtons } from './dialog-actions.js'
 import {
   deleteForm,
   formsTree,
@@ -1131,8 +1132,15 @@ export default class CromboloFormsOverviewElement extends UmbLitElement {
           ? html`<span slot="footer-info" class="not-saved">Not saved: ${this._problems.length} problem(s), listed above</span>`
           : nothing
       }
-      <uui-button slot="actions" look="secondary" label="Back to the list" @click=${leave}>Back to the list</uui-button>
-      ${this._because ? nothing : html`<uui-button slot="actions" look="primary" color="positive" label="Save" ?disabled=${this._busy} @click=${() => this.#save()}>Save</uui-button>`}
+      ${actionButtons(
+        { kind: 'secondary', label: 'Back to the list', onClick: leave },
+        !this._because && {
+          kind: 'primary',
+          label: 'Save',
+          disabled: this._busy,
+          onClick: () => this.#save(),
+        },
+      )}
     </umb-body-layout>`
   }
 

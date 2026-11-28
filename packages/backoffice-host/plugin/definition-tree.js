@@ -8,6 +8,7 @@ import { css, html, nothing, repeat } from '@umbraco-cms/backoffice/external/lit
 import './item-marks.js'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { definitionTree, readOnlyWords } from './definition-tree-model.js'
+import { actionButtons } from './dialog-actions.js'
 import { formsTree, moveForm, sendFormFolder } from './forms-client.js'
 import { listWorkflows, moveWorkflow, sendWorkflowFolder } from './workflow-client.js'
 
@@ -166,10 +167,20 @@ export default class CromboloDefinitionTreeElement extends UmbLitElement {
         .value=${this._asking.verb === 'rename' ? this._asking.path.split('/').pop() : ''}
         autofocus
       />
-      <button type="submit">${this._asking.verb === 'rename' ? 'Rename' : 'Add'}</button>
-      <button type="button" @click=${() => {
-        this._asking = undefined
-      }}>Cancel</button>
+      ${actionButtons(
+        {
+          kind: 'secondary',
+          label: 'Cancel',
+          onClick: () => {
+            this._asking = undefined
+          },
+        },
+        {
+          kind: 'primary',
+          label: this._asking.verb === 'rename' ? 'Rename' : 'Add',
+          onClick: (event) => event.currentTarget.closest('form')?.requestSubmit(),
+        },
+      )}
     </form>`
   }
 

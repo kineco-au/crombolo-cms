@@ -7,13 +7,14 @@
  * registration (docs/bundles.md, "Created packages").
  */
 import { UmbContextBase } from '@umbraco-cms/backoffice/class-api'
-import { css, html, ifDefined, nothing } from '@umbraco-cms/backoffice/external/lit'
+import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement, umbFocus } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification'
 import { UmbTextStyles } from '@umbraco-cms/backoffice/style'
 import { UMB_WORKSPACE_CONTEXT } from '@umbraco-cms/backoffice/workspace'
 import { CromboloBundleEditorContext } from './bundle-editor-context.js'
 import { BUNDLE_EDITOR_ALIAS } from './bundle-editor-routing.js'
+import { actionButtons } from './dialog-actions.js'
 
 /** The workspace this is, as the views' conditions and Umbraco's workspace editor read it. */
 class CromboloBundleWorkspaceContext extends UmbContextBase {
@@ -98,22 +99,19 @@ export default class CromboloBundleEditorElement extends UmbLitElement {
             </div>`
             : nothing
         }
-        <div slot="actions">
-          ${
-            this._definition?.unique
-              ? html`<uui-button
-                look="secondary"
-                label="Download"
-                @click=${() => this.#context.download()}></uui-button>`
-              : nothing
-          }
-          <uui-button
-            color="positive"
-            look="primary"
-            state=${ifDefined(this._submitState)}
-            label=${this._definition?.unique ? 'Save' : 'Create'}
-            @click=${this.#save}></uui-button>
-        </div>
+        ${actionButtons(
+          this._definition?.unique && {
+            kind: 'secondary',
+            label: 'Download',
+            onClick: () => this.#context.download(),
+          },
+          {
+            kind: 'primary',
+            label: this._definition?.unique ? 'Save' : 'Create',
+            state: this._submitState,
+            onClick: this.#save,
+          },
+        )}
       </umb-workspace-editor>
     `
   }

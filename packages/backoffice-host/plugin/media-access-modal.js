@@ -5,6 +5,7 @@
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal'
+import { actionButtons } from './dialog-actions.js'
 import '@umbraco-cms/backoffice/member'
 import { readMediaAccess, saveMediaAccess } from './media-access.js'
 import {
@@ -211,18 +212,15 @@ export default class CromboloMediaAccessModalElement extends UmbModalBaseElement
             : html`<uui-loader></uui-loader>`
       }
       ${this._message ? html`<p class="problem" role="alert">${this._message}</p>` : nothing}
-      <uui-button slot="actions" label="Cancel" @click=${() => this._rejectModal()}
-        >Cancel</uui-button
-      >
-      <uui-button
-        slot="actions"
-        look="primary"
-        color="positive"
-        label="Save"
-        ?disabled=${this._busy || !this._form}
-        @click=${() => this.#save()}
-        >Save</uui-button
-      >
+      ${actionButtons(
+        { kind: 'secondary', label: 'Cancel', onClick: () => this._rejectModal() },
+        {
+          kind: 'primary',
+          label: 'Save',
+          disabled: this._busy || !this._form,
+          onClick: () => this.#save(),
+        },
+      )}
     </umb-body-layout>`
   }
 

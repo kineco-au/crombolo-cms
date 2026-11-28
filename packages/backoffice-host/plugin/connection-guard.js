@@ -5,6 +5,7 @@
  * writes are not resent (`connection-guard-model.js`).
  */
 import { connectionGuardedFetch } from './connection-guard-model.js'
+import { actionElement } from './dialog-actions.js'
 import { useDialogStyles } from './dialog-styles.js'
 
 /** Seconds between tries while the dialog is open. */
@@ -55,16 +56,16 @@ export function createConnection(send) {
   }
 
   const attempt = async () => {
-    const button = box?.querySelector('button')
+    const button = box?.querySelector('uui-button')
     const note = box?.querySelector('.next')
     if (button) {
       button.disabled = true
-      button.textContent = WORDS.trying
+      button.setAttribute('label', WORDS.trying)
     }
     if (await answering()) return close()
     if (button) {
       button.disabled = false
-      button.textContent = WORDS.retry
+      button.setAttribute('label', WORDS.retry)
     }
     countdown = RETRY_SECONDS
     if (note) note.textContent = WORDS.next(countdown)
@@ -84,12 +85,7 @@ export function createConnection(send) {
     const next = document.createElement('p')
     next.className = 'next'
     next.setAttribute('aria-live', 'polite')
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.slot = 'actions'
-    button.setAttribute('data-primary', '')
-    button.textContent = WORDS.retry
-    button.addEventListener('click', attempt)
+    const button = actionElement({ kind: 'primary', label: WORDS.retry, onClick: attempt })
     layout.append(body, next, button)
     box.append(layout)
     // Only the server answering closes it.
@@ -99,7 +95,7 @@ export function createConnection(send) {
     countdown = RETRY_SECONDS
     box.querySelector('.next').textContent = WORDS.next(countdown)
     timer = setInterval(() => {
-      if (!box || box.querySelector('button')?.disabled) return
+      if (!box || box.querySelector('uui-button')?.disabled) return
       countdown -= 1
       if (countdown <= 0) void attempt()
       else box.querySelector('.next').textContent = WORDS.next(countdown)

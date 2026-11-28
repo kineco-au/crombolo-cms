@@ -17,6 +17,7 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { UMB_NOTIFICATION_CONTEXT } from '@umbraco-cms/backoffice/notification'
 import { approvalsChanged } from './approvals-active.js'
 import { readOnlyWords } from './definition-tree-model.js'
+import { actionButtons } from './dialog-actions.js'
 import {
   deleteWorkflow,
   listWorkflows,
@@ -562,12 +563,10 @@ export default class CromboloWorkflowDesignerElement extends UmbLitElement {
           ? html`<span slot="footer-info" class="not-saved">Not saved: ${this._problems.length} problem(s), listed above</span>`
           : nothing
       }
-      <uui-button slot="actions" look="secondary" label="Back to the list" @click=${leave}>Back to the list</uui-button>
-      ${
-        editable
-          ? html`<uui-button slot="actions" look="primary" color="positive" label="Save" @click=${() => this.#save()}>Save</uui-button>`
-          : nothing
-      }
+      ${actionButtons(
+        { kind: 'secondary', label: 'Back to the list', onClick: leave },
+        editable && { kind: 'primary', label: 'Save', onClick: () => this.#save() },
+      )}
     </umb-body-layout>`
   }
 

@@ -11,6 +11,7 @@ import {
 } from '@umbraco-cms/backoffice/external/backend-api'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbModalBaseElement } from '@umbraco-cms/backoffice/modal'
+import { actionButtons } from './dialog-actions.js'
 import { changeCultures, changesIn, versionChanges } from './page-history-model.js'
 
 const when = (iso) =>
@@ -195,7 +196,7 @@ export default class CromboloPageHistoryModalElement extends UmbModalBaseElement
         ${this._problem ? html`<p role="alert">${this._problem}</p>` : nothing}
         ${this._open === undefined ? this.#list() : this.#detail()}
       </uui-box>
-      <uui-button slot="actions" label="Close" @click=${() => this._rejectModal()}>Close</uui-button>
+      ${actionButtons({ kind: 'secondary', label: 'Close', onClick: () => this._rejectModal() })}
     </umb-body-layout>`
   }
 

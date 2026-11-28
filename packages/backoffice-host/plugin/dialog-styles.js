@@ -2,6 +2,8 @@
  * The look of the dialogs this plugin opens on the page itself, outside any element's
  * shadow root, so they match the back office's own: its type, colours and buttons.
  */
+import { actionElement } from './dialog-actions.js'
+
 const STYLE_ID = 'crombolo-dialog-styles'
 
 const CSS = `
@@ -41,10 +43,6 @@ dialog.crombolo-dialog button {
 }
 dialog.crombolo-dialog button:hover:not(:disabled) { border-color: var(--uui-color-interactive-emphasis, #3544b1); color: var(--uui-color-interactive-emphasis, #3544b1); }
 dialog.crombolo-dialog button:disabled { opacity: 0.5; cursor: default; }
-dialog.crombolo-dialog button[data-primary] {
-  border-color: transparent; background: var(--uui-color-positive, #0b8152); color: var(--uui-color-positive-contrast, #fff);
-}
-dialog.crombolo-dialog button[data-primary]:hover:not(:disabled) { background: var(--uui-color-positive-emphasis, #0a7148); color: var(--uui-color-positive-contrast, #fff); }
 dialog.crombolo-connection-dialog { width: min(28rem, calc(100vw - 2rem)); }
 dialog.crombolo-connection-dialog::backdrop { background: rgb(0 0 0 / 0.45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 dialog.crombolo-connection-dialog .next { font-size: 13px; }
@@ -68,8 +66,8 @@ export function useDialogStyles() {
 
 /**
  * A dialog on the page itself, titled and laid out as every other is, and opened. `parts`
- * are its content; one with `slot="actions"` joins its buttons, after the one that closes
- * it, `closeLabel`.
+ * are its content; an `actionElement` among them joins its buttons, after the one that
+ * closes it, `closeLabel`.
  */
 export function pageDialog(title, parts, className = '', closeLabel = 'Close') {
   useDialogStyles()
@@ -78,11 +76,7 @@ export function pageDialog(title, parts, className = '', closeLabel = 'Close') {
   box.setAttribute('aria-label', title)
   const layout = document.createElement('uui-dialog-layout')
   layout.headline = title
-  const close = document.createElement('button')
-  close.type = 'button'
-  close.slot = 'actions'
-  close.textContent = closeLabel
-  close.addEventListener('click', () => box.close())
+  const close = actionElement({ kind: 'secondary', label: closeLabel, onClick: () => box.close() })
   layout.append(close, ...parts)
   box.append(layout)
   box.addEventListener('close', () => box.remove())

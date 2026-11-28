@@ -8,6 +8,7 @@ import { DocumentService } from '@umbraco-cms/backoffice/external/backend-api'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { ask } from './ask.js'
+import { actionButtons } from './dialog-actions.js'
 import {
   chooseWorkspace,
   colourOf,
@@ -408,8 +409,14 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
               )
         }
       </div></section>
-      <uui-button slot="actions" look="secondary" label="See it in History" href=${new URL('section/settings/dashboard/changes', document.baseURI).pathname}>See it in History</uui-button>
-      <uui-button slot="actions" look="primary" label="Back to Shared" @click=${() => showWorkspace('shared')}>Back to Shared</uui-button>`
+      ${actionButtons(
+        {
+          kind: 'secondary',
+          label: 'See it in History',
+          href: new URL('section/settings/dashboard/changes', document.baseURI).pathname,
+        },
+        { kind: 'primary', label: 'Back to Shared', onClick: () => showWorkspace('shared') },
+      )}`
   }
 
   async #save(change, saved = 'Saved.') {
@@ -578,7 +585,11 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       ${
         inShared
           ? html`<span slot="footer-info" class="hint">This tab is in Shared.</span>`
-          : html`<uui-button slot="actions" look="primary" label="Switch to Shared" @click=${() => this.#enter(null)}>Switch to Shared</uui-button>`
+          : actionButtons({
+              kind: 'primary',
+              label: 'Switch to Shared',
+              onClick: () => this.#enter(null),
+            })
       }`
   }
 
@@ -731,30 +742,28 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
         }
       </div></section>
       <span slot="footer-info" class="hint" role="status">${this._status || (inIt ? 'This tab is in this workspace.' : '')}</span>
-      <uui-button
-        slot="actions"
-        look="secondary"
-        color="danger"
-        label="Delete"
-        title=${remove.why ?? `Delete ${view.name}`}
-        ?disabled=${!remove.enabled}
-        @click=${() => this.#delete(view)}
-        >Delete</uui-button
-      >
-      <uui-button
-        slot="actions"
-        look="secondary"
-        label="Merge into Shared"
-        title=${merge.why ?? 'Merge into Shared'}
-        ?disabled=${!merge.enabled}
-        @click=${() => showWorkspace(view.key, 'merge')}
-        >Merge into Shared</uui-button
-      >
-      ${
-        !inIt && view.member
-          ? html`<uui-button slot="actions" look="primary" label="Switch to this workspace" @click=${() => this.#enter(view)}>Switch to this workspace</uui-button>`
-          : nothing
-      }`
+      ${actionButtons(
+        {
+          kind: 'danger',
+          label: 'Delete',
+          title: remove.why ?? `Delete ${view.name}`,
+          disabled: !remove.enabled,
+          onClick: () => this.#delete(view),
+        },
+        {
+          kind: 'secondary',
+          label: 'Merge into Shared',
+          title: merge.why ?? 'Merge into Shared',
+          disabled: !merge.enabled,
+          onClick: () => showWorkspace(view.key, 'merge'),
+        },
+        !inIt &&
+          view.member && {
+            kind: 'primary',
+            label: 'Switch to this workspace',
+            onClick: () => this.#enter(view),
+          },
+      )}`
   }
 
   /** The merge, or with `readOnly` every change it would make, with nothing to settle or accept. */
@@ -914,17 +923,33 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       ${
         readOnly
           ? html`${says ? html`<span slot="footer-info" class="hint" role="status">${says}</span>` : nothing}
-              <uui-button slot="actions" look="secondary" label="Back" @click=${() => showWorkspace(view.key)}>Back</uui-button>
-              ${
+              ${actionButtons(
+                { kind: 'secondary', label: 'Back', onClick: () => showWorkspace(view.key) },
                 ready
-                  ? html`<uui-button slot="actions" look="primary" color="positive" label="Merge into Shared" ?disabled=${done} @click=${() => this.#mergeNow(view)}>Merge into Shared</uui-button>`
-                  : html`<uui-button slot="actions" look="primary" color="positive" label="Merge into Shared…" @click=${() => showWorkspace(view.key, 'merge')}>Merge into Shared…</uui-button>`
-              }`
+                  ? {
+                      kind: 'primary',
+                      label: 'Merge into Shared',
+                      disabled: done,
+                      onClick: () => this.#mergeNow(view),
+                    }
+                  : {
+                      kind: 'primary',
+                      label: 'Merge into Shared…',
+                      onClick: () => showWorkspace(view.key, 'merge'),
+                    },
+              )}`
           : html`<span slot="footer-info" class="hint" role="status">
                 ${says || (left.length > 0 ? `${left.join(' and ')} first.` : 'Once merged, the workspace is closed and its changes are in Shared.')}
               </span>
-              <uui-button slot="actions" look="secondary" label="Cancel" @click=${() => showWorkspace(view.key)}>Cancel</uui-button>
-              <uui-button slot="actions" look="primary" color="positive" label="Merge into Shared" ?disabled=${!ready} @click=${() => this.#mergeNow(view)}>Merge into Shared</uui-button>`
+              ${actionButtons(
+                { kind: 'secondary', label: 'Cancel', onClick: () => showWorkspace(view.key) },
+                {
+                  kind: 'primary',
+                  label: 'Merge into Shared',
+                  disabled: !ready,
+                  onClick: () => this.#mergeNow(view),
+                },
+              )}`
       }`
   }
 
