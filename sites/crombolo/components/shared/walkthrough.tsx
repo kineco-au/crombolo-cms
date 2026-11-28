@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 'use client'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { PROSE } from './styles.tsx'
 
 export interface WalkthroughCode {
   lang: string
@@ -113,6 +114,8 @@ function remember(option: string) {
   }
 }
 
+const STEP_BUTTON = 'cursor-pointer rounded-lg border px-4 py-3 text-left font-semibold'
+
 const LANGUAGES: Record<string, string> = { sh: 'Terminal', tsx: 'TypeScript', text: '' }
 
 function Code({ code }: { code: WalkthroughCode }) {
@@ -127,14 +130,18 @@ function Code({ code }: { code: WalkthroughCode }) {
     }
   }
   return (
-    <figure className="walk__code">
-      <figcaption>
+    <figure className="my-4 overflow-hidden rounded-lg bg-ink">
+      <figcaption className="flex items-center justify-between border-b border-white/10 py-1.5 pr-3 pl-5 font-mono text-xs text-arc">
         <span>{code.file ?? LANGUAGES[code.lang] ?? code.lang}</span>
-        <button type="button" onClick={copy}>
+        <button
+          type="button"
+          className="cursor-pointer rounded border border-white/30 px-2.5 py-0.5 hover:bg-white/10"
+          onClick={copy}
+        >
           {copied ? 'Copied' : 'Copy'}
         </button>
       </figcaption>
-      <pre>
+      <pre className="overflow-x-auto px-5 py-4 font-mono text-sm/relaxed text-arc">
         <code className={`language-${code.lang}`}>{code.text}</code>
       </pre>
     </figure>
@@ -188,14 +195,15 @@ export default function WalkthroughView({ walk }: { walk: Walkthrough; children?
   }
 
   return (
-    <div className="walk" ref={top}>
-      <div className="prose" dangerouslySetInnerHTML={{ __html: walk.intro }} />
+    <div ref={top}>
+      <div className={PROSE} dangerouslySetInnerHTML={{ __html: walk.intro }} />
       {walk.choice ? (
-        <fieldset className="walk__choice">
-          <legend>{walk.choice.name}</legend>
+        <fieldset className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-1">
+          <legend className="float-left mr-1 font-semibold">{walk.choice.name}</legend>
           {walk.choice.options.map((o) => (
-            <label key={o}>
+            <label key={o} className="inline-flex cursor-pointer items-center gap-1.5">
               <input
+                className="accent-terracotta-deep"
                 type="radio"
                 name="walk-choice"
                 value={o}
@@ -207,56 +215,80 @@ export default function WalkthroughView({ walk }: { walk: Walkthrough; children?
           ))}
         </fieldset>
       ) : null}
-      <ol className="walk__stages">
+      <ol className={`mb-6 flex flex-wrap gap-2 ${walk.choice ? 'mt-4' : 'mt-8'}`}>
         {walk.stages.map((s, i) => (
           <li key={s.id}>
             <button
               type="button"
+              className="group inline-flex cursor-pointer items-center gap-2 rounded-full border border-line bg-white py-1.5 pr-3.5 pl-1.5 font-semibold aria-[current=step]:border-terracotta aria-[current=step]:bg-arc"
               aria-current={i === current.stage ? 'step' : undefined}
               onClick={() => go(steps.findIndex((p) => p.stage === i))}
             >
-              <span className="walk__number">{i + 1}</span>
+              <span className="inline-grid size-6 place-items-center rounded-full bg-line text-sm group-aria-[current=step]:bg-terracotta group-aria-[current=step]:text-white">
+                {i + 1}
+              </span>
               {s.title}
             </button>
           </li>
         ))}
       </ol>
-      <section className={finish ? 'walk__step walk__step--finish' : 'walk__step'}>
-        <p className="walk__count">
+      <section
+        className={`rounded-xl border p-4 sm:p-6 ${finish ? 'border-terracotta bg-cream' : 'border-line bg-white'}`}
+      >
+        <p className="text-sm text-muted">
           {stage.title} · step {current.index + 1} of {current.of}
         </p>
-        <h3 id={current.step.id} ref={heading} tabIndex={-1}>
+        <h3
+          id={current.step.id}
+          ref={heading}
+          tabIndex={-1}
+          className="mt-1 mb-3 scroll-mt-24 text-2xl font-medium tracking-tight focus:outline-none"
+        >
           {current.step.title}
         </h3>
-        <div className="prose" dangerouslySetInnerHTML={{ __html: current.step.text }} />
+        <div className={PROSE} dangerouslySetInnerHTML={{ __html: current.step.text }} />
         {current.step.code.map((code) => (
           <Code key={`${current.step.id}:${code.file ?? ''}:${code.text}`} code={code} />
         ))}
         {current.step.see ? (
-          <div className="walk__see prose" dangerouslySetInnerHTML={{ __html: current.step.see }} />
+          <div
+            className={`${PROSE} mt-4 rounded-r-lg border-l-4 border-line bg-cream px-4 py-3`}
+            dangerouslySetInnerHTML={{ __html: current.step.see }}
+          />
         ) : null}
         {current.step.note ? (
           <div
-            className="walk__note prose"
+            className={`${PROSE} mt-4 rounded-r-lg border-l-4 border-terracotta bg-arc px-4 py-3`}
             role="note"
             dangerouslySetInnerHTML={{ __html: current.step.note }}
           />
         ) : null}
       </section>
-      <nav className="walk__nav" aria-label="Steps">
+      <nav
+        className="mt-6 flex flex-col-reverse gap-4 sm:flex-row sm:justify-between"
+        aria-label="Steps"
+      >
         {back ? (
-          <button type="button" className="walk__back" onClick={() => go(at - 1)}>
-            ← Back<span>{back.step.title}</span>
+          <button
+            type="button"
+            className={`${STEP_BUTTON} border-line bg-white`}
+            onClick={() => go(at - 1)}
+          >
+            ← Back<span className="block text-xs font-normal text-muted">{back.step.title}</span>
           </button>
         ) : (
           <span />
         )}
         {next ? (
-          <button type="button" className="walk__next" onClick={() => go(at + 1)}>
+          <button
+            type="button"
+            className={`${STEP_BUTTON} border-terracotta bg-terracotta-deep text-white sm:ml-auto sm:text-right`}
+            onClick={() => go(at + 1)}
+          >
             {next.stage === current.stage
               ? 'Next'
               : `Continue to ${walk.stages[next.stage]?.title}`}{' '}
-            →<span>{next.step.title}</span>
+            →<span className="block text-xs font-normal text-arc">{next.step.title}</span>
           </button>
         ) : null}
       </nav>

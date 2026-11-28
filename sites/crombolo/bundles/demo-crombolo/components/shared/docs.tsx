@@ -1,5 +1,6 @@
 import type { Child, Navigation, PageProps, PublishedContent } from '@crombolo/crombolo'
 import { Layout } from './layout.tsx'
+import { CONTAINER, LINK, SEARCH_BUTTON, SEARCH_FORM, SEARCH_INPUT } from './styles.tsx'
 
 const DOCS_PAGE = 'docsPage'
 
@@ -40,32 +41,46 @@ export function headingsOf(markup: string): Heading[] {
   }))
 }
 
+const NAV_LINK =
+  'block rounded-md px-2 py-1.5 text-terracotta-text hover:bg-arc aria-[current=page]:bg-arc aria-[current=page]:font-semibold aria-[current=page]:text-ink'
+
 function Tree({
   page,
   nav,
   model,
   open,
+  nested,
 }: {
   page: PublishedContent
   nav: Navigation
   model: PublishedContent
   open: Set<string>
+  nested?: boolean
 }) {
   const children = pagesUnder(page, nav)
   if (children.length === 0) return null
   return (
-    <ul>
+    <ul class={nested ? 'ml-2 border-l border-line pl-3' : undefined}>
       {children.map((child) => (
         <li>
-          <a href={child.url} aria-current={child.key === model.key ? 'page' : undefined}>
+          <a
+            class={NAV_LINK}
+            href={child.url}
+            aria-current={child.key === model.key ? 'page' : undefined}
+          >
             {child.name}
           </a>
-          {open.has(child.key) ? <Tree page={child} nav={nav} model={model} open={open} /> : null}
+          {open.has(child.key) ? (
+            <Tree page={child} nav={nav} model={model} open={open} nested />
+          ) : null}
         </li>
       ))}
     </ul>
   )
 }
+
+const PAGER_LINK =
+  'block rounded-lg border border-line bg-white px-4 py-3 font-semibold text-terracotta-text transition-colors hover:border-terracotta motion-reduce:transition-none'
 
 /** The frame every docs page shares: the section's contents beside the page. */
 export function DocsLayout(props: PageProps & { children?: Child; headings?: Heading[] }) {
@@ -88,19 +103,29 @@ export function DocsLayout(props: PageProps & { children?: Child; headings?: Hea
 
   return (
     <Layout {...props}>
-      <div class="container docs">
-        <aside class="docs__aside">
+      <div
+        class={`${CONTAINER} grid gap-8 pt-8 pb-14 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-14 md:pt-12 md:pb-20`}
+      >
+        <aside class="border-b border-line pb-6 text-[0.9375rem] md:border-0 md:pb-0">
           {search ? (
             <search>
-              <form class="docs-search" action={search.url} method="get">
-                <input type="search" name="q" aria-label="Search the docs" placeholder="Search" />
-                <button type="submit">Search</button>
+              <form class={SEARCH_FORM} action={search.url} method="get">
+                <input
+                  class={SEARCH_INPUT}
+                  type="search"
+                  name="q"
+                  aria-label="Search the docs"
+                  placeholder="Search"
+                />
+                <button class={SEARCH_BUTTON} type="submit">
+                  Search
+                </button>
               </form>
             </search>
           ) : null}
-          <nav class="docs-nav" aria-label="Docs">
+          <nav aria-label="Docs">
             <a
-              class="docs-nav__home"
+              class={`${NAV_LINK} font-bold`}
               href={section.url}
               aria-current={section.key === model.key ? 'page' : undefined}
             >
@@ -109,27 +134,38 @@ export function DocsLayout(props: PageProps & { children?: Child; headings?: Hea
             <Tree page={section} nav={nav} model={model} open={open} />
           </nav>
         </aside>
-        <article class="docs__main">
+        <article class="min-w-0 max-w-3xl">
           {trail.length > 0 ? (
-            <nav class="breadcrumbs" aria-label="Breadcrumbs">
-              <ol>
+            <nav aria-label="Breadcrumbs">
+              <ol class="mb-3 flex flex-wrap gap-x-2 gap-y-1 text-sm">
                 {trail.map((page) => (
-                  <li>
-                    <a href={page.url}>{page.name}</a>
+                  <li class="not-first:before:mr-2 not-first:before:text-muted not-first:before:content-['/']">
+                    <a class={LINK} href={page.url}>
+                      {page.name}
+                    </a>
                   </li>
                 ))}
               </ol>
             </nav>
           ) : null}
-          <h1>{model.text('title') || model.name}</h1>
-          {model.hasValue('standfirst') ? <p class="lead">{model.text('standfirst')}</p> : null}
+          <h1 class="mb-3 text-3xl font-medium tracking-tight text-balance sm:text-4xl">
+            {model.text('title') || model.name}
+          </h1>
+          {model.hasValue('standfirst') ? (
+            <p class="mb-8 text-lg text-pretty text-muted">{model.text('standfirst')}</p>
+          ) : null}
           {headings.length > 1 ? (
-            <nav class="on-this-page" aria-label="On this page">
-              <h2>On this page</h2>
-              <ul>
+            <nav
+              class="mb-8 rounded-lg border border-line bg-white px-5 py-4"
+              aria-label="On this page"
+            >
+              <h2 class="mb-2 font-semibold">On this page</h2>
+              <ul class="space-y-1">
                 {headings.map((heading) => (
                   <li>
-                    <a href={`#${heading.id}`}>{heading.text}</a>
+                    <a class={LINK} href={`#${heading.id}`}>
+                      {heading.text}
+                    </a>
                   </li>
                 ))}
               </ul>
@@ -137,15 +173,15 @@ export function DocsLayout(props: PageProps & { children?: Child; headings?: Hea
           ) : null}
           {children}
           {previous || next ? (
-            <nav class="pager" aria-label="Previous and next">
+            <nav class="mt-12 flex flex-col gap-4 sm:flex-row" aria-label="Previous and next">
               {previous ? (
-                <a class="pager__previous" href={previous.url} rel="prev">
-                  <span>Previous</span> {previous.name}
+                <a class={PAGER_LINK} href={previous.url} rel="prev">
+                  <span class="block text-xs font-normal text-muted">Previous</span> {previous.name}
                 </a>
               ) : null}
               {next ? (
-                <a class="pager__next" href={next.url} rel="next">
-                  <span>Next</span> {next.name}
+                <a class={`${PAGER_LINK} sm:ml-auto sm:text-right`} href={next.url} rel="next">
+                  <span class="block text-xs font-normal text-muted">Next</span> {next.name}
                 </a>
               ) : null}
             </nav>

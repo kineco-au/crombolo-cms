@@ -5,7 +5,7 @@
   "label": "Crombolo",
   "createdAt": "1970-01-01T00:00:00.000Z",
   "createdBy": "crombolo site build",
-  "integrity": "sha256-f73eb692ceab687fbf6193a6476844a8a547e13c7a24ff2498abc32b66fb6f5a",
+  "integrity": "sha256-eb58c4e3de99334a3957a7f4faf303a96b25bc5cd0ee593ee35fa67cfbc42e96",
   "snapshot": "drafts",
   "provenance": {
     "siteName": "Crombolo",
@@ -192,10 +192,11 @@
       "components/shared/site-footer.tsx",
       "components/shared/site-header.tsx",
       "components/shared/site.tsx",
+      "components/shared/styles.tsx",
       "components/shared/walkthrough.tsx"
     ],
     "styles": [
-      "styles/site.css"
+      "styles/tailwind.css"
     ]
   }
 }

@@ -131,7 +131,7 @@ describe('the committed bundle', () => {
       'schema/content-types/docs-section.toml',
       'components/pages/docsPage.tsx',
       'components/shared/docs.tsx',
-      'styles/site.css',
+      'styles/tailwind.css',
     ])
       expect(existsSync(join(BUNDLE, file)), file).toBe(true)
     // And as the site has them, so the bundle is never a stale copy.
@@ -259,7 +259,7 @@ describe('installed on a site that has none of it', () => {
     }
     expect(docs.status).toBe(200)
     const front = await docs.text()
-    expect(front).toContain('<nav class="docs-nav" aria-label="Docs">')
+    expect(front).toContain('<nav aria-label="Docs">')
     expect(front).toContain('href="/docs/getting-started"')
 
     const content = await (await h.call('/docs/reference/command-line/content/')).text()

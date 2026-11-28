@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@crombolo/crombolo": "workspace:*",
+    "@tailwindcss/typography": "0.5.20",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   }

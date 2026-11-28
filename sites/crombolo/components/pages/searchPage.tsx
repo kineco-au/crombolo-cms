@@ -1,5 +1,6 @@
 import { type PageProps, search } from '@crombolo/crombolo'
 import { DocsLayout } from '../shared/docs.tsx'
+import { LINK, SEARCH_BUTTON, SEARCH_FORM, SEARCH_INPUT } from '../shared/styles.tsx'
 
 const PER_PAGE = 10
 
@@ -22,37 +23,59 @@ export default async function SearchPage(props: PageProps) {
   return (
     <DocsLayout {...props}>
       <search>
-        <form class="search-form" action={model.url} method="get">
-          <input type="search" name="q" value={query} aria-label="Search the docs" />
-          <button type="submit">Search</button>
+        <form class={SEARCH_FORM} action={model.url} method="get">
+          <input
+            class={SEARCH_INPUT}
+            type="search"
+            name="q"
+            value={query}
+            aria-label="Search the docs"
+          />
+          <button class={SEARCH_BUTTON} type="submit">
+            Search
+          </button>
         </form>
       </search>
       {query ? (
-        <p class="search-summary" role="status">
+        <p class="mb-6 text-muted" role="status">
           {results.total === 0
             ? `Nothing matches “${query}”.`
             : `${results.total} ${results.total === 1 ? 'page matches' : 'pages match'} “${query}”.`}
         </p>
       ) : null}
-      <ol class="search-results">
+      <ol class="space-y-6">
         {results.items.map((item) => (
           <li>
-            <a href={item.url}>{item.content.text('title') || item.name}</a>
-            <p>
+            <a class={`${LINK} text-lg font-semibold`} href={item.url}>
+              {item.content.text('title') || item.name}
+            </a>
+            <p class="mt-1 text-muted">
               {item.excerpt.map((segment) =>
-                segment.match ? <mark>{segment.text}</mark> : segment.text,
+                segment.match ? (
+                  <mark class="rounded-sm bg-arc px-0.5 text-ink">{segment.text}</mark>
+                ) : (
+                  segment.text
+                ),
               )}
             </p>
           </li>
         ))}
       </ol>
       {pages > 1 ? (
-        <nav class="search-pages" aria-label="Search results pages">
-          {page > 1 ? <a href={link(page - 1)}>Previous</a> : null}
-          <span>
+        <nav class="mt-10 flex items-center gap-6" aria-label="Search results pages">
+          {page > 1 ? (
+            <a class={`${LINK} font-semibold`} href={link(page - 1)}>
+              Previous
+            </a>
+          ) : null}
+          <span class="text-muted">
             Page {page} of {pages}
           </span>
-          {page < pages ? <a href={link(page + 1)}>Next</a> : null}
+          {page < pages ? (
+            <a class={`${LINK} font-semibold`} href={link(page + 1)}>
+              Next
+            </a>
+          ) : null}
         </nav>
       ) : null}
     </DocsLayout>

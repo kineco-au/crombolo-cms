@@ -1,4 +1,4 @@
-import { asset, type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
+import { type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
 import { FAVICON } from './logo.tsx'
 import { homeOf } from './site.tsx'
 import { SiteFooter } from './site-footer.tsx'
@@ -21,10 +21,9 @@ export function Layout(props: PageProps & { children?: Child }) {
           description={model.text('strapline') || model.text('standfirst')}
         />
         <link rel="icon" type="image/svg+xml" href={FAVICON} />
-        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
-      {/* `antialiased` is Tailwind's (story 452): the server generates and links its CSS. */}
-      <body class="antialiased">
+      {/* Tailwind's classes (story 452): the server generates the CSS and links it in the head. */}
+      <body class="bg-cream font-sans text-ink leading-relaxed antialiased">
         <SiteHeader model={model} nav={nav} />
         <main>{children}</main>
         <SiteFooter nav={nav} />

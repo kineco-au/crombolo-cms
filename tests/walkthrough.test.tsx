@@ -51,14 +51,14 @@ describe('the walkthrough', () => {
     const html = renderToStaticMarkup(<WalkthroughView walk={WALK} />)
     expect(html).toContain('<p>Why we are here.</p>')
     expect(html).toContain('Up and running · step 1 of 2')
-    expect(html).toContain('<h3 id="make-the-site" tabindex="-1">Make the site</h3>')
-    expect(html).toContain('<span>Terminal</span><button type="button">Copy</button>')
+    expect(html).toMatch(/<h3 id="make-the-site" tabindex="-1"[^>]*>Make the site<\/h3>/)
+    expect(html).toMatch(/<span>Terminal<\/span><button type="button"[^>]*>Copy<\/button>/)
     expect(html).toContain('<code class="language-sh">bunx crombolo init</code>')
-    expect(html).toContain('<div class="walk__see prose"><p>You&#39;ll see a site.</p></div>')
-    expect(html).toContain('<button type="button" aria-current="step">')
+    expect(html).toMatch(/<div class="prose [^"]*"><p>You&#39;ll see a site.<\/p><\/div>/)
+    expect(html).toMatch(/<button type="button" class="[^"]*" aria-current="step">/)
     // Nothing to go back to, and Next names the step it leads to
-    expect(html).not.toContain('walk__back')
-    expect(html).toContain('Next →<span>Welcome</span>')
+    expect(html).not.toContain('← Back')
+    expect(html).toMatch(/Next →<span[^>]*>Welcome<\/span>/)
     // One step at a time
     expect(html).not.toContain('Welcome.</p>')
   })
@@ -132,8 +132,8 @@ describe('a walkthrough with a choice', () => {
 
   test('offers the choice above the steps, with the first option picked', () => {
     const html = renderToStaticMarkup(<WalkthroughView walk={CHOICE} />)
-    expect(html).toContain('<legend>Database</legend>')
-    expect(html).toContain('<input type="radio" name="walk-choice" checked="" value="SQLite"/>')
+    expect(html).toMatch(/<legend[^>]*>Database<\/legend>/)
+    expect(html).toMatch(/<input [^>]*type="radio" name="walk-choice" checked="" value="SQLite"\/>/)
     expect(html).toContain('make-sqlite.')
     expect(html).not.toContain('start-postgres.')
   })

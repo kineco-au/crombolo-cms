@@ -11,7 +11,7 @@ export const FAVICON = `data:image/svg+xml,${encodeURIComponent(MARK)}`
 export function Logo({ size }: { size?: 'large' }) {
   return (
     <span
-      class={size === 'large' ? 'mark mark--large' : 'mark'}
+      class={`inline-flex shrink-0 *:size-full ${size === 'large' ? 'size-20' : 'size-10'}`}
       setInnerHTML={{ __html: MARK, dangerously: true }}
     />
   )
