@@ -115,9 +115,15 @@ export function tagPicker(label, options, chosen, { add, remove }) {
   input.style.cssText =
     'width:100%;box-sizing:border-box;font:inherit;padding:var(--uui-size-space-2,6px) var(--uui-size-space-3,9px);border:1px solid var(--uui-color-border-standalone,var(--uui-color-border));border-radius:var(--uui-border-radius);background:var(--uui-color-surface);color:var(--uui-color-text);'
   const list = el('ul', { id, role: 'listbox', 'aria-label': label })
+  // In the flow, not floating: it pushes what follows down, so it never covers the next
+  // box or is cut off at a dialog's edge.
   list.style.cssText =
-    'position:absolute;z-index:10;left:0;right:0;top:100%;margin:2px 0 0;padding:4px 0;list-style:none;max-height:220px;overflow:auto;background:var(--uui-color-surface,#fff);border:1px solid var(--uui-color-border);border-radius:var(--uui-border-radius);box-shadow:var(--uui-shadow-depth-3, 0 4px 12px rgb(0 0 0 / 0.15));'
-  list.hidden = true
+    'margin:2px 0 0;padding:4px 0;list-style:none;max-height:200px;overflow:auto;background:var(--uui-color-surface,#fff);border:1px solid var(--uui-color-border);border-radius:var(--uui-border-radius);'
+  const shown = (on) => {
+    list.style.display = on ? 'block' : 'none'
+    input.setAttribute('aria-expanded', on ? 'true' : 'false')
+  }
+  shown(false)
   let matches = []
   let active = 0
   const byKey = (key) => options.find((o) => o.key === key)
@@ -155,8 +161,7 @@ export function tagPicker(label, options, chosen, { add, remove }) {
       }),
     )
   const close = () => {
-    list.hidden = true
-    input.setAttribute('aria-expanded', 'false')
+    shown(false)
     input.removeAttribute('aria-activedescendant')
   }
   const pick = async (option) => {
@@ -202,8 +207,7 @@ export function tagPicker(label, options, chosen, { add, remove }) {
     for (const li of list.children)
       if (li.getAttribute('role') === 'presentation')
         li.style.cssText = 'padding:4px 10px;color:var(--uui-color-text-alt);'
-    list.hidden = false
-    input.setAttribute('aria-expanded', 'true')
+    shown(true)
     if (matches.length > 0) input.setAttribute('aria-activedescendant', `${id}-${active}`)
   }
   input.addEventListener('input', () => {
@@ -215,14 +219,14 @@ export function tagPicker(label, options, chosen, { add, remove }) {
   input.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
-      if (list.hidden) return drawList()
+      if (list.style.display === 'none') return drawList()
       const step = event.key === 'ArrowDown' ? 1 : -1
       active = (active + step + matches.length) % Math.max(matches.length, 1)
       drawList()
     } else if (event.key === 'Enter') {
       event.preventDefault()
       pick(matches[active])
-    } else if (event.key === 'Escape' && !list.hidden) {
+    } else if (event.key === 'Escape' && list.style.display !== 'none') {
       event.preventDefault()
       event.stopPropagation()
       close()
@@ -230,7 +234,6 @@ export function tagPicker(label, options, chosen, { add, remove }) {
   })
   drawTags()
   const box = el('div', {}, input, list)
-  box.style.cssText = 'position:relative;'
   const field = el('div', { class: 'tag-picker' }, el('span', { class: 'label' }, label), tags, box)
   field.style.cssText = 'display:grid;gap:var(--uui-size-space-2,6px);'
   return field
