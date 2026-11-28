@@ -68,6 +68,11 @@ export interface SiteTemplate {
   spa: boolean
   /** Packages the site depends on, such as React for its islands (story 209). */
   dependencies: Record<string, string>
+  /**
+   * Dev packages its `web/` app builds with beyond those `init` writes, such as Tailwind's
+   * PostCSS plugin: added to the `web/package.json` it writes.
+   */
+  webDevDependencies: Record<string, string>
   /** Its server action modules, `files/actions/*.ts`, each listed in the config (story 219). */
   actions: string[]
 }
@@ -88,6 +93,7 @@ function read(dir: string, id: string): SiteTemplate | undefined {
     next: raw.next === true,
     spa: raw.spa === true,
     dependencies: readDependencies(raw.dependencies),
+    webDevDependencies: readDependencies(raw.webDevDependencies),
     actions: actionModules(join(dir, 'files', 'actions')),
   }
 }
@@ -472,8 +478,9 @@ export default await crombolo(config)
   ]
 
   const secrets = next ? (options.secrets ?? randomSecrets()) : undefined
-  if (next && secrets) files.push(...nextFiles(siteName, secrets))
-  if (spa) files.push(spaFiles(siteName))
+  const webDev = options.template?.webDevDependencies ?? {}
+  if (next && secrets) files.push(...nextFiles(siteName, secrets, webDev))
+  if (spa) files.push(spaFiles(siteName, webDev))
   // Every site has a secret key from the start: it seals the site's secrets and
   // its signing key, which signs the site bundles it makes (story 316).
   const keyEnv = `# Seals this site's secrets and the key that signs its site bundles. Keep it secret.
@@ -523,13 +530,17 @@ function randomSecrets(): NextSecrets {
 }
 
 /** The pinned versions a front end starts on, as crombolo's own suite builds it. */
-const NEXT_VERSIONS = { next: '^16.4.3', react: '^19.3.1', types: '^19.3.0', node: '^26.6.2' }
+const NEXT_VERSIONS = { next: '^16.4.6', react: '^19.3.1', types: '^19.3.0', node: '^26.6.2' }
 
 /**
  * The Next.js app in `web/` (story 208), the CMS's webhook that clears its
  * cache, and the script that starts both.
  */
-function nextFiles(siteName: string, secrets: NextSecrets): ScaffoldFile[] {
+function nextFiles(
+  siteName: string,
+  secrets: NextSecrets,
+  webDev: Record<string, string> = {},
+): ScaffoldFile[] {
   const out: ScaffoldFile[] = []
   if (existsSync(NEXT_APP_DIR))
     for (const entry of readdirSync(NEXT_APP_DIR, { recursive: true, withFileTypes: true })) {
@@ -563,6 +574,7 @@ function nextFiles(siteName: string, secrets: NextSecrets): ScaffoldFile[] {
             '@types/node': NEXT_VERSIONS.node,
             '@types/react': NEXT_VERSIONS.types,
             typescript: TYPESCRIPT_VERSION,
+            ...webDev,
           },
         },
         null,
@@ -616,7 +628,7 @@ stop()
  * The single-page app's manifest (story 347): its pages, scripts and the rest are
  * the template's own files. It reads with `@crombolo/delivery-client` alone.
  */
-function spaFiles(siteName: string): ScaffoldFile {
+function spaFiles(siteName: string, webDev: Record<string, string> = {}): ScaffoldFile {
   return {
     path: 'web/package.json',
     text: `${JSON.stringify(
@@ -635,6 +647,7 @@ function spaFiles(siteName: string): ScaffoldFile {
           '@types/node': NEXT_VERSIONS.node,
           '@types/react': NEXT_VERSIONS.types,
           typescript: TYPESCRIPT_VERSION,
+          ...webDev,
         },
       },
       null,

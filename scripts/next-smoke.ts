@@ -34,7 +34,7 @@ const arg = (name: string, fallback: string) => {
 }
 const major = arg('--next', '16')
 const templateId = arg('--template', 'next')
-const NEXT_VERSIONS: Record<string, string> = { '15': '15.5.28', '16': '16.4.3' }
+const NEXT_VERSIONS: Record<string, string> = { '15': '15.5.28', '16': '16.4.6' }
 if (!NEXT_VERSIONS[major]) throw new Error(`--next must be 15 or 16, not ${major}`)
 
 mkdirSync(join(ROOT, 'output'), { recursive: true })

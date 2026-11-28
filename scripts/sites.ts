@@ -176,6 +176,25 @@ export function copyTemplateFiles(site: RepoSite, dir: string): void {
       if (existsSync(join(site.dir, script))) cpSync(join(site.dir, script), join(dir, script))
 }
 
+/** What `init` writes into every app's `web/package.json` already. */
+const WEB_DEV_WRITTEN = new Set(['@types/node', '@types/react', 'typescript'])
+
+/**
+ * A front end's dev packages beyond those `init` writes (Tailwind's PostCSS plugin, say),
+ * read from its own `web/package.json`, which is not copied: `init` adds them to the one it
+ * writes.
+ */
+function webDevDependenciesOf(site: RepoSite): { webDevDependencies?: Record<string, string> } {
+  const file = join(site.dir, 'web', 'package.json')
+  if (!(site.next || site.spa) || !existsSync(file)) return {}
+  const dev = (JSON.parse(readFileSync(file, 'utf8')).devDependencies ?? {}) as Record<
+    string,
+    string
+  >
+  const extra = Object.entries(dev).filter(([name]) => !WEB_DEV_WRITTEN.has(name))
+  return extra.length > 0 ? { webDevDependencies: Object.fromEntries(extra) } : {}
+}
+
 /** Writes a site out as a template under `<into>/<id>`, in the layout `@crombolo/cli` reads. */
 export function stageTemplate(site: RepoSite, into: string): string {
   const target = join(into, site.id)
@@ -191,6 +210,7 @@ export function stageTemplate(site: RepoSite, into: string): string {
       ...(site.next ? { next: true } : {}),
       ...(site.spa ? { spa: true } : {}),
       ...(Object.keys(site.dependencies).length > 0 ? { dependencies: site.dependencies } : {}),
+      ...webDevDependenciesOf(site),
     }
     writeFileSync(join(target, 'template.json'), `${JSON.stringify(manifest, null, 2)}\n`)
   } catch (error) {

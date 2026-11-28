@@ -156,6 +156,28 @@ describe('staging a site as a template', () => {
       expect([left, existsSync(join(web, left))]).toEqual([left, false])
   })
 
+  test("a front end's own dev packages travel in its template, into the web/package.json init writes", () => {
+    const into = tempDir()
+    for (const id of ['demo/harbourstone-next', 'demo/harbourstone-spa'] as const) {
+      const site = findSite(id)
+      if (!site) throw new Error(`no ${id}`)
+      const own = JSON.parse(readFileSync(join(site.dir, 'web', 'package.json'), 'utf8'))
+        .devDependencies as Record<string, string>
+      stageTemplates(into, [site])
+      const template = findTemplate(id, into)
+      // Tailwind's PostCSS plugin and the rest the app builds with, beyond what init writes.
+      expect(template?.webDevDependencies['@tailwindcss/postcss']).toBe(own['@tailwindcss/postcss'])
+      expect(template?.webDevDependencies.typescript).toBeUndefined()
+      const written = scaffoldFiles({ template, siteName: 'Smoke' }).find(
+        (file) => file.path === 'web/package.json',
+      )
+      const dev = JSON.parse(written?.text ?? '{}').devDependencies as Record<string, string>
+      for (const [name, range] of Object.entries(template?.webDevDependencies ?? {}))
+        expect([name, dev[name]]).toEqual([name, range])
+      expect(dev.typescript).toBeDefined()
+    }
+  })
+
   test('a single-page app ships its web/ and the scripts beside it, less what is installed or built', () => {
     const into = tempDir()
     const site = findSite('demo/harbourstone-spa')

@@ -6,7 +6,21 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **The headless Harbourstone demos are styled with Tailwind too:** the Next.js and
+  single-page apps through Tailwind's PostCSS plugin, with the site's theme and shared
+  patterns as `@theme` and `@utility` in each app's `globals.css`, and the CMS's own views
+  of `harbourstone-next` as the other demos are.
+- **A template's front end brings its own build packages:** a site's `web/package.json`
+  dev dependencies beyond what `crombolo init` writes travel in its template
+  (`webDevDependencies` in `template.json`), and `init` adds them to the `web/package.json`
+  it writes, so a site made from it builds as the demo does.
+
 ### Fixes
+
+- **Next.js 16.4.6** for new sites' front ends (`crombolo init --next`, and the demos):
+  16.4.3, pinned before, has a security advisory, and Next.js refuses to build with it.
 
 - **A command run beside a busy SQLite site waits rather than failing.** SQLite waited 5
   seconds for the write lock whatever `CROMBOLO_LOCK_TIMEOUT_SECONDS` said; it now waits
