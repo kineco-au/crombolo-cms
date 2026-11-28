@@ -118,12 +118,12 @@ describe('the words', () => {
   })
 })
 
-describe('the places under Content (story 385)', () => {
+describe('the places under Site (story 385)', () => {
   const area = (label: string) => AREAS.find((a) => a.label === label) as (typeof AREAS)[number]
 
-  test('each is listed under Content, Settings among the site-wide areas', () => {
+  test('each is listed under Site, Settings among the site-wide areas', () => {
     expect(AREAS.filter((a) => a.under === 'Umb.Section.Content').map((a) => a.label)).toEqual([
-      'Pages',
+      'Content',
       'Media',
       'Library',
       'Translation',

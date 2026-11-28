@@ -55,6 +55,20 @@ What is not:
    validation answers do.
 3. **Coverage, not just fixes:** a browser suite for each editor, and golden files of
    Umbraco's Delivery API output to compare against.
+4. **Golden files are hand-written from Umbraco's documentation** of the Delivery API's
+   shapes (blocks, grids with areas and spans, settings, nested blocks, variant blocks),
+   for 13 and 17 where they differ, citing the page each follows. No .NET in this repo or
+   its CI.
+5. **Stored content is refused on its next save,** not before: what is stored keeps
+   rendering and stays published, and the next save or publish of a page with a block
+   problem is refused until it is fixed, as Umbraco does. `crombolo content check` and the
+   health check list the pages that would be refused, so a site can fix them ahead.
+6. **Content files, bundles and changes from another site are validated too,** blocks and
+   top-level fields alike, before anything is written: a refused import names each page,
+   property and block path, and nothing is applied.
+7. **Umbraco's wording** for every message (`Minimum %0% entries, requires %1% more.`,
+   `Maximum %0% entries, %1% too many.`, `Value cannot be empty`, a property's own
+   mandatory and pattern messages), so the server says what the editor already shows.
 
 ## The design
 
@@ -83,11 +97,17 @@ What is not:
   - the editor's own min/max and mandatory-field errors, and the server's, both shown on
     the right block;
   - a variant block edited in two languages.
-- **Golden files:** Umbraco 13's and 17's Delivery API output for the same content (a
-  list, a grid with areas, spans and settings, nested blocks, a variant block), captured
-  with the .NET fixtures in Docker (never on the host), stored under
-  `tests/fixtures/umbraco-delivery/`, and compared with ours, field by field. A difference
-  is either fixed or listed in `docs/delivery-api.md` as deliberate.
+- **Golden files:** the Delivery API output Umbraco documents for a list, a grid with
+  areas, spans and settings, nested blocks and a variant block, written by hand from its
+  documentation (13 and 17 where they differ, each file citing the page it follows),
+  stored under `tests/fixtures/umbraco-delivery/`, and compared with ours for the same
+  content, field by field. A difference is either fixed or listed in
+  `docs/delivery-api.md` as deliberate.
+- **Imports:** content import, bundle install and a change from another site run the same
+  validation over every page they would write, before writing; refused, they report every
+  page, property and block path and apply nothing.
+- **Ahead of time:** `crombolo content check` and the health check's content entry list the
+  stored pages the rules would refuse on their next save, with each problem's path.
 
 ## Acceptance criteria
 
@@ -100,10 +120,15 @@ What is not:
 - [ ] **A block type the property doesn't offer**, and a grid area's allowance broken, are
       refused.
 - [ ] **Variant blocks** save, publish, read and render per culture, as Umbraco's.
+- [ ] **Imports** (content files, bundles, changes from another site) are validated before
+      anything is written, and a refusal names every page, property and block path.
+- [ ] **Stored content** keeps rendering; its next save is refused until fixed, and
+      `crombolo content check` and the health check list it beforehand.
+- [ ] **Messages** are Umbraco's wording.
 - [ ] **The browser suite** passes for Block List, Block Grid, Single Block and rich text's
       blocks, covering each step in the design.
-- [ ] **Our Delivery API output** matches Umbraco's golden files, or each difference is
-      documented.
+- [ ] **Our Delivery API output** matches the hand-written golden files from Umbraco's
+      documentation, or each difference is documented.
 - [ ] **Tests:** the validation's pure parts unit tested on both dialects; the suite and
       golden comparisons in CI.
 - [ ] **Docs:** `docs/delivery-api.md` (any deliberate differences), the release notes
