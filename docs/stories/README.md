@@ -399,7 +399,8 @@ requests, only server-side and build-time front ends can call it.
 | `298` | Site code writes content and handles its events | should | L | done | 187, 206 |
 | `371` | Pages served as Markdown | could | M | abandoned | superseded by 450 |
 | `449` | A site's public files edited in the back office | could | M | abandoned | superseded by 450 |
-| `450` | A content item served as a file | should | L | completed | 284, 377, 381 |
+| `450` | A content item served as a file | should | L | done | 284, 377, 381 |
+| `452` | Tailwind on every site | should | L | in progress | 260, 337 |
 
 ### Epic P — The command line
 
@@ -601,3 +602,4 @@ it.
 | `436` | Each workspace makes its own new pages | must | L | done | 375, 376, 383, 434 |
 | `390` | A workspace holds media and its files | should | L | done | 375, 385 |
 | `447` | Shared answers the workspace routes | should | M | done | 379, 401, 408, 446 |
+| `451` | A workspace shared with user groups | should | M | done | 384, 386 |

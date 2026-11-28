@@ -1572,7 +1572,7 @@ export function createChangeTransfer(options: ChangeTransferOptions) {
     // Into the workspace named, replacing what this source staged there before.
     const named = /^[0-9a-f-]{36}$/i.test(input.into)
       ? await workspaces.byKey(input.into)
-      : (await workspaces.forUser(principal.id)).find(
+      : (await workspaces.forUser(principal.id, principal.groupKeys)).find(
           (w) => w.state === 'open' && w.name === input.into,
         )
     const before = await sources.stagedFrom(input.source)

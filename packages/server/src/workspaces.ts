@@ -30,9 +30,11 @@ import {
 import {
   type Db,
   DocumentRepository,
+  isWorkspaceMember,
   NodeRepository,
   type NodeSchemaState,
   SHARED_WORKSPACE_KEY,
+  UserGroupRepository,
   UserRepository,
   type Workspace,
   WorkspaceFileRepository,
@@ -70,11 +72,12 @@ export const currentWorkspace = (): Workspace | undefined => held.getStore()
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Whether someone may work in a workspace: its owner or one of its members. */
-export const mayUse = (workspace: Workspace, principal: Principal): boolean => {
-  const me = normaliseUuid(principal.id)
-  return workspace.ownerKey === me || workspace.memberKeys.includes(me)
-}
+/**
+ * Whether someone may work in a workspace: its owner, one of its members, or someone in one
+ * of the groups it is shared with (story 451).
+ */
+export const mayUse = (workspace: Workspace, principal: Principal): boolean =>
+  isWorkspaceMember(workspace, principal.id, principal.groupKeys ?? [])
 
 const problem = (status: number, title: string, detail?: string) =>
   problemResponse(problemDetails({ title, status, ...(detail ? { detail } : {}) }))
@@ -345,6 +348,8 @@ export interface WorkspaceView {
   member: boolean
   ownerKey: string
   memberKeys: string[]
+  /** The user groups it is shared with (story 451). */
+  groupKeys: string[]
   mine: boolean
   /** Story 398: a person's own unnamed workspace, rather than a named one. */
   personal: boolean
@@ -381,6 +386,7 @@ const viewOf = (workspace: Workspace, principal: Principal, conflicts = 0): Work
   name: workspace.name,
   ownerKey: workspace.ownerKey,
   memberKeys: workspace.memberKeys,
+  groupKeys: workspace.groupKeys,
   mine: workspace.ownerKey === normaliseUuid(principal.id),
   personal: workspace.personal,
   conflicted: conflicts > 0,
@@ -404,6 +410,7 @@ export const SHARED_VIEW = {
   member: false,
   ownerKey: null,
   memberKeys: [],
+  groupKeys: [],
   mine: false,
   personal: false,
   conflicted: false,
@@ -1107,7 +1114,9 @@ export function createWorkspacesApi(
           const all = new URL(request.url).searchParams.get('all') === 'true'
           if (all && !principal.isAdmin)
             return refused('Only an administrator lists them all.', 403)
-          const mine = all ? await workspaces.all() : await workspaces.forUser(principal.id)
+          const mine = all
+            ? await workspaces.all()
+            : await workspaces.forUser(principal.id, principal.groupKeys)
           // Story 384: and those their owners show to every editor.
           const shown = all
             ? []
@@ -1148,6 +1157,12 @@ export function createWorkspacesApi(
         return new Response(null, { status: 405 })
       }
 
+      // Story 451: who a workspace may be shared with, for anyone who may share one.
+      if (parts.length === 1 && parts[0] === 'share-options') {
+        if (request.method !== 'GET') return new Response(null, { status: 405 })
+        return json(await shareOptions(db))
+      }
+
       // Several merged as one (story 380): `POST /merge { workspaces: [key], accept }`.
       if (parts.length === 1 && parts[0] === 'merge' && request.method === 'POST') {
         const merging = options.merge?.()
@@ -1182,7 +1197,12 @@ export function createWorkspacesApi(
           .where('unique_id', '=', normaliseUuid(parts[1]))
           .where('workspace_id', 'is', null)
           .executeTakeFirst()
-        const touching = node ? await workspaces.touching(Number(node.id), principal.id) : []
+        const touching = node
+          ? await workspaces.touching(Number(node.id), {
+              key: principal.id,
+              groupKeys: principal.groupKeys,
+            })
+          : []
         const owners = await new UserRepository(db).byKeys(touching.map((w) => w.ownerKey))
         return json({
           items: touching.map((w) => ({
@@ -1557,6 +1577,7 @@ export function createWorkspacesApi(
         // Who is in it (story 386), for anyone in it.
         if (!member && request.method === 'GET') {
           const people = await new UserRepository(db).byKeys([found.ownerKey, ...found.memberKeys])
+          const groups = await new UserGroupRepository(db).byKeys(found.groupKeys)
           return json({
             items: people.map((u) => ({
               key: normaliseUuid(u.key),
@@ -1564,6 +1585,10 @@ export function createWorkspacesApi(
               email: u.email,
               owner: normaliseUuid(u.key) === found.ownerKey,
             })),
+            groups: found.groupKeys.flatMap((key) => {
+              const group = groups.find((g) => normaliseUuid(g.key) === key)
+              return group ? [{ key, name: group.name }] : []
+            }),
           })
         }
         if (!owner) return refused('Only its owner shares a workspace.', 403)
@@ -1610,7 +1635,59 @@ export function createWorkspacesApi(
           return new Response(null, { status: 204 })
         }
       }
+
+      // Story 451: shared with a user group, and everyone in it, now or later.
+      if (sub === 'groups') {
+        if (!owner) return refused('Only its owner shares a workspace.', 403)
+        if (!member && request.method === 'POST') {
+          const asked = await body()
+          const groupKey = typeof asked.groupKey === 'string' ? asked.groupKey : ''
+          if (!UUID.test(groupKey)) return refused('Name the group by its key.', 400)
+          const group = await new UserGroupRepository(db).byKey(normaliseUuid(groupKey))
+          if (!group) return refused('There is no such group.', 404)
+          if (await workspaces.addGroup(found.id, groupKey))
+            await audit(
+              principal,
+              'Share',
+              found,
+              `Shared with the group "${group.name}" (${normaliseUuid(groupKey)})`,
+              client,
+            )
+          return json(await viewed((await workspaces.byKey(found.key)) as Workspace, principal))
+        }
+        if (member && request.method === 'DELETE') {
+          if (!UUID.test(member) || !(await workspaces.removeGroup(found.id, member)))
+            return refused('It is not shared with that group.', 404)
+          const group = await new UserGroupRepository(db).byKey(normaliseUuid(member))
+          await audit(
+            principal,
+            'Unshare',
+            found,
+            `No longer shared with the group ${group ? `"${group.name}" ` : ''}(${normaliseUuid(member)})`,
+            client,
+          )
+          return new Response(null, { status: 204 })
+        }
+        return new Response(null, { status: 405 })
+      }
       return refused('There is nothing here.', 404)
     },
   }
+}
+
+/** Story 451: every enabled back-office user and every user group, by name, to share with. */
+async function shareOptions(db: Db): Promise<{
+  users: Array<{ key: string; name: string; email: string }>
+  groups: Array<{ key: string; name: string }>
+}> {
+  const byName = (a: { name: string }, b: { name: string }) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  const users = (await new UserRepository(db).all())
+    .filter((u) => u.kind === 'Default' && u.isApproved)
+    .map((u) => ({ key: normaliseUuid(u.key), name: u.name, email: u.email }))
+    .sort(byName)
+  const groups = (await new UserGroupRepository(db).all())
+    .map((g) => ({ key: normaliseUuid(g.key), name: g.name }))
+    .sort(byName)
+  return { users, groups }
 }

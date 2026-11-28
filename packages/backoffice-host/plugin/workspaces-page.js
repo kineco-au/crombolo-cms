@@ -6,15 +6,25 @@
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
+import { ask } from './ask.js'
 import {
+  audienceOf,
   chooseWorkspace,
   colourOf,
   controlsFor,
+  inkOn,
+  mergeRows,
   VISIBILITY,
   workspaceFacts,
   workspacesApi,
 } from './workspace-client.js'
-import { deleteWorkspace, here, sharePanel, visibilityToggle } from './workspace-switch.js'
+import {
+  audienceEditor,
+  deleteWorkspace,
+  here,
+  sharedFrom,
+  workspaceTarget,
+} from './workspace-switch.js'
 import {
   chosenView,
   chosenWorkspace,
@@ -126,6 +136,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
 
   #mine = { enabled: false, required: false }
   #workspaces = []
+  #audienceFor
   #stop
 
   constructor() {
@@ -178,11 +189,15 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     if (chosenView() === 'merge') return this.#plan(view)
     this._merge = undefined
     const [members, changes] = await Promise.all([
-      workspacesApi.members(view.key).catch(() => ({ items: [] })),
+      workspacesApi.members(view.key).catch(() => ({ items: [], groups: [] })),
       workspacesApi.changes(view.key).catch(() => ({ items: [] })),
     ])
     if (this._chosen === view.key)
-      this._detail = { members: members.items ?? [], changes: changes.items ?? [] }
+      this._detail = {
+        members: members.items ?? [],
+        groups: members.groups ?? [],
+        changes: changes.items ?? [],
+      }
   }
 
   /** What merging it would do, read again after each conflict is settled. */
@@ -293,23 +308,142 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     return this.#save(() => workspacesApi.rename(view.key, name), 'Renamed.')
   }
 
+  /**
+   * The owner's choice of who sees a workspace, built once for it and kept across renders,
+   * so typing in its boxes survives each save; the facts are read again after each.
+   */
+  #audience(view) {
+    if (this.#audienceFor?.key === view.key && this.#audienceFor.loaded)
+      return this.#audienceFor.node
+    if (this.#audienceFor?.key !== view.key) {
+      this.#audienceFor = { key: view.key, loaded: false, node: html`<p class="hint">Loading…</p>` }
+      workspacesApi
+        .members(view.key)
+        .catch(() => ({ items: [], groups: [] }))
+        .then((members) => {
+          if (this.#audienceFor?.key !== view.key) return
+          const shared = sharedFrom(members)
+          this.#audienceFor = {
+            key: view.key,
+            loaded: true,
+            node: audienceEditor(
+              audienceOf({
+                visibility: view.visibility,
+                memberKeys: shared.people.map((p) => p.key),
+                groupKeys: shared.groups.map((g) => g.key),
+              }),
+              shared,
+              workspaceTarget(view, () => {
+                workspacesChanged()
+              }),
+              (said) => {
+                this._status = said
+              },
+            ),
+          }
+          this.requestUpdate()
+        })
+    }
+    return this.#audienceFor.node
+  }
+
   #describe(event, view) {
     event.preventDefault()
     const description = new FormData(event.currentTarget).get('description')
     return this.#save(() => workspacesApi.describe(view.key, String(description ?? '')))
   }
 
+  /** Merges a workspace with no conflicts from Shared's grid; what must be settled first opens its merge. */
+  async #mergeFromGrid(row) {
+    const yes = await ask(this, {
+      headline: `Merge ${row.name} into Shared?`,
+      content: 'Its changes go into Shared, and the workspace is closed.',
+      confirmLabel: 'Merge',
+      color: 'positive',
+    })
+    if (!yes) return
+    this._status = `Merging ${row.name}…`
+    try {
+      const done = await workspacesApi.merge(row.key, [])
+      const waiting = done.forApproval?.length ?? 0
+      this._status =
+        waiting > 0
+          ? `${row.name} merged into Shared; ${waiting} page${waiting === 1 ? '' : 's'} sent for approval.`
+          : `${row.name} merged into Shared.`
+      if (here(this.#mine)?.key === row.key) chooseWorkspace(null)
+      workspacesChanged()
+    } catch (error) {
+      // Something to accept or settle first: its own merge says what.
+      this._status = [error.message, ...(error.body?.blockers ?? [])].join(' ')
+      showWorkspace(row.key, 'merge')
+    }
+  }
+
+  #grid() {
+    const rows = mergeRows(this.#workspaces, this.#mine.mayMerge === true)
+    if (rows.length === 0) return html`<p class="hint">No workspaces are open.</p>`
+    return html`<uui-table aria-label="Workspaces">
+      <uui-table-head>
+        <uui-table-head-cell>Workspace</uui-table-head-cell>
+        <uui-table-head-cell>Status</uui-table-head-cell>
+        <uui-table-head-cell></uui-table-head-cell>
+      </uui-table-head>
+      ${rows.map(
+        (row) => html`<uui-table-row>
+          <uui-table-cell>
+            <button
+              type="button"
+              class="name-chip"
+              style=${`background:${row.colour};color:${inkOn(row.colour)}`}
+              @click=${() => showWorkspace(row.key)}
+            >${row.name}</button>
+          </uui-table-cell>
+          <uui-table-cell>
+            ${
+              row.status.tone === 'danger'
+                ? html`<button
+                    type="button"
+                    class="status danger link"
+                    title=${`Open ${row.name} to settle them`}
+                    @click=${() => showWorkspace(row.key)}
+                  >
+                    <uui-icon name=${row.status.icon}></uui-icon>${row.status.label}
+                  </button>`
+                : html`<span class=${`status ${row.status.tone}`}>
+                    <uui-icon name=${row.status.icon}></uui-icon>${row.status.label}
+                  </span>`
+            }
+          </uui-table-cell>
+          <uui-table-cell class="actions">
+            <uui-button
+              look="primary"
+              color="positive"
+              compact
+              label=${`Merge ${row.name} into Shared`}
+              title=${row.merge.why}
+              ?disabled=${!row.merge.enabled}
+              @click=${() => this.#mergeFromGrid(row)}
+            >Merge</uui-button>
+          </uui-table-cell>
+        </uui-table-row>`,
+      )}
+    </uui-table>`
+  }
+
   #shared() {
     const inShared = !here(this.#mine)
     return html`<section class="detail">
         <div class="head">
-          <span class="dot"></span>
+          <span
+            class=${inShared ? 'dot here' : 'dot'}
+            title=${inShared ? 'You are here' : nothing}
+            aria-label=${inShared ? 'You are here' : nothing}
+            role=${inShared ? 'img' : nothing}
+          ></span>
           <h2>Shared</h2>
         </div>
-        <p>
-          Shared is what everyone sees and what the site publishes. A change made in a workspace
-          reaches it when the workspace is merged. It is not renamed, shared or deleted.
-        </p>
+        ${this.#grid()}
+        ${this._status ? html`<p class="hint" role="status">${this._status}</p>` : nothing}
       </section>
       ${
         inShared
@@ -323,7 +457,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     const owner = view.mine === true
     const inIt = current?.key === view.key
     const { changes, members } = this._detail
-    const { merge, share, remove } = controlsFor({
+    const { merge, remove } = controlsFor({
       current: view,
       workspaces: this.#workspaces,
       mayMerge: this.#mine.mayMerge === true,
@@ -348,7 +482,6 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
         view.conflicts > 0
           ? html`<div class="conflict" role="status">
               <strong>${view.conflicts} conflict${view.conflicts === 1 ? '' : 's'} with Shared</strong>
-              <span>Something it changed was changed in Shared too.</span>
               ${merge.enabled ? html`<button type="button" class="link" @click=${() => showWorkspace(view.key, 'merge')}>Settle and merge</button>` : nothing}
             </div>`
           : nothing
@@ -364,26 +497,15 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       }
       <div class="field">
         <span class="label">Who can see this workspace</span>
-        ${
-          owner
-            ? visibilityToggle(view.visibility, (visibility) =>
-                this.#save(() => workspacesApi.privacy(view.key, { visibility })),
-              )
-            : html`<strong>${seenBy}</strong>`
-        }
+        ${owner ? this.#audience(view) : html`<strong>${seenBy}</strong>`}
       </div>
       <div class="facts">
-        ${workspaceFacts(view, members, changes.length, when).map(
+        ${workspaceFacts(view, members, changes.length, when, this._detail.groups ?? []).map(
           (fact) =>
             html`<div class="fact">
               <span class="hint">${fact.label}</span>
               <strong>${fact.value}</strong>
               <span class="hint">${fact.note}</span>
-              ${
-                fact.label === 'Shared with' && share.enabled
-                  ? html`<button type="button" class="link" @click=${() => sharePanel(view, view)}>Change who it is shared with</button>`
-                  : nothing
-              }
             </div>`,
         )}
       </div>
@@ -614,6 +736,35 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     :host {
       display: block;
       height: 100%;
+    }
+    .dot.here {
+      border-color: transparent;
+      background: var(--uui-color-positive, #2e7d32);
+    }
+    .name-chip {
+      padding: 2px var(--uui-size-space-3, 9px);
+      border: none;
+      border-radius: var(--uui-border-radius, 3px);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--uui-size-space-2, 6px);
+    }
+    .status.danger uui-icon {
+      color: var(--uui-color-danger);
+    }
+    .status.warning uui-icon {
+      color: var(--uui-color-warning-standalone);
+    }
+    .status.positive uui-icon {
+      color: var(--uui-color-positive);
+    }
+    uui-table-cell.actions {
+      text-align: right;
     }
     .dot {
       flex: none;

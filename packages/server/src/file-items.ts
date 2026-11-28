@@ -16,6 +16,7 @@ import {
   fileTextOf,
   fileUploadOf,
   isFileType,
+  markdownToHtml,
   normaliseUuid,
   ObjectTypes,
 } from '@crombolo/core'
@@ -105,6 +106,35 @@ export function fileHeaders(kind: FileKind): Record<string, string> {
     'content-type': kind.contentType,
     'x-content-type-options': 'nosniff',
     ...(kind.sandboxed ? { 'content-security-policy': 'sandbox' } : {}),
+  }
+}
+
+/** The cookie an editor's choice of how a Markdown File previews is kept in. */
+export const MARKDOWN_VIEW_COOKIE = 'crombolo-preview-markdown'
+
+/** Says, on a Markdown File's preview, which view it is, so the preview's switch shows. */
+export const MARKDOWN_VIEW_HEADER = 'x-crombolo-markdown'
+
+/**
+ * A Markdown File's preview in the view chosen: its source as served, or `rendered`
+ * as a page of HTML, sandboxed as an HTML File is. Undefined for any other kind. Pure.
+ */
+export function markdownPreview(
+  body: FileBody,
+  view: string | undefined,
+): { bytes: FileBody['bytes']; headers: Record<string, string> } | undefined {
+  if (body.kind.extension !== '.md') return undefined
+  if (view !== 'rendered')
+    return {
+      bytes: body.bytes,
+      headers: { ...fileHeaders(body.kind), [MARKDOWN_VIEW_HEADER]: 'source' },
+    }
+  const html = markdownToHtml(new TextDecoder().decode(body.bytes)) ?? ''
+  const page = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font:16px/1.6 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;color:#1f1d1a}pre,code{font-family:ui-monospace,monospace;background:#f4f1ec;border-radius:4px}pre{padding:.75rem;overflow:auto}code{padding:.1em .3em}pre code{padding:0}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:.3em .6em}img{max-width:100%}blockquote{margin-left:0;padding-left:1rem;border-left:3px solid #ddd;color:#555}</style></head><body>${html}</body></html>`
+  const kind = fileKindOf('preview.html') as FileKind
+  return {
+    bytes: new TextEncoder().encode(page),
+    headers: { ...fileHeaders(kind), [MARKDOWN_VIEW_HEADER]: 'rendered' },
   }
 }
 

@@ -34,6 +34,38 @@ export const FILE_KINDS = [
 
 export const FILE_EXTENSIONS = FILE_KINDS.map((kind) => kind.extension)
 
+/** The ending a new File's name starts with. */
+export const DEFAULT_EXTENSION = '.md'
+
+/**
+ * The endings a File's name is chosen from, beside the name it is typed without:
+ * Markdown first, the rest as listed, and none last, for a folder. Pure.
+ */
+export const nameSuffixes = () => ({
+  options: [
+    ...[DEFAULT_EXTENSION, ...FILE_EXTENSIONS.filter((e) => e !== DEFAULT_EXTENSION)].map(
+      (value) => ({ value, label: value }),
+    ),
+    { value: '', label: '(folder)' },
+  ],
+  initial: DEFAULT_EXTENSION,
+})
+
+/** The name a File's editor is chosen by: one not yet typed is a Markdown file. Pure. */
+export const editingName = (name) => name || `file${DEFAULT_EXTENSION}`
+
+/**
+ * A File's name after a text file is uploaded into it: its own name with the
+ * uploaded file's ending, or the uploaded file's name when it has none yet. Pure.
+ */
+export const nameAfterUpload = (name, uploaded) => {
+  const ending = extensionOf(uploaded)
+  if (!name) return uploaded
+  const own = extensionOf(name)
+  const stem = own && kindOf(name) ? name.slice(0, -own.length) : name
+  return stem + ending
+}
+
 /** The largest upload a File takes. */
 export const FILE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 
@@ -354,36 +386,6 @@ export function wellFormedXml(text) {
   } catch (error) {
     return refusal('XML', text, error.offset, error.what)
   }
-}
-
-/** The first rows of a CSV, as cells, for the table beside its editor. Pure. */
-export function csvRows(text, limit = 20) {
-  const rows = []
-  let row = []
-  let cell = ''
-  let quoted = false
-  for (let i = 0; i < text.length && rows.length < limit; i++) {
-    const c = text[i]
-    if (quoted) {
-      if (c === '"' && text[i + 1] === '"') {
-        cell += '"'
-        i++
-      } else if (c === '"') quoted = false
-      else cell += c
-    } else if (c === '"' && cell === '') quoted = true
-    else if (c === ',') {
-      row.push(cell)
-      cell = ''
-    } else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++
-      row.push(cell)
-      rows.push(row)
-      row = []
-      cell = ''
-    } else cell += c
-  }
-  if ((cell !== '' || row.length > 0) && rows.length < limit) rows.push([...row, cell])
-  return rows
 }
 
 /** The note above an editor that is showing the wrong kind of body for the File's name. Pure. */

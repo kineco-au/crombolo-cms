@@ -48,8 +48,9 @@ The model is in [data-model](data-model.md#values-are-append-only-and-versions-a
 values are append-only `property_value` rows, each the event (`content_version`) that
 wrote it.
 
-- **Opening one is a row** in `workspace`, with its owner; `workspace_member` holds who
-  it is shared with. Nothing is copied.
+- **Opening one is a row** in `workspace`, with its owner; `workspace_member` holds the
+  people it is shared with, and `workspace_group` (story 451, migration 107) the user
+  groups. Nothing is copied.
 - **A workspace's events and values sit in Shared's tables**, carrying `workspace_id`
   (null for Shared). Only the values a save changed are written, over the Shared event
   the page started from: its base, kept in `workspace_document` the first time the
@@ -325,10 +326,13 @@ The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
 
 | | |
 | --- | --- |
-| `GET /` | Shared first (story 447), then yours: those you own or are a member of; `?all=true` every one, for an administrator |
+| `GET /` | Shared first (story 447), then yours: those you own or are a member of, yourself or through a group; `?all=true` every one, for an administrator |
 | `POST /` `{ name }` | opens one |
 | `GET /{key}` · `PATCH /{key}` `{ name }` · `DELETE /{key}` | reads, renames (its owner), discards (its owner, or an administrator) |
-| `POST /{key}/members` `{ userKey }` · `DELETE /{key}/members/{userKey}` | shares it, and stops (its owner) |
+| `POST /{key}/members` `{ userKey }` · `DELETE /{key}/members/{userKey}` | shares it with a person, and stops (its owner) |
+| `POST /{key}/groups` `{ groupKey }` · `DELETE /{key}/groups/{groupKey}` | shares it with a user group, and stops (its owner, story 451); an unknown group is 404 |
+| `GET /{key}/members` | its owner and people, `items: [{ key, name, email, owner }]`, and its groups, `groups: [{ key, name }]` |
+| `GET /share-options` | who it may be shared with: `{ users: [{ key, name, email }], groups: [{ key, name }] }`, every enabled back-office user and every user group, by name (story 451) |
 | `GET /{key}/changes` | each page it changed or made, and each pending move, reorder or delete |
 | `GET /{key}/merge` | what a merge would do: each page and the fields it takes, what it publishes, what waits, conflicts, findings, and what the caller may not do |
 | `POST /{key}/merge` `{ accept?, rehearse? }` | merges it (see below); `rehearse` runs it all and undoes it |
@@ -344,7 +348,8 @@ The routes are crombolo's own, at `<backoffice>/crombolo/api/workspaces`
 | `POST /{key}/open` `{ path }` | a member's link to the workspace's site, used once (story 379); `path` is on that site, or 400 (story 410) |
 | `GET /{key}/links` · `POST /{key}/links` `{ days }` · `DELETE /{key}/links/{id}` | links for someone else to look |
 
-Each workspace answers its key, name, owner and members, its privacy, its state, `mine`
+Each workspace answers its key, name, owner, members (`memberKeys`) and groups
+(`groupKeys`), its privacy, its state, `mine`
 (the caller owns it) and `personal` (story `398`): `true` for a person's own unnamed
 workspace, `false` for one opened by name, so a host listing them can leave out the
 editors' own changes. The remote protocol's workspace routes answer the same.
@@ -592,6 +597,15 @@ merged is checked together by `changes check --since <change>` (story `406`,
   only by its members). The back office words the two "Admins" and "Admins and Editors". It
   is chosen as the workspace opens and later, by `POST /` and `PATCH /{key}`
   `{ visibility }`.
+- **Shared with user groups (story 451).** A workspace is shared with one or more user
+  groups as well as people. The group is stored, not its people, so access follows its
+  membership: someone added to the group later is in the workspace, and someone removed
+  from it is not. Everyone in a group it is shared with is a member, as a person it is
+  shared with is: it is in their list, the switch and its tree marks, and they enter and
+  change it. Only its owner shares and unshares; each is audited as `Share` and `Unshare`,
+  naming the group. Discarding the workspace, or deleting the group, removes its rows.
+  `GET /share-options` answers who may be chosen to anyone who may use workspaces, so an
+  owner without the Users section can still choose.
 - **Someone opening an item another workspace changed is told** "Also changed in a
   workspace by …", never what changed (`GET /touched/{page}`), where that change was made
   in the last seven days (`TOUCHED_WITHIN_MS`). Nobody chooses it: `tellOthers` is no longer

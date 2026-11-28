@@ -221,6 +221,7 @@ describe('the media verbs (story 088)', () => {
       'RenameWebhookEvents',
       'AddMemberManager',
       'AddSharedLinks',
+      'AddWorkspaceGroups',
     ])
     const held = async (key: string) =>
       (

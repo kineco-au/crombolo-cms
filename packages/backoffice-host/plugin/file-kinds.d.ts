@@ -38,6 +38,12 @@ export function bodyProblem(
 ): FileBodyProblem | undefined
 export function wellFormedJson(text: string): FileBodyProblem | undefined
 export function wellFormedXml(text: string): FileBodyProblem | undefined
-export function csvRows(text: string, limit?: number): string[][]
+export const DEFAULT_EXTENSION: string
+export function nameSuffixes(): {
+  options: Array<{ value: string; label: string }>
+  initial: string
+}
+export function editingName(name: string): string
+export function nameAfterUpload(name: string, uploaded: string): string
 export function replaceNote(name: string, value: unknown): string | undefined
 export function sizeText(bytes: number): string

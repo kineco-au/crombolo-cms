@@ -120,7 +120,10 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   const list = page.locator('umb-section-sidebar crombolo-workspaces-list')
   const all = page.locator('crombolo-workspaces-page')
   await expect(list.locator('.row[aria-current="true"]')).toContainText('Spring sale')
-  await expect(list.locator('.row[aria-current="true"]')).toContainText('You are here')
+  await expect(list.locator('.row[aria-current="true"] .here')).toHaveAttribute(
+    'aria-label',
+    'You are here',
+  )
   await expect(page.locator('umb-section-sidebar umb-document-tree-item')).toHaveCount(0)
   // One place at a time: no tabs for Home and Workspaces above it.
   await expect(page.locator('umb-section-main-views')).toHaveCount(0)
@@ -133,6 +136,17 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   // Its owner changes who sees it there.
   await all.getByRole('button', { name: 'Admins', exact: true }).click()
   await expect(all.locator('[slot="footer-info"]')).toHaveText('Saved.')
+  // Custom shares it with groups and people, chosen in autocomplete boxes (story 451).
+  await all.getByRole('button', { name: 'Custom', exact: true }).click()
+  const groups = all.getByRole('combobox', { name: 'Groups' })
+  await groups.fill('Edit')
+  await all.getByRole('option', { name: /^Editors/ }).click()
+  await expect(all.locator('.tag', { hasText: 'Editors' })).toBeVisible()
+  await expect(all.locator('.facts')).toContainText('Editors')
+  // Back to Admins, it is no longer shared with them, and says so.
+  await all.getByRole('button', { name: 'Admins', exact: true }).click()
+  await expect(all.locator('[slot="footer-info"]')).toHaveText('No longer shared with Editors.')
+  await expect(all.locator('.facts')).not.toContainText('Editors')
   // Renamed there, it is called that at once in the switch too.
   await all.locator('input.title').fill('Spring offers')
   await all.locator('input.title').blur()

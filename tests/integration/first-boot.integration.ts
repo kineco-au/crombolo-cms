@@ -153,6 +153,9 @@ describe('the first boot of a self-hosted site', () => {
       const file = readdirSync(site()).find((name) => name.endsWith('.sqlite')) as string
       const sqlite = new Database(join(site(), file))
       // 098 (story 419), 097 (story 414), 096 (story 408), 095 (story 405), 094 (story 399), 093 (story 400), 092 (story 396), 091 (story 395), 090 (story 384), 089 (story 387), 088 (story 383), 087 (story 379), 086 (story 381), 085 (story 376), then 084.
+      // 107 (story 451): a table of its own.
+      sqlite.exec('DROP TABLE workspace_group')
+      sqlite.exec("DELETE FROM migration_history WHERE name = 'AddWorkspaceGroups'")
       // 106 (story 447): a table of its own.
       sqlite.exec('DROP TABLE shared_link')
       sqlite.exec("DELETE FROM migration_history WHERE name = 'AddSharedLinks'")

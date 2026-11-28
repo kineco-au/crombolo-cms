@@ -91,7 +91,7 @@ export const FILE_TYPE: BuiltInContentType = {
   // Not `file`: aliases are unique whatever their case, and the File media type has that one.
   alias: 'fileItem',
   name: 'File',
-  description: 'A file such as llms.txt, served at its name exactly, extension included.',
+  description: 'A content file',
   icon: 'icon-document',
   tab: { key: 'e6188664-ad30-4464-8833-2fb61aa51402', name: 'File', alias: 'file' },
   properties: FILE_PROPERTIES,

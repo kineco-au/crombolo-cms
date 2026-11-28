@@ -52,6 +52,8 @@ export interface Workspace {
   name: string
   ownerKey: string
   memberKeys: string[]
+  /** The user groups it is shared with (story 451): everyone in one is a member. */
+  groupKeys: string[]
   /** A person's own, which `workspaces.required` opens for them (story 380). */
   personal: boolean
   /** Open, or merged into Shared (story 380), when it takes nothing more. */
@@ -99,6 +101,23 @@ export interface WorkspaceChange {
 /** How an item in conflict is kept: a file by its path, anything else by its kind and key. */
 const conflictId = (item: ConflictedItem) =>
   (item.path ? `file:${item.path}` : `${item.kind}:${item.key}`).slice(0, 512)
+
+/**
+ * Whether someone is in a workspace: its owner, a person it is shared with, or someone in a
+ * group it is shared with (story 451).
+ */
+export function isWorkspaceMember(
+  workspace: Pick<Workspace, 'ownerKey' | 'memberKeys' | 'groupKeys'>,
+  userKey: string,
+  groupKeys: readonly string[] = [],
+): boolean {
+  const me = normaliseUuid(userKey)
+  return (
+    workspace.ownerKey === me ||
+    workspace.memberKeys.includes(me) ||
+    groupKeys.some((group) => workspace.groupKeys.includes(normaliseUuid(group)))
+  )
+}
 
 /** A workspace as its events carry it (story 400). */
 const factsOf = (workspace: Workspace): WorkspaceFacts => ({
@@ -178,9 +197,10 @@ export class WorkspaceRepository {
     return (await this.#withMembers(rows))[0]
   }
 
-  /** Those a person owns or is a member of, newest first. */
-  async forUser(userKey: string): Promise<Workspace[]> {
+  /** Those a person owns or is a member of, themselves or by one of `groupKeys`, newest first. */
+  async forUser(userKey: string, groupKeys: readonly string[] = []): Promise<Workspace[]> {
     const user = normaliseUuid(userKey)
+    const groups = [...new Set(groupKeys.map(normaliseUuid))]
     const rows = await this.#db.q
       .selectFrom('workspace')
       .selectAll()
@@ -192,6 +212,18 @@ export class WorkspaceRepository {
             'in',
             eb.selectFrom('workspace_member').select('workspace_id').where('user_key', '=', user),
           ),
+          ...(groups.length > 0
+            ? [
+                eb(
+                  'id',
+                  'in',
+                  eb
+                    .selectFrom('workspace_group')
+                    .select('workspace_id')
+                    .where('group_key', 'in', groups),
+                ),
+              ]
+            : []),
         ]),
       )
       .orderBy('id', 'desc')
@@ -250,6 +282,34 @@ export class WorkspaceRepository {
       .where('user_key', '=', user)
       .execute()
     return true
+  }
+
+  /** Shares it with a user group (story 451); false when it already is. */
+  async addGroup(id: number, groupKey: string): Promise<boolean> {
+    const group = normaliseUuid(groupKey)
+    const existing = await this.#db.q
+      .selectFrom('workspace_group')
+      .select('group_key')
+      .where('workspace_id', '=', id)
+      .where('group_key', '=', group)
+      .execute()
+    if (existing.length > 0) return false
+    await this.#db.q
+      .insertInto('workspace_group')
+      .values({ workspace_id: id, group_key: group, added_at: DbDate.toDb(new Date()) })
+      .execute()
+    return true
+  }
+
+  /** Stops sharing it with a user group; false when it was not. */
+  async removeGroup(id: number, groupKey: string): Promise<boolean> {
+    const group = normaliseUuid(groupKey)
+    const removed = await this.#db.q
+      .deleteFrom('workspace_group')
+      .where('workspace_id', '=', id)
+      .where('group_key', '=', group)
+      .executeTakeFirst()
+    return Number(removed.numDeletedRows) > 0
   }
 
   /** The pages it changed or made, and what waits for the merge, by page. */
@@ -352,6 +412,7 @@ export class WorkspaceRepository {
           'workspace_document_culture',
           'workspace_document',
           'workspace_member',
+          'workspace_group',
           'workspace_link',
           'workspace_conflict_raised',
           'change_source_staged',
@@ -393,7 +454,7 @@ export class WorkspaceRepository {
    */
   async touching(
     nodeId: number,
-    exceptUser: string,
+    exceptUser: string | { key: string; groupKeys: readonly string[] },
     since = new Date(Date.now() - TOUCHED_WITHIN_MS),
   ): Promise<Workspace[]> {
     const from = DbDate.toDb(since)
@@ -418,10 +479,9 @@ export class WorkspaceRepository {
       .where('id', 'in', ids)
       .where('state', '=', 'open')
       .execute()
+    const except = typeof exceptUser === 'string' ? { key: exceptUser, groupKeys: [] } : exceptUser
     return (await this.#withMembers(rows)).filter(
-      (w) =>
-        w.ownerKey !== normaliseUuid(exceptUser) &&
-        !w.memberKeys.includes(normaliseUuid(exceptUser)),
+      (w) => !isWorkspaceMember(w, except.key, except.groupKeys),
     )
   }
 
@@ -774,6 +834,17 @@ export class WorkspaceRepository {
       )
       .orderBy('added_at')
       .execute()
+    const groups = await this.#db.q
+      .selectFrom('workspace_group')
+      .select(['workspace_id', 'group_key'])
+      .where(
+        'workspace_id',
+        'in',
+        rows.map((row) => Number(row.id)),
+      )
+      .orderBy('added_at')
+      .orderBy('group_key')
+      .execute()
     return rows.map((row) => ({
       id: Number(row.id),
       key: normaliseUuid(String(row.key)),
@@ -782,6 +853,9 @@ export class WorkspaceRepository {
       memberKeys: members
         .filter((m) => Number(m.workspace_id) === Number(row.id))
         .map((m) => normaliseUuid(String(m.user_key))),
+      groupKeys: groups
+        .filter((g) => Number(g.workspace_id) === Number(row.id))
+        .map((g) => normaliseUuid(String(g.group_key))),
       personal: fromDbBool(row.personal),
       state: row.state === 'merged' ? 'merged' : 'open',
       mergedAt: DbDate.fromDb(row.merged_at) ?? null,

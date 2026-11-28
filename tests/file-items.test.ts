@@ -10,8 +10,11 @@ import { dirname, join } from 'node:path'
 import {
   bodyProblem,
   FILE_KINDS as EDITOR_KINDS,
+  editingName,
   editorFor,
+  nameAfterUpload,
   nameProblem,
+  nameSuffixes,
   replaceNote,
   wellFormedJson,
   wellFormedXml,
@@ -39,6 +42,7 @@ import {
   unansweredFiles,
 } from '@crombolo/server'
 import { exportBundle } from '@crombolo/transfer'
+import { suffixesFor } from '../packages/backoffice-host/plugin/file-names.js'
 import {
   FILE_TYPE_KEY,
   fileLinkInsert,
@@ -490,6 +494,28 @@ describe("the File's editor", () => {
   })
 })
 
+describe("a File's name in its header", () => {
+  test('is typed without its ending, chosen from the kinds of File, Markdown first and a folder last', () => {
+    const { options, initial } = nameSuffixes()
+    expect(initial).toBe('.md')
+    expect(options[0]).toEqual({ value: '.md', label: '.md' })
+    expect(options.at(-1)).toEqual({ value: '', label: '(folder)' })
+    expect(options.map((o) => o.value).sort()).toEqual(
+      ['', ...EDITOR_KINDS.map((k) => k.extension)].sort(),
+    )
+    expect(suffixesFor('8D9DF7AD-2312-4FB9-9F44-7FB37E3690A8')).toEqual(nameSuffixes())
+    expect(suffixesFor('3a1d0c2e-0000-4000-8000-000000000000')).toBeUndefined()
+  })
+
+  test('a File not named yet is Markdown; an upload of text sets its ending', () => {
+    expect(editorFor(editingName(''))).toBe('markdown')
+    expect(editorFor(editingName('data.json'))).toBe('json')
+    expect(nameAfterUpload('', 'notes.txt')).toBe('notes.txt')
+    expect(nameAfterUpload('agents.md', 'guide.txt')).toBe('agents.txt')
+    expect(nameAfterUpload('docs', 'readme.md')).toBe('docs.md')
+  })
+})
+
 describe('a File never answered', () => {
   test('is named with what wins, and a view linking a path no File answers is found', () => {
     const files = [
@@ -555,6 +581,39 @@ describe('as content', () => {
     expect(byKey.headers.get('cache-control')).toContain('no-store')
     expect(await byKey.text()).toBe('draft')
     expect(await (await asEditor('/llms.txt')).text()).toBe('draft')
+  })
+
+  test("previews a Markdown File's source, or rendered as HTML, sandboxed, as its editor chooses", async () => {
+    const { make, save, h } = await site()
+    const made = await make('guide.md', 'published')
+    await save(made.key, 'guide.md', '# Draft\n\nWith *emphasis*.')
+    const preview = (view?: string) =>
+      h.server.fetch(
+        new Request(`${ORIGIN}/${made.key}`, {
+          headers: {
+            cookie: `${h.cookie()}; UMB_PREVIEW=preview${view ? `; crombolo-preview-markdown=${view}` : ''}`,
+          },
+        }),
+      )
+    const source = await preview()
+    expect(source.headers.get('content-type')).toBe('text/markdown; charset=utf-8')
+    expect(source.headers.get('x-crombolo-markdown')).toBe('source')
+    expect(await source.text()).toBe('# Draft\n\nWith *emphasis*.')
+    const rendered = await preview('rendered')
+    expect(rendered.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(rendered.headers.get('content-security-policy')).toBe('sandbox')
+    expect(rendered.headers.get('x-crombolo-markdown')).toBe('rendered')
+    expect(rendered.headers.get('cache-control')).toContain('no-store')
+    expect(await rendered.text()).toContain('<h1>Draft</h1>')
+    // Only the preview: a visitor gets the Markdown as published, whatever the cookie says.
+    const visited = await h.server.fetch(
+      new Request(`${ORIGIN}/guide.md`, {
+        headers: { cookie: 'crombolo-preview-markdown=rendered' },
+      }),
+    )
+    expect(visited.headers.get('content-type')).toBe('text/markdown; charset=utf-8')
+    expect(visited.headers.get('x-crombolo-markdown')).toBeNull()
+    expect(await visited.text()).toBe('published')
   })
 
   test('is behind Public Access', async () => {

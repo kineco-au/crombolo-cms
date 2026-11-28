@@ -1,11 +1,12 @@
 /**
- * The sidebar at Workspaces: Shared, then every workspace the person can see, the one
- * this tab is in marked, and the ones merged lately below. Choosing a row shows that
+ * The sidebar at Workspaces: Shared, set apart, then every workspace the person can see,
+ * each name on its colour, a green dot by the one this tab is in, and the ones merged
+ * lately below. Choosing a row shows that
  * workspace beside the list; the tab moves only when asked there.
  */
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
-import { colourOf, workspaceRows, workspacesApi } from './workspace-client.js'
+import { colourOf, inkOn, workspaceRows, workspacesApi } from './workspace-client.js'
 import { here, newWorkspace } from './workspace-switch.js'
 import { chosenWorkspace, showWorkspace, watchWorkspaces } from './workspaces-state.js'
 
@@ -87,10 +88,26 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
             aria-current=${row.key === this._chosen ? 'true' : 'false'}
             @click=${() => showWorkspace(row.key)}
           >
-            <span class="dot" style=${`background:${row.key === 'shared' ? 'transparent' : colourOf(row.key)}`}></span>
-            <span class="name">${row.name}</span>
-            ${row.here ? html`<span class="here">You are here</span>` : html`<span class="note">${row.note}</span>`}
-          </button>`,
+            <span
+              class=${row.here ? 'here' : 'there'}
+              role=${row.here ? 'img' : nothing}
+              aria-label=${row.here ? 'You are here' : nothing}
+              title=${row.here ? 'You are here' : nothing}
+            ></span>
+            <span class="name">
+              ${
+                row.key === 'shared'
+                  ? row.name
+                  : html`<span
+                      class="label"
+                      style=${`background:${colourOf(row.key)};color:${inkOn(colourOf(row.key))}`}
+                      >${row.name}</span
+                    >`
+              }
+            </span>
+            ${row.note ? html`<span class="note">${row.note}</span>` : nothing}
+          </button>
+          ${row.key === 'shared' ? html`<hr class="apart" />` : nothing}`,
       )}
       ${
         this.#merged.length > 0
@@ -174,14 +191,31 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       border: 1px solid var(--uui-color-border-emphasis, var(--uui-color-border));
       box-sizing: border-box;
     }
+    .here,
+    .there {
+      flex: none;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
     .here {
+      background: var(--uui-color-positive, #2e7d32);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--uui-color-positive, #2e7d32) 25%, transparent);
+    }
+    .label {
+      display: inline-block;
+      max-width: 100%;
       padding: 1px var(--uui-size-space-3);
-      border: 1px solid var(--uui-color-border);
-      border-radius: 10px;
-      background: var(--uui-color-surface);
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
+      border-radius: var(--uui-border-radius);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+    }
+    .apart {
+      width: 100%;
+      margin: var(--uui-size-space-3) 0;
+      border: none;
+      border-top: 1px solid var(--uui-color-border);
     }
     .note {
       color: var(--uui-color-text-alt);

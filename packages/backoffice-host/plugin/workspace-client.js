@@ -29,6 +29,59 @@ export function colourOf(key) {
   return PALETTE[hash % PALETTE.length]
 }
 
+const DARK_INK = '#1f1d1a'
+const LIGHT_INK = '#ffffff'
+
+const luminance = (hex) => {
+  const value = Number.parseInt(String(hex).replace('#', '').slice(0, 6), 16)
+  const channel = (shift) => {
+    const c = ((value >> shift) & 255) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+}
+
+/** The contrast between two colours, 1 to 21 (WCAG). Pure. */
+export const contrast = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/** The text colour that reads best on `background`: white or near-black. Pure. */
+export const inkOn = (background) =>
+  contrast(background, LIGHT_INK) >= contrast(background, DARK_INK) ? LIGHT_INK : DARK_INK
+
+/**
+ * The grid of workspaces on Shared's page: each one's status, as an icon and words, and
+ * whether it may be merged from there. A conflicted one is settled in the workspace
+ * itself, so it links there instead. Pure.
+ */
+export function mergeRows(workspaces, mayMerge = false) {
+  return workspaces
+    .filter((w) => w.state === 'open')
+    .map((w) => {
+      const status =
+        w.conflicts > 0
+          ? {
+              icon: 'icon-alert',
+              tone: 'danger',
+              label: `${w.conflicts} conflict${w.conflicts === 1 ? '' : 's'} with Shared`,
+            }
+          : w.staged
+            ? { icon: 'icon-download-alt', tone: 'warning', label: 'Staged from another site' }
+            : !w.member
+              ? { icon: 'icon-eye', tone: 'default', label: 'Yours to look at' }
+              : { icon: 'icon-check', tone: 'positive', label: 'Ready to merge' }
+      const merge =
+        w.conflicts > 0
+          ? { enabled: false, why: 'Settle its conflicts in the workspace first.' }
+          : !mayMerge
+            ? { enabled: false, why: 'You may not merge workspaces.' }
+            : { enabled: true, why: `Merge ${w.name} into Shared` }
+      return { key: w.key, name: w.name, colour: colourOf(w.key), status, merge }
+    })
+}
+
 /** The workspace this tab is in, or null for Shared. */
 export function currentWorkspace(storage = globalThis.sessionStorage) {
   try {
@@ -212,7 +265,19 @@ export function markOf(marks, unique) {
 export const VISIBILITY = [
   { value: 'members', label: 'Admins' },
   { value: 'editors', label: 'Admins and Editors' },
+  { value: 'custom', label: 'Custom' },
 ]
+
+/**
+ * Who a workspace is for, as the toggle shows it: every editor, the groups and people it
+ * is shared with (`custom`), or, shared with none, its owner and the administrators. Pure.
+ */
+export const audienceOf = (view) =>
+  view?.visibility === 'editors'
+    ? 'editors'
+    : (view?.memberKeys ?? []).length + (view?.groupKeys ?? []).length > 0
+      ? 'custom'
+      : 'members'
 
 /**
  * The Workspaces page's list, in order: Shared, then each open workspace the person can
@@ -241,9 +306,12 @@ export function workspaceRows({ current, workspaces }) {
  * What the Workspaces page says of one, as three cards: each a label, its words and a
  * line below. `members` are the people it is shared with, its owner among them. Pure.
  */
-export function workspaceFacts(view, members = [], changes = 0, when = (iso) => iso) {
+export function workspaceFacts(view, members = [], changes = 0, when = (iso) => iso, groups = []) {
   const owner = members.find((m) => m.owner)
-  const others = members.filter((m) => !m.owner).map((m) => m.name)
+  const others = [
+    ...groups.map((g) => g.name),
+    ...members.filter((m) => !m.owner).map((m) => m.name),
+  ]
   const conflicts =
     view.conflicts > 0
       ? `${view.conflicts} conflict${view.conflicts === 1 ? '' : 's'} with Shared`
@@ -306,8 +374,12 @@ export const workspacesApi = {
     call(`/${key}/conflicts`, { method: 'POST', body: { page, answers: { [field]: side } } }),
   merge: (key, accept) => call(`/${key}/merge`, { method: 'POST', body: { accept } }),
   members: (key) => call(`/${key}/members`),
-  share: (key, email) => call(`/${key}/members`, { method: 'POST', body: { email } }),
+  share: (key, userKey) => call(`/${key}/members`, { method: 'POST', body: { userKey } }),
   unshare: (key, userKey) => call(`/${key}/members/${userKey}`, { method: 'DELETE' }),
+  shareGroup: (key, groupKey) => call(`/${key}/groups`, { method: 'POST', body: { groupKey } }),
+  unshareGroup: (key, groupKey) => call(`/${key}/groups/${groupKey}`, { method: 'DELETE' }),
+  /** Who a workspace may be shared with: the users and the user groups. */
+  shareOptions: () => call('/share-options'),
   address: (key, path = '/') => call(`/${key}/open`, { method: 'POST', body: { path } }),
   touched: (page) => call(`/touched/${page}`),
 }

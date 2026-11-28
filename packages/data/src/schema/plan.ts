@@ -111,6 +111,7 @@ import { webhooksMigration } from './webhooks.ts'
 import { workspaceConflictsMigration } from './workspace-conflicts.ts'
 import { workspaceDescriptionMigration } from './workspace-description.ts'
 import { workspaceErrorsMigration } from './workspace-errors.ts'
+import { workspaceGroupsMigration } from './workspace-groups.ts'
 import { workspaceLinksMigration } from './workspace-links.ts'
 import { workspaceMergeMigration } from './workspace-merge.ts'
 import { workspacePlacesMigration } from './workspace-places.ts'
@@ -227,4 +228,5 @@ export const cromboloPlan = new MigrationPlan([
   webhookEventNamesMigration,
   memberManagerMigration,
   sharedLinksMigration,
+  workspaceGroupsMigration,
 ])

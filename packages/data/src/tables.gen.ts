@@ -1115,6 +1115,11 @@ export interface CoreTables {
     path: string
     workspace_id: Generated<number>
   }
+  workspace_group: {
+    added_at: Timestamp
+    group_key: string
+    workspace_id: Generated<number>
+  }
   workspace_link: {
     created_at: Timestamp
     expires_at: Timestamp

@@ -1,8 +1,10 @@
 /**
  * A File's body (story 450): the editor its name chooses, each one the back
- * office already has. Markdown with its preview, a text area, the code editor
- * in JSON, XML or HTML (an SVG with its image beside it), a CSV with its first
- * rows as a table, or the upload field for a PDF or an image. Renaming the File
+ * office already has. The Markdown editor, a text area, the code editor in
+ * JSON, XML, HTML or SVG, or the upload field for a PDF or an image; Save and
+ * preview shows it as a visitor would. A File not yet
+ * named is Markdown. A text File may also be filled from a file uploaded above
+ * its body, which sets its ending to that file's. Renaming the File
  * switches the editor; a body of the other kind has to be replaced before the
  * File saves. JSON and XML are checked as you type, and again on the server.
  */
@@ -16,10 +18,13 @@ import { UMB_PROPERTY_DATASET_CONTEXT } from '@umbraco-cms/backoffice/property'
 import { UmbFormControlMixin } from '@umbraco-cms/backoffice/validation'
 import {
   bodyProblem,
-  csvRows,
+  editingName,
   editorFor,
   FILE_EXTENSIONS,
+  FILE_KINDS,
+  FILE_UPLOAD_MAX_BYTES,
   kindOf,
+  nameAfterUpload,
   replaceNote,
   sizeText,
 } from './file-kinds.js'
@@ -38,7 +43,13 @@ export const CODE_LANGUAGE = { json: 'json', xml: 'xml', html: 'html', svg: 'xml
 export const AGENTS_GUIDE_NOTE =
   'Coding agents read this File as instructions: whoever edits it is writing instructions for them. A site that cares puts it under a workflow, so a change to it is approved before it is published.'
 
+/** What the upload above a text File's body takes: every kind of text File. */
+export const TEXT_ACCEPT = FILE_KINDS.filter((kind) => kind.text)
+  .map((kind) => kind.extension)
+  .join(',')
+
 export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitElement) {
+  #dataset
   static properties = {
     _name: { state: true },
     _key: { state: true },
@@ -60,6 +71,7 @@ export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitE
       () => Boolean(this._problem),
     )
     this.consumeContext(UMB_PROPERTY_DATASET_CONTEXT, (dataset) => {
+      this.#dataset = dataset
       if (dataset?.name)
         this.observe(dataset.name, (name) => {
           this._name = name ?? ''
@@ -122,10 +134,54 @@ export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitE
     this.#set({ temporaryFileId: id }, file ? { name: file.name, size: file.size } : undefined)
   }
 
+  async #fromFile(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const kind = kindOf(file.name)
+    if (!kind?.text) {
+      this._problem = {
+        message: `Upload a text file here: ${TEXT_ACCEPT.split(',').join(', ')}.`,
+      }
+      return
+    }
+    if (file.size > FILE_UPLOAD_MAX_BYTES) {
+      this._problem = {
+        message: `That file is ${sizeText(file.size)}; a File takes at most 10 MB.`,
+      }
+      return
+    }
+    const text = await file.text()
+    const name = nameAfterUpload(this._name, file.name)
+    if (name !== this._name) this.#dataset?.setName?.(name)
+    this._name = name
+    this.#set(text)
+  }
+
+  #textUpload(editor) {
+    if (editor === 'upload' || editor === 'folder' || editor === 'unknown') return nothing
+    return html`<div class="from-file">
+      <input
+        id="from-file"
+        type="file"
+        accept=${TEXT_ACCEPT}
+        hidden
+        @change=${(event) => this.#fromFile(event)} />
+      <uui-button
+        look="secondary"
+        label="Upload a file"
+        @click=${() => this.renderRoot.querySelector('#from-file')?.click()}
+        ><uui-icon name="icon-cloud-upload"></uui-icon> Upload a file</uui-button
+      >
+      <span class="hint">Its text replaces the body below.</span>
+    </div>`
+  }
+
   render() {
-    const editor = editorFor(this._name)
+    const editor = editorFor(editingName(this._name))
     return html`
       ${this.#notes(editor)}
+      ${this.#textUpload(editor)}
       ${this.#editor(editor)}
       ${
         this._problem ? html`<p class="problem" role="alert">${this._problem.message}</p>` : nothing
@@ -158,51 +214,31 @@ export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitE
     const text = typeof value === 'string' ? value : ''
     switch (editor) {
       case 'folder':
-        return html`<p class="hint">
-          A File with no extension in its name is a folder: it holds Files, and answers nothing at
-          its own address. Name it with an extension, such as notes.txt, to give it a body.
-        </p>`
+        return nothing
       case 'unknown':
         return html`<p class="hint">
           Files are served by their extension. Use one of: ${FILE_EXTENSIONS.join(', ')}.
         </p>`
       case 'markdown':
         return html`<umb-input-markdown
-          preview
           .value=${text}
           @change=${(event) => this.#text(event)}></umb-input-markdown>`
       case 'text':
+      case 'csv':
         return html`<uui-textarea
           label="Body"
           auto-height
           .value=${text}
           @input=${(event) => this.#text(event)}></uui-textarea>`
-      case 'csv':
-        return html`<uui-textarea
-            label="Body"
-            auto-height
-            .value=${text}
-            @input=${(event) => this.#text(event)}></uui-textarea>
-          ${this.#table(text)}`
       case 'json':
       case 'xml':
       case 'html':
       case 'svg':
-        return html`<div class=${editor === 'svg' ? 'beside' : ''}>
-          <umb-code-editor
-            class="code"
-            .language=${CODE_LANGUAGE[editor]}
-            .code=${text}
-            @input=${(event) => this.#code(event)}></umb-code-editor>
-          ${
-            editor === 'svg' && text && !this._problem
-              ? html`<img
-                  class="svg"
-                  alt="The image as it is drawn"
-                  src=${`data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`} />`
-              : nothing
-          }
-        </div>`
+        return html`<umb-code-editor
+          class="code"
+          .language=${CODE_LANGUAGE[editor]}
+          .code=${text}
+          @input=${(event) => this.#code(event)}></umb-code-editor>`
       case 'upload':
         return this.#uploaded(value)
       default:
@@ -210,23 +246,13 @@ export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitE
     }
   }
 
-  #table(text) {
-    const rows = csvRows(text, 20)
-    if (rows.length === 0) return nothing
-    return html`<table aria-label="The first rows">
-      ${rows.map((row) => html`<tr>${row.map((cell) => html`<td>${cell}</td>`)}</tr>`)}
-    </table>`
-  }
-
   #uploaded(value) {
     const stored = value && typeof value === 'object' && value.src ? value : undefined
-    const image = kindOf(this._name)?.contentType.startsWith('image/')
     const field = html`<umb-input-upload-field
       @change=${(event) => this.#upload(event)}></umb-input-upload-field>`
     if (!stored || !this._key) return field
     const href = fileItemUrl(this._key, 'body')
     return html`<div class="upload">
-        ${image ? html`<img class="preview" alt="The File's image" src=${href} />` : nothing}
         <p>
           ${stored.name}, ${sizeText(stored.size ?? 0)}.
           <a href=${href} target="_blank" rel="noopener">Open it</a>
@@ -246,30 +272,9 @@ export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitE
       border-radius: var(--uui-border-radius);
       border: 1px solid var(--uui-color-divider-emphasis);
     }
-    .beside {
-      display: grid;
-      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-      gap: var(--uui-size-space-4, 12px);
-    }
-    .svg,
-    .preview {
-      max-width: 100%;
-      max-height: 300px;
-      border: 1px solid var(--uui-color-divider);
-      background: var(--uui-color-surface-alt);
-    }
     uui-textarea {
       width: 100%;
       --uui-textarea-min-height: 200px;
-    }
-    table {
-      margin-top: var(--uui-size-space-4, 12px);
-      border-collapse: collapse;
-      font-size: var(--uui-type-small-size, 0.8rem);
-    }
-    td {
-      border: 1px solid var(--uui-color-divider);
-      padding: 2px 6px;
     }
     .note,
     .hint {
@@ -281,6 +286,15 @@ export default class CromboloFileBodyElement extends UmbFormControlMixin(UmbLitE
       border-left: 3px solid var(--uui-color-warning);
       background: var(--uui-color-surface-alt);
       color: var(--uui-color-text);
+    }
+    .from-file {
+      display: flex;
+      align-items: center;
+      gap: var(--uui-size-space-3, 9px);
+      margin-bottom: var(--uui-size-space-4, 12px);
+    }
+    .from-file .hint {
+      margin: 0;
     }
     .problem {
       color: var(--uui-color-danger);

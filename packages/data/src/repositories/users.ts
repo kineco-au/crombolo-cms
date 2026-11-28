@@ -1200,6 +1200,11 @@ export class UserGroupRepository {
           eb.or([eb('user_group_key', '=', group.key), eb('owner_group_key', '=', group.key)]),
         )
         .execute()
+      // Story 451: a workspace shared with it is no longer.
+      await tx.q
+        .deleteFrom('workspace_group')
+        .where('group_key', '=', normaliseUuid(group.key))
+        .execute()
       await tx.q.deleteFrom('user_group').where('id', '=', group.id).execute()
     })
   }

@@ -127,14 +127,18 @@ async function site(workspaces = true) {
 }
 
 import {
+  audienceOf,
   chooseWorkspace,
   colourOf,
+  contrast,
   controlsFor,
   currentWorkspace,
   headerFor,
+  inkOn,
   inWorkspace,
   markOf,
   menuFor,
+  mergeRows,
   onceKnown,
   PALETTE,
   WORKSPACE_HEADER,
@@ -493,5 +497,74 @@ describe(`workspaces in the back office, on the server (${dialectUnderTest})`, (
     expect(
       (await flags()).some(([, f]) => (f as string[]).includes('Crombolo.Workspace.Changed')),
     ).toBe(false)
+  })
+})
+
+describe("a workspace's colour and Shared's grid", () => {
+  test('a name on its colour is always readable', () => {
+    for (const colour of [...PALETTE, '#ffffff', '#f5d000', '#000000']) {
+      expect(contrast(colour, inkOn(colour))).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(inkOn('#ffffff')).toBe('#1f1d1a')
+    expect(inkOn('#1f6f8b')).toBe('#ffffff')
+  })
+
+  test('shows each open workspace with its status, and merges only those without conflicts', () => {
+    const at = { state: 'open', member: true, conflicts: 0, staged: false }
+    type Row = {
+      name: string
+      colour: string
+      status: { icon: string; label: string }
+      merge: { enabled: boolean; why: string }
+    }
+    const rows: Row[] = mergeRows(
+      [
+        { ...at, key: 'a', name: 'Ready' },
+        { ...at, key: 'b', name: 'Clashing', conflicts: 2 },
+        { ...at, key: 'c', name: 'Imported', staged: true },
+        { ...at, key: 'd', name: 'Theirs', member: false },
+        { ...at, key: 'e', name: 'Gone', state: 'merged' },
+      ],
+      true,
+    )
+    expect(rows.map((r: Row) => [r.name, r.status.icon, r.status.label, r.merge.enabled])).toEqual([
+      ['Ready', 'icon-check', 'Ready to merge', true],
+      ['Clashing', 'icon-alert', '2 conflicts with Shared', false],
+      ['Imported', 'icon-download-alt', 'Staged from another site', true],
+      ['Theirs', 'icon-eye', 'Yours to look at', true],
+    ])
+    expect(rows[1]?.merge.why).toBe('Settle its conflicts in the workspace first.')
+    expect(rows[0]?.colour).toBe(colourOf('a') as string)
+    expect(mergeRows([{ ...at, key: 'a', name: 'Ready' }], false)[0].merge).toEqual({
+      enabled: false,
+      why: 'You may not merge workspaces.',
+    })
+  })
+})
+
+describe('who a workspace is shared with (story 451)', () => {
+  test('the toggle reads Custom while any group or person is shared', () => {
+    expect(audienceOf({ visibility: 'editors', memberKeys: ['a'] })).toBe('editors')
+    expect(audienceOf({ visibility: 'members', memberKeys: [], groupKeys: [] })).toBe('members')
+    expect(audienceOf({ visibility: 'members', memberKeys: ['a'] })).toBe('custom')
+    expect(audienceOf({ visibility: 'members', memberKeys: [], groupKeys: ['g'] })).toBe('custom')
+    expect(audienceOf(undefined)).toBe('members')
+  })
+
+  test('the Shared with card names its groups, then its people', () => {
+    const view = { createdAt: '', updatedAt: '', conflicts: 0 }
+    const facts = workspaceFacts(
+      view,
+      [
+        { name: 'Ann', owner: true },
+        { name: 'Bo', owner: false },
+      ],
+      0,
+      (iso: string) => iso,
+      [{ name: 'Editors' }],
+    )
+    expect(facts.find((f: { label: string }) => f.label === 'Shared with')?.value).toBe(
+      'Editors, Bo',
+    )
   })
 })

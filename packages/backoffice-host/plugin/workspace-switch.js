@@ -11,6 +11,7 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { ask } from './ask.js'
 import { pageDialog } from './dialog-styles.js'
 import {
+  audienceOf,
   chooseWorkspace,
   colourOf,
   controlsFor,
@@ -61,7 +62,7 @@ export function visibilityToggle(chosen, change = () => {}, disabled = false) {
       button.style.cssText = `font:inherit;border:none;margin:0;padding:var(--uui-size-space-2) var(--uui-size-space-4);cursor:${disabled ? 'default' : 'pointer'};background:${on ? 'var(--uui-color-selected)' : 'var(--uui-color-surface)'};color:${on ? 'var(--uui-color-selected-contrast)' : 'var(--uui-color-text)'};`
     }
   }
-  group.dataset.value = chosen === 'editors' ? 'editors' : 'members'
+  group.dataset.value = VISIBILITY.some((v) => v.value === chosen) ? chosen : 'members'
   for (const { value, label } of VISIBILITY)
     group.append(
       el(
@@ -71,11 +72,16 @@ export function visibilityToggle(chosen, change = () => {}, disabled = false) {
           value,
           disabled,
           on: {
-            click: () => {
-              if (group.dataset.value === value) return
+            click: async () => {
+              const was = group.dataset.value
+              if (was === value) return
               group.dataset.value = value
               paint()
-              change(value)
+              // A change refused puts the toggle back as it was.
+              if ((await change(value)) === false) {
+                group.dataset.value = was
+                paint()
+              }
             },
           },
         },
@@ -85,6 +91,263 @@ export function visibilityToggle(chosen, change = () => {}, disabled = false) {
   paint()
   return group
 }
+
+/**
+ * An autocomplete box: what is chosen as tags, each removable, and a box that offers the
+ * `options` matching what is typed, picked with a click or the arrow keys and Enter.
+ * `add` and `remove` are told the key; a false answer leaves the tags as they were.
+ */
+export function tagPicker(label, options, chosen, { add, remove }) {
+  const picked = new Set(chosen.map((k) => String(k).toLowerCase()))
+  const id = `crombolo-tags-${Math.random().toString(36).slice(2, 8)}`
+  const tags = el('div', { class: 'tags' })
+  tags.style.cssText = 'display:flex;flex-wrap:wrap;gap:var(--uui-size-space-2,6px);'
+  const input = el('input', {
+    type: 'text',
+    role: 'combobox',
+    'aria-label': label,
+    'aria-autocomplete': 'list',
+    'aria-expanded': 'false',
+    'aria-controls': id,
+    placeholder: `Add ${label.toLowerCase()}…`,
+    autocomplete: 'off',
+  })
+  input.style.cssText =
+    'width:100%;box-sizing:border-box;font:inherit;padding:var(--uui-size-space-2,6px) var(--uui-size-space-3,9px);border:1px solid var(--uui-color-border-standalone,var(--uui-color-border));border-radius:var(--uui-border-radius);background:var(--uui-color-surface);color:var(--uui-color-text);'
+  const list = el('ul', { id, role: 'listbox', 'aria-label': label })
+  list.style.cssText =
+    'position:absolute;z-index:10;left:0;right:0;top:100%;margin:2px 0 0;padding:4px 0;list-style:none;max-height:220px;overflow:auto;background:var(--uui-color-surface,#fff);border:1px solid var(--uui-color-border);border-radius:var(--uui-border-radius);box-shadow:var(--uui-shadow-depth-3, 0 4px 12px rgb(0 0 0 / 0.15));'
+  list.hidden = true
+  let matches = []
+  let active = 0
+  const byKey = (key) => options.find((o) => o.key === key)
+  const drawTags = () =>
+    tags.replaceChildren(
+      ...[...picked].map((key) => {
+        const option = byKey(key)
+        const name = option?.name ?? key
+        const tag = el(
+          'span',
+          { class: 'tag' },
+          name,
+          el(
+            'button',
+            {
+              type: 'button',
+              'aria-label': `Remove ${name}`,
+              title: `Remove ${name}`,
+              on: {
+                click: async () => {
+                  if ((await remove(key)) === false) return
+                  picked.delete(key)
+                  drawTags()
+                },
+              },
+            },
+            '×',
+          ),
+        )
+        tag.style.cssText =
+          'display:inline-flex;align-items:center;gap:4px;padding:2px 4px 2px 10px;border-radius:12px;background:var(--uui-color-surface-alt);border:1px solid var(--uui-color-border);'
+        tag.lastChild.style.cssText =
+          'border:none;background:none;cursor:pointer;font:inherit;line-height:1;padding:0 4px;'
+        return tag
+      }),
+    )
+  const close = () => {
+    list.hidden = true
+    input.setAttribute('aria-expanded', 'false')
+    input.removeAttribute('aria-activedescendant')
+  }
+  const pick = async (option) => {
+    if (!option) return
+    if ((await add(option.key)) === false) return
+    picked.add(option.key)
+    input.value = ''
+    close()
+    drawTags()
+  }
+  const drawList = () => {
+    const q = input.value.trim().toLowerCase()
+    matches = options
+      .filter((o) => !picked.has(o.key))
+      .filter((o) => !q || `${o.name} ${o.detail ?? ''}`.toLowerCase().includes(q))
+      .slice(0, 8)
+    active = Math.min(active, Math.max(matches.length - 1, 0))
+    list.replaceChildren(
+      ...(matches.length === 0
+        ? [el('li', { role: 'presentation' }, q ? 'No match' : 'Nothing more to add')]
+        : matches.map((o, i) => {
+            const item = el(
+              'li',
+              {
+                id: `${id}-${i}`,
+                role: 'option',
+                'aria-selected': i === active ? 'true' : 'false',
+                on: {
+                  mousedown: (event) => {
+                    event.preventDefault()
+                    pick(o)
+                  },
+                },
+              },
+              el('span', {}, o.name),
+              o.detail ? el('span', { class: 'detail' }, o.detail) : '',
+            )
+            item.style.cssText = `display:flex;justify-content:space-between;gap:12px;padding:4px 10px;cursor:pointer;${i === active ? 'background:var(--uui-color-surface-emphasis);' : ''}`
+            if (o.detail) item.lastChild.style.cssText = 'color:var(--uui-color-text-alt);'
+            return item
+          })),
+    )
+    for (const li of list.children)
+      if (li.getAttribute('role') === 'presentation')
+        li.style.cssText = 'padding:4px 10px;color:var(--uui-color-text-alt);'
+    list.hidden = false
+    input.setAttribute('aria-expanded', 'true')
+    if (matches.length > 0) input.setAttribute('aria-activedescendant', `${id}-${active}`)
+  }
+  input.addEventListener('input', () => {
+    active = 0
+    drawList()
+  })
+  input.addEventListener('focus', drawList)
+  input.addEventListener('blur', close)
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (list.hidden) return drawList()
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      active = (active + step + matches.length) % Math.max(matches.length, 1)
+      drawList()
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      pick(matches[active])
+    } else if (event.key === 'Escape' && !list.hidden) {
+      event.preventDefault()
+      event.stopPropagation()
+      close()
+    }
+  })
+  drawTags()
+  const box = el('div', {}, input, list)
+  box.style.cssText = 'position:relative;'
+  const field = el('div', { class: 'tag-picker' }, el('span', { class: 'label' }, label), tags, box)
+  field.style.cssText = 'display:grid;gap:var(--uui-size-space-2,6px);'
+  return field
+}
+
+/**
+ * Who sees a workspace, and with Custom, the groups and people it is shared with, each in
+ * an autocomplete box. `target` saves each choice as it is made: a workspace's own calls,
+ * or, for one not yet made, a draft. `say` reports what happened.
+ */
+export function audienceEditor(chosen, shared, target, say = () => {}) {
+  const now = {
+    groups: shared.groups.map((g) => g.key),
+    people: shared.people.map((p) => p.key),
+  }
+  const custom = el('div', { class: 'custom' })
+  custom.style.cssText =
+    'display:grid;gap:var(--uui-size-space-4,12px);margin-top:var(--uui-size-space-3,9px);'
+  let options
+  const showCustom = async () => {
+    custom.hidden = false
+    if (custom.childElementCount > 0) return
+    options ??= await workspacesApi.shareOptions().catch(() => ({ users: [], groups: [] }))
+    const guard = (fn) => async (key) => {
+      try {
+        await fn(key)
+      } catch (error) {
+        say(error.message)
+        return false
+      }
+    }
+    custom.append(
+      tagPicker(
+        'Groups',
+        (options.groups ?? []).map((g) => ({ key: g.key, name: g.name })),
+        now.groups,
+        {
+          add: guard(async (key) => {
+            await target.addGroup(key)
+            now.groups.push(key)
+          }),
+          remove: guard(async (key) => {
+            await target.removeGroup(key)
+            now.groups = now.groups.filter((k) => k !== key)
+          }),
+        },
+      ),
+      tagPicker(
+        'People',
+        (options.users ?? [])
+          .filter((u) => !shared.ownerKey || u.key !== shared.ownerKey)
+          .map((u) => ({ key: u.key, name: u.name, detail: u.email })),
+        now.people,
+        {
+          add: guard(async (key) => {
+            await target.addPerson(key)
+            now.people.push(key)
+          }),
+          remove: guard(async (key) => {
+            await target.removePerson(key)
+            now.people = now.people.filter((k) => k !== key)
+          }),
+        },
+      ),
+    )
+  }
+  const toggle = visibilityToggle(chosen, async (value) => {
+    try {
+      if (value === 'custom') {
+        await target.visibility('members')
+        await showCustom()
+        return true
+      }
+      const nameOf = (known, offered, key) =>
+        known.find((k) => k.key === key)?.name ?? offered?.find((o) => o.key === key)?.name ?? key
+      const names = [
+        ...now.groups.map((key) => nameOf(shared.groups, options?.groups, key)),
+        ...now.people.map((key) => nameOf(shared.people, options?.users, key)),
+      ]
+      for (const key of now.groups) await target.removeGroup(key)
+      for (const key of now.people) await target.removePerson(key)
+      now.groups = []
+      now.people = []
+      custom.replaceChildren()
+      custom.hidden = true
+      await target.visibility(value)
+      say(names.length > 0 ? `No longer shared with ${names.join(', ')}.` : 'Saved.')
+      return true
+    } catch (error) {
+      say(error.message)
+      return false
+    }
+  })
+  custom.hidden = true
+  if (chosen === 'custom') showCustom()
+  const editor = el('div', { class: 'audience' }, toggle, custom)
+  return editor
+}
+
+/** A workspace's own calls, for `audienceEditor`; `saved` is told after each. */
+export const workspaceTarget = (view, saved = () => {}) => {
+  const then = (promise) => promise.then(() => saved())
+  return {
+    visibility: (visibility) => then(workspacesApi.privacy(view.key, { visibility })),
+    addGroup: (key) => then(workspacesApi.shareGroup(view.key, key)),
+    removeGroup: (key) => then(workspacesApi.unshareGroup(view.key, key)),
+    addPerson: (key) => then(workspacesApi.share(view.key, key)),
+    removePerson: (key) => then(workspacesApi.unshare(view.key, key)),
+  }
+}
+
+/** What a workspace is shared with, by name, from its members' answer. */
+export const sharedFrom = (members) => ({
+  ownerKey: (members.items ?? []).find((m) => m.owner)?.key,
+  people: (members.items ?? []).filter((m) => !m.owner).map((m) => ({ key: m.key, name: m.name })),
+  groups: (members.groups ?? []).map((g) => ({ key: g.key, name: g.name })),
+})
 
 /** The workspace a tab is in: the one chosen, or with one required, the person's own. */
 export const here = (mine) => tabWorkspace(mine)
@@ -104,13 +367,29 @@ export function newWorkspace() {
     maxlength: 1000,
     placeholder: 'What it is for',
   })
-  const visible = visibilityToggle('members')
+  const draft = { visibility: 'members', groups: new Set(), people: new Set() }
   const status = el('p')
+  const audience = audienceEditor(
+    'members',
+    { groups: [], people: [] },
+    {
+      visibility: async (v) => {
+        draft.visibility = v
+      },
+      addGroup: async (k) => draft.groups.add(k),
+      removeGroup: async (k) => draft.groups.delete(k),
+      addPerson: async (k) => draft.people.add(k),
+      removePerson: async (k) => draft.people.delete(k),
+    },
+    (said) => {
+      status.textContent = said === 'Saved.' ? '' : said
+    },
+  )
   const box = asking(
     'New workspace',
     el('label', {}, el('span', {}, 'Name'), name),
     el('label', {}, el('span', {}, 'Description'), description),
-    el('label', {}, el('span', {}, 'Who can see this workspace'), visible),
+    el('div', { class: 'field' }, el('span', {}, 'Who can see this workspace'), audience),
     status,
     el(
       'button',
@@ -123,8 +402,10 @@ export function newWorkspace() {
             try {
               const opened = await workspacesApi.open(name.value.trim(), {
                 description: description.value.trim(),
-                visibility: visible.dataset.value,
+                visibility: draft.visibility,
               })
+              for (const key of draft.groups) await workspacesApi.shareGroup(opened.key, key)
+              for (const key of draft.people) await workspacesApi.share(opened.key, key)
               box.close()
               enter(opened)
             } catch (error) {
@@ -139,71 +420,32 @@ export function newWorkspace() {
   name.focus()
 }
 
-/** Who a workspace is shared with, and who sees it. */
+/** Who sees a workspace, and the groups and people it is shared with. */
 export async function sharePanel(current, view) {
-  const list = el('ul')
-  const email = el('input', { type: 'email', placeholder: 'their email' })
-  const status = el('p')
-  const fill = async () => {
-    const { items } = await workspacesApi.members(current.key)
-    list.replaceChildren(
-      ...items.map((m) =>
-        el(
-          'li',
-          {},
-          `${m.name} <${m.email}>${m.owner ? ' (owner)' : ''} `,
-          m.owner
-            ? ''
-            : el(
-                'button',
-                {
-                  type: 'button',
-                  on: {
-                    click: async () => {
-                      await workspacesApi.unshare(current.key, m.key)
-                      await fill()
-                    },
-                  },
-                },
-                'Remove',
-              ),
-        ),
-      ),
-    )
-  }
-  const savePrivacy = (visibility) =>
-    workspacesApi.privacy(current.key, { visibility }).then(
-      () => (status.textContent = 'Saved.'),
-      (e) => (status.textContent = e.message),
-    )
-  const visible = visibilityToggle(view?.visibility, savePrivacy)
+  const status = el('p', { role: 'status' })
+  const members = await workspacesApi.members(current.key).catch(() => ({ items: [], groups: [] }))
+  const shared = sharedFrom(members)
   dialog(
     `Share ${current.name}`,
-    list,
-    el('label', {}, el('span', {}, 'Add'), email),
     el(
-      'button',
-      {
-        type: 'button',
-        'data-primary': true,
-        on: {
-          click: async () => {
-            try {
-              await workspacesApi.share(current.key, email.value.trim())
-              email.value = ''
-              await fill()
-            } catch (e) {
-              status.textContent = e.message
-            }
-          },
+      'div',
+      { class: 'field' },
+      el('span', {}, 'Who can see this workspace'),
+      audienceEditor(
+        audienceOf({
+          visibility: view?.visibility,
+          memberKeys: shared.people.map((p) => p.key),
+          groupKeys: shared.groups.map((g) => g.key),
+        }),
+        shared,
+        workspaceTarget(current, () => window.dispatchEvent(new CustomEvent(WORKSPACES_CHANGED))),
+        (said) => {
+          status.textContent = said
         },
-      },
-      'Share',
+      ),
     ),
-    el('label', {}, el('span', {}, 'Who can see this workspace'), visible),
     status,
   )
-  await fill()
 }
 
 /** What a workspace changed, each change dropped from there. */

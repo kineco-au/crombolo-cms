@@ -183,6 +183,8 @@ describe(`changes dashboard (${dialectUnderTest})`, () => {
       'workspace:Crombolo.Workspace.ExtensionRoot',
       'workspaceView:Crombolo.WorkspaceView.MemberGroup.Info',
       // Webhooks' list and editor, a create's toast, and the content footer's toned buttons.
+      // A File's name typed without its ending, the ending chosen beside it.
+      'backofficeEntryPoint:Crombolo.EntryPoint.FileNames',
       // A lost connection: a dialog that waits for the server, reads asked again after.
       'backofficeEntryPoint:Crombolo.EntryPoint.ConnectionGuard',
       'backofficeEntryPoint:Crombolo.EntryPoint.WebhookScreens',

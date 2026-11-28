@@ -107,6 +107,7 @@ import {
   FormEntryRepository,
   FormWorkflowRepository,
   FormWorkflowSecretRepository,
+  isWorkspaceMember,
   JobRepository,
   latestContentVersionId,
   listLibraryForms,
@@ -238,6 +239,8 @@ import {
   fileHeaders,
   fileLinksIn,
   fileWinner,
+  MARKDOWN_VIEW_COOKIE,
+  markdownPreview,
   pathOf,
   unansweredFiles,
 } from './file-items.ts'
@@ -467,6 +470,7 @@ import { createWorkspaceSites } from './workspace-sites.ts'
 import {
   createWorkspaceScope,
   createWorkspacesApi,
+  mayUse,
   OWN_WORKSPACE,
   onOrigin,
   pageSitePath,
@@ -2736,13 +2740,8 @@ export async function createServer(
     if ('user' in access) {
       const standing = await previewUser(db, { id: access.user })
       if (standing?.stamp !== access.stamp) return undefined
-      const user = await db.q
-        .selectFrom('user_account')
-        .select('key')
-        .where('id', '=', access.user)
-        .execute()
-      const key = user[0] ? normaliseUuid(String(user[0].key)) : ''
-      if (workspace.ownerKey === key || workspace.memberKeys.includes(key)) return workspace
+      const user = await new UserRepository(db).byId(access.user)
+      if (user && isWorkspaceMember(workspace, user.key, user.groupKeys)) return workspace
       // Story 401: an administrator who asked to read it, while they still are one.
       if (!access.admin) return undefined
       const admin = await db.q
@@ -2758,9 +2757,8 @@ export async function createServer(
     if (!link || link.workspaceId !== workspace.id || link.withdrawnAt) return undefined
     if (link.expiresAt.getTime() <= Date.now() || config.links.maxDays <= 0) return undefined
     // A link goes with its maker, when they leave the workspace.
-    return workspace.ownerKey === link.madeBy || workspace.memberKeys.includes(link.madeBy)
-      ? workspace
-      : undefined
+    const maker = await new UserRepository(db).byKey(link.madeBy)
+    return isWorkspaceMember(workspace, link.madeBy, maker?.groupKeys ?? []) ? workspace : undefined
   }
 
   /** What a link's secret opens: its workspace, as access for a cookie. */
@@ -3137,8 +3135,7 @@ export async function createServer(
     // Story 379: a page in a workspace is looked at on the workspace's site.
     if (typeof asked.workspace === 'string' && UUID_PATTERN.test(asked.workspace)) {
       const workspace = await new WorkspaceRepository(db).byKey(asked.workspace)
-      const me = normaliseUuid(principal.id)
-      if (!workspace || (workspace.ownerKey !== me && !workspace.memberKeys.includes(me)))
+      if (!workspace || !mayUse(workspace, principal))
         return Response.json({ title: 'There is no such workspace' }, { status: 404 })
       const shown = await cache.byKey(key, culture)
       const url = await workspaceOpenUrl(workspace, principal, pageSitePath(shown?.url), request)
@@ -3433,6 +3430,9 @@ export async function createServer(
     )
     const unkept = { 'cache-control': PRIVATE_NO_STORE }
     if (!body) return new Response('Not Found', { status: 404, headers: unkept })
+    const markdown = markdownPreview(body, readCookie(request, MARKDOWN_VIEW_COOKIE))
+    if (markdown)
+      return new Response(markdown.bytes, { headers: { ...markdown.headers, ...unkept } })
     return new Response(body.bytes, { headers: { ...fileHeaders(body.kind), ...unkept } })
   }
 

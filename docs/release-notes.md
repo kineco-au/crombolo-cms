@@ -6,6 +6,43 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Features
+
+- **A workspace shared with user groups (451).** Its owner shares a workspace with one or
+  more user groups as well as people, and everyone in a group, now or later, can see and
+  work in it; someone removed from the group no longer can. `POST /{key}/groups
+  { groupKey }` and `DELETE /{key}/groups/{groupKey}` share and unshare (its owner only, an
+  unknown group refused, each audited), a workspace answers `groupKeys`, `GET
+  /{key}/members` answers `groups: [{ key, name }]`, and `GET /share-options` lists every
+  enabled user and every user group for choosing. See `docs/workspaces.md`.
+  - **In the back office,** who can see a workspace is Admins, Admins and Editors, or
+    **Custom**: the groups and people it is shared with, each chosen in an autocomplete
+    box and saved as it is chosen, on its page and in the New workspace and Share
+    dialogs. Choosing Admins or Admins and Editors again stops sharing with them, and
+    says who with. Sharing by email is left to the command line.
+- **Shared's page lists the workspaces,** each with its status as an icon (ready,
+  conflicts, staged from another site, or yours to look at) and a **Merge** button. A
+  workspace with conflicts can't be merged from there: its conflicts link to it.
+- **The workspaces list** marks the one this tab is in with a green dot, shows each
+  workspace's name on its colour in a text colour that reads on it, and sets Shared apart
+  with a line.
+- **A File's name is typed without its ending,** chosen beside it from the kinds of File
+  the site serves, Markdown for a new one; **(folder)** makes a folder. A text File can
+  be filled from a file uploaded above its body.
+- **A File is previewed with Save and preview,** not beside its editor. A Markdown File's
+  preview has a **Markdown | Rendered** switch, the rendered page sandboxed as an HTML
+  File is.
+
+### Migrations
+
+- **107 `AddWorkspaceGroups`** (expand, 451): `workspace_group`, each user group a
+  workspace is shared with, by key, with when it was added.
+
+### Upgrade notes
+
+- **Nothing to do for workspace groups (451).** The table starts empty: every workspace is
+  shared with the people it was, and with no group until its owner chooses one.
+
 ## v0.84.0 — 2026-11-28
 
 ### Features

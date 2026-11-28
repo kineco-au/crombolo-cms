@@ -408,7 +408,7 @@ export const FILE_PROPERTIES: readonly SystemPropertyModel[] = [
     key: FILE_BODY_PROPERTY_KEY,
     alias: FILE_BODY_ALIAS,
     name: 'Body',
-    description: "What is served at the File's address: text written here, or an uploaded file.",
+    description: '',
     dataTypeKey: FILE_BODY_DATA_TYPE_KEY,
   },
 ]
