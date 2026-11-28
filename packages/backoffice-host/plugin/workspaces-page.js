@@ -4,6 +4,7 @@
  * what it is for and who sees it; it is entered, merged, shared and deleted from here.
  * Shared, chosen there, says what Shared is.
  */
+import { DocumentService } from '@umbraco-cms/backoffice/external/backend-api'
 import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { ask } from './ask.js'
@@ -11,8 +12,10 @@ import {
   chooseWorkspace,
   colourOf,
   controlsFor,
+  fileLink,
   inkOn,
   mergeRows,
+  mergeSections,
   whoSees,
   workspaceFacts,
   workspacesApi,
@@ -25,12 +28,17 @@ import {
   workspaceTarget,
 } from './workspace-switch.js'
 import {
+  chosenChange,
   chosenView,
   chosenWorkspace,
+  mergedAddress,
   showWorkspace,
   watchWorkspaces,
   workspacesChanged,
 } from './workspaces-state.js'
+
+/** What a merge sent for approval, kept in this tab for the summary it reloads into. */
+const APPROVALS_KEY = 'crombolo.merge.approvals.'
 
 const when = (iso) => {
   const at = new Date(iso)
@@ -131,6 +139,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     _status: { state: true },
     _detail: { state: true },
     _merge: { state: true },
+    _summary: { state: true },
   }
 
   #mine = { enabled: false, required: false }
@@ -152,13 +161,16 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     this.#stop = watchWorkspaces(async (what) => {
       if (what === 'changed') await this.#list()
       await this.#choose(chosenWorkspace())
+      // A merge's summary is chosen by the address alone.
+      this.requestUpdate()
     })
     this.#mine = await workspacesApi.mine().catch(() => this.#mine)
     if (this.#mine.enabled) {
       await this.#list()
-      if (chosenWorkspace() === undefined)
+      if (chosenWorkspace() !== undefined) await this.#choose(chosenWorkspace())
+      // A merge's summary is shown where the address says, not moved to the tab's workspace.
+      else if (!(chosenView() === 'merged' && chosenChange()))
         showWorkspace(here(this.#mine)?.key ?? 'shared', 'info', true)
-      else await this.#choose(chosenWorkspace())
     }
     this._ready = true
   }
@@ -254,17 +266,20 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
     this._merge = { ...this._merge, says: 'Merging…' }
     try {
       const done = await workspacesApi.merge(view.key, [...this._merge.accepted])
-      const waiting = done.forApproval?.length ?? 0
-      this._merge = {
-        ...this._merge,
-        done: true,
-        says:
-          waiting > 0
-            ? `Merged into Shared; ${waiting} page${waiting === 1 ? '' : 's'} sent for approval.`
-            : 'Merged into Shared.',
-      }
       // The workspace is closed: a tab that was in it is in Shared from here.
       if (here(this.#mine)?.key === view.key) chooseWorkspace(null)
+      if (done.changeId) {
+        // What went for approval is known only here: kept for the summary it reloads into.
+        try {
+          sessionStorage.setItem(
+            `${APPROVALS_KEY}${done.changeId}`,
+            JSON.stringify((done.forApproval ?? []).map((p) => p.key)),
+          )
+        } catch {}
+        location.assign(mergedAddress(done.changeId))
+        return
+      }
+      this._merge = { ...this._merge, done: true, says: 'Merged into Shared.' }
       setTimeout(() => {
         showWorkspace('shared', 'info', true)
         location.reload()
@@ -275,6 +290,122 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
         says: [error.message, ...(error.body?.blockers ?? [])].join(' '),
       }
     }
+  }
+
+  /** A past merge's summary: its recorded change, and the pages it touched as they are now. */
+  async #loadSummary(id) {
+    this._summary = { id, loading: true }
+    try {
+      const base = (document.querySelector('base')?.getAttribute('href') ?? '/umbraco/').replace(
+        /\/$/,
+        '',
+      )
+      const response = await fetch(`${base}/crombolo/api/changes/${encodeURIComponent(id)}`, {
+        credentials: 'include',
+      })
+      if (!response.ok) throw new Error('That merge could not be found.')
+      const change = await response.json()
+      const keys = [...new Set((change.pageChanges ?? []).map((p) => p.key))]
+      const [found, addresses] = keys.length
+        ? await Promise.all([
+            DocumentService.getItemDocument({ query: { id: keys } }).then((r) => r.data ?? []),
+            DocumentService.getDocumentUrls({ query: { id: keys } })
+              .then((r) => r.data ?? [])
+              .catch(() => []),
+          ])
+        : [[], []]
+      const items = new Map(
+        found.map((d) => [
+          String(d.id).toLowerCase(),
+          {
+            name: d.variants?.[0]?.name,
+            trashed: d.isTrashed,
+            published: (d.variants ?? []).some((v) => String(v.state).startsWith('Published')),
+          },
+        ]),
+      )
+      const urls = new Map(
+        addresses.map((a) => [
+          String(a.id).toLowerCase(),
+          a.urlInfos?.find((u) => u.url && !u.url.startsWith('#'))?.url,
+        ]),
+      )
+      let forApproval = []
+      try {
+        forApproval = JSON.parse(sessionStorage.getItem(`${APPROVALS_KEY}${id}`) ?? '[]')
+      } catch {}
+      if (this._summary?.id !== id) return
+      this._summary = { id, change, sections: mergeSections(change, items, forApproval), urls }
+    } catch (error) {
+      if (this._summary?.id === id) this._summary = { id, says: error.message }
+    }
+  }
+
+  #merged(id) {
+    if (this._summary?.id !== id) {
+      this.#loadSummary(id)
+      return html`<section class="detail"><p class="hint">Loading…</p></section>`
+    }
+    const { change, sections, urls, says, loading } = this._summary
+    if (loading) return html`<section class="detail"><p class="hint">Loading…</p></section>`
+    if (says) return html`<section class="detail"><p>${says}</p></section>`
+    const name = (change.name ?? 'A workspace').replace(/^Merged\s+/i, '').replace(/^"|"$/g, '')
+    const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+    const pages = sections.filter((x) => x.kind !== 'files').reduce((n, x) => n + x.rows.length, 0)
+    const files = sections.find((x) => x.kind === 'files')?.rows.length ?? 0
+    const edit = (key) =>
+      new URL(`section/content/workspace/document/edit/${key}`, document.baseURI).pathname
+    return html`<section class="detail"><div class="merge summary">
+        <button type="button" class="link back" @click=${() => showWorkspace('shared')}>← Workspaces</button>
+        <div class="head">
+          <span class="dot" style=${change.workspaceKey ? `background:${colourOf(change.workspaceKey)}` : ''}></span>
+          <h2>${name}</h2>
+          <span class="merged-badge"><uui-icon name="icon-check"></uui-icon> Merged into Shared</span>
+        </div>
+        <p class="hint">Merged ${when(change.finishedAt ?? change.startedAt)}</p>
+        <div class="chips">
+          <span class="chip">${count(pages, 'page')}</span>
+          ${files > 0 ? html`<span class="chip">${count(files, 'file')}</span>` : nothing}
+        </div>
+        ${
+          sections.length === 0
+            ? html`<p>It held no changes, so nothing in Shared changed.</p>`
+            : sections.map(
+                (section) => html`<div class="field wide">
+                  <h3>${section.title}</h3>
+                  <ul class="merged-list">
+                    ${section.rows.map((row) =>
+                      section.kind === 'files'
+                        ? html`<li>
+                            <span class="what">${row.path}</span>
+                            <a href=${new URL(fileLink(row.path), document.baseURI).pathname}>Open</a>
+                          </li>`
+                        : html`<li>
+                            <span class="what">${row.name}${row.made ? html` <span class="hint">new</span>` : nothing}</span>
+                            ${
+                              section.kind === 'deleted'
+                                ? html`<a href=${new URL('section/content/recycle-bin', document.baseURI).pathname}>Recycle bin</a>`
+                                : html`<a href=${edit(row.key)}>Open</a>
+                                    ${
+                                      section.kind === 'published' && urls.get(row.key)
+                                        ? html`<a href=${urls.get(row.key)} target="_blank" rel="noopener">View on site</a>`
+                                        : nothing
+                                    }
+                                    ${
+                                      section.kind === 'approval'
+                                        ? html`<a href=${new URL('section/approvals', document.baseURI).pathname}>Approvals</a>`
+                                        : nothing
+                                    }`
+                            }
+                          </li>`,
+                    )}
+                  </ul>
+                </div>`,
+              )
+        }
+      </div></section>
+      <uui-button slot="actions" look="secondary" label="See it in History" href=${new URL('section/settings/dashboard/changes', document.baseURI).pathname}>See it in History</uui-button>
+      <uui-button slot="actions" look="primary" label="Back to Shared" @click=${() => showWorkspace('shared')}>Back to Shared</uui-button>`
   }
 
   async #save(change, saved = 'Saved.') {
@@ -738,6 +869,8 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
 
   render() {
     if (!this._ready || !this.#mine.enabled) return nothing
+    const change = chosenView() === 'merged' ? chosenChange() : undefined
+    if (change) return html`<umb-body-layout>${this.#merged(change)}</umb-body-layout>`
     const view = this.#view()
     const shown = view && this._merge?.key === view.key ? chosenView() : undefined
     const merging = shown === 'merge' || shown === 'changes'
@@ -914,6 +1047,43 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       margin: 0;
       font-size: inherit;
       font-weight: 700;
+    }
+    .merged-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--uui-size-space-1);
+      padding: 2px var(--uui-size-space-3);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--uui-color-positive) 14%, var(--uui-color-surface));
+      color: var(--uui-color-positive-emphasis, var(--uui-color-positive));
+      font-size: var(--uui-type-small-size);
+      font-weight: 700;
+    }
+    .merged-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      border: 1px solid var(--uui-color-border);
+      border-radius: var(--uui-border-radius);
+      background: var(--uui-color-surface);
+    }
+    .merged-list li {
+      display: flex;
+      align-items: center;
+      gap: var(--uui-size-space-4);
+      padding: var(--uui-size-space-3) var(--uui-size-space-4);
+    }
+    .merged-list li + li {
+      border-top: 1px solid var(--uui-color-border);
+    }
+    .merged-list .what {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .merged-list a {
+      color: var(--uui-color-interactive);
+      font-size: var(--uui-type-small-size);
     }
     .chips {
       display: flex;

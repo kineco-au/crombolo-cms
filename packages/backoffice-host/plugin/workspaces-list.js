@@ -21,7 +21,14 @@ import {
   workspacesApi,
 } from './workspace-client.js'
 import { here, newWorkspace } from './workspace-switch.js'
-import { chosenWorkspace, showWorkspace, watchWorkspaces } from './workspaces-state.js'
+import {
+  chosenChange,
+  chosenView,
+  chosenWorkspace,
+  showMerged,
+  showWorkspace,
+  watchWorkspaces,
+} from './workspaces-state.js'
 
 const FILTER_KEY = 'crombolo.workspaces.filter'
 
@@ -80,7 +87,7 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
     this.#mine = await workspacesApi.mine().catch(() => this.#mine)
     if (this.#mine.enabled) {
       await this.#list()
-      if (chosenWorkspace() === undefined)
+      if (chosenWorkspace() === undefined && !(chosenView() === 'merged' && chosenChange()))
         showWorkspace(here(this.#mine)?.key ?? 'shared', 'info', true)
       this.#merged = await this.#mergedLately()
     }
@@ -232,11 +239,17 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
           ? html`<div class="head merged"><span>Merged</span></div>
               ${this.#merged.map(
                 (c) =>
-                  html`<div class="row gone">
-                    <span class="dot"></span>
-                    <span class="name">${c.name ?? 'A workspace'}</span>
+                  html`<button
+                    type="button"
+                    class="row gone"
+                    aria-current=${chosenChange() === c.id ? 'true' : 'false'}
+                    title="See what it merged"
+                    @click=${() => showMerged(c.id)}
+                  >
+                    <span class="dot" style=${c.workspaceKey ? `background:${colourOf(c.workspaceKey)}` : ''}></span>
+                    <span class="name">${String(c.name ?? 'A workspace').replace(/^Merged\s+/i, '')}</span>
                     <span class="note">${day(c.startedAt)}</span>
-                  </div>`,
+                  </button>`,
               )}`
           : nothing
       }
@@ -386,11 +399,7 @@ export default class CromboloWorkspacesListElement extends UmbLitElement {
       cursor: default;
     }
     .row.gone {
-      cursor: default;
       color: var(--uui-color-text-alt);
-    }
-    .row.gone:hover {
-      background: none;
     }
     .name {
       flex: 1;

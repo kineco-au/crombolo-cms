@@ -132,6 +132,7 @@ import {
   contrast,
   controlsFor,
   currentWorkspace,
+  fileLink,
   filtered,
   headerFor,
   inkOn,
@@ -139,6 +140,7 @@ import {
   markOf,
   menuFor,
   mergeRows,
+  mergeSections,
   named,
   onceKnown,
   PALETTE,
@@ -554,6 +556,48 @@ describe("a workspace's colour and Shared's grid", () => {
 })
 
 describe('who sees a workspace (story 451)', () => {
+  test("a merge's summary groups its pages by where they stand now, then its files", () => {
+    const change = {
+      pageChanges: [
+        { key: 'A', action: 'update' },
+        { key: 'b', action: 'create' },
+        { key: 'c', action: 'update' },
+        { key: 'd', action: 'recycle' },
+        { key: 'a', action: 'update' },
+      ],
+      files: [{ path: 'components/pages/offer.tsx', kind: 'changed' }],
+    }
+    const items = new Map([
+      ['a', { name: 'Home', published: true, trashed: false }],
+      ['b', { name: 'Offer', published: false, trashed: false }],
+      ['c', { name: 'About', published: true, trashed: false }],
+      ['d', { name: 'Old promo', published: false, trashed: true }],
+    ])
+    const sections = mergeSections(change, items, ['C'])
+    expect(
+      sections.map((x: { kind: string; rows: Array<{ name?: string; path?: string }> }) => [
+        x.kind,
+        x.rows.map((r) => r.name ?? r.path),
+      ]),
+    ).toEqual([
+      ['published', ['Home']],
+      ['draft', ['Offer']],
+      ['approval', ['About']],
+      ['deleted', ['Old promo']],
+      ['files', ['components/pages/offer.tsx']],
+    ])
+    expect(sections[1]?.rows[0]?.made).toBe(true)
+    expect(mergeSections({}, new Map())).toEqual([])
+  })
+
+  test("a changed file opens where it is edited: a component in Code's editor", () => {
+    expect(fileLink('components/pages/homePage.tsx')).toBe(
+      'section/content/code/workspace/partial-view/edit/%2Fpages%2FhomePage%25dot%25tsx',
+    )
+    expect(fileLink('schema/types/offer.json')).toBe('section/content/structure')
+    expect(fileLink('css/site.css')).toBe('section/content/code')
+  })
+
   test('the list finds a workspace by any part of its name, whatever its case', () => {
     const list = [{ name: 'Spring sale' }, { name: 'Winter 2026' }, { name: 'Sale archive' }]
     expect(named(list, 'sale').map((w: { name: string }) => w.name)).toEqual([

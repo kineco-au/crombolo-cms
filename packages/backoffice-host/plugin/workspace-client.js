@@ -274,6 +274,52 @@ export function whoSees(view, groups = [], people = []) {
   return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
 }
 
+/**
+ * What a merge did, as its summary shows it: the pages it touched grouped by where they
+ * stand now (published, saved as drafts, sent for approval, deleted), then the files it
+ * changed. `items` are the pages as the back office knows them now, by key: their name,
+ * whether they are published, whether they are in the recycle bin; `forApproval` the
+ * keys the merge sent for approval, known only in the tab that merged. Pure.
+ */
+export function mergeSections(change, items, forApproval = []) {
+  const waiting = new Set(forApproval.map((k) => String(k).toLowerCase()))
+  const sections = [
+    { kind: 'published', title: 'Published', rows: [] },
+    { kind: 'draft', title: 'Saved, not published', rows: [] },
+    { kind: 'approval', title: 'Sent for approval', rows: [] },
+    { kind: 'deleted', title: 'Deleted', rows: [] },
+  ]
+  const into = (kind, row) => sections.find((x) => x.kind === kind).rows.push(row)
+  const seen = new Set()
+  for (const page of change.pageChanges ?? []) {
+    const key = String(page.key).toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    const item = items.get(key)
+    const row = { key, name: item?.name ?? 'A page', made: page.action === 'create' }
+    if (page.action === 'recycle' || item?.trashed) into('deleted', row)
+    else if (waiting.has(key)) into('approval', row)
+    else if (item?.published) into('published', row)
+    else into('draft', row)
+  }
+  const files = (change.files ?? []).map((f) => ({ path: f.path, kind: f.kind }))
+  return [
+    ...sections.filter((x) => x.rows.length > 0),
+    ...(files.length > 0 ? [{ kind: 'files', title: 'Files', rows: files }] : []),
+  ]
+}
+
+/** Where a changed file is opened: a component in Code's editor, the rest at their place. Pure. */
+export function fileLink(path) {
+  const component = /^components\/(.+)$/.exec(path)
+  if (component)
+    return `section/content/code/workspace/partial-view/edit/${encodeURIComponent(
+      `/${component[1].replaceAll('.', '%dot%')}`,
+    )}`
+  if (/^schema\//.test(path)) return 'section/content/structure'
+  return 'section/content/code'
+}
+
 /** The workspaces the list's filter shows: every one (`all`), or those the person is in. Pure. */
 export const filtered = (workspaces, filter) =>
   filter === 'all' ? workspaces : workspaces.filter((w) => w.member)

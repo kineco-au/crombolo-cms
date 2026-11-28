@@ -198,7 +198,19 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   )
   await expect(place.getByRole('button', { name: /Keep/ })).toHaveCount(0)
   await place.getByRole('button', { name: 'Merge into Shared', exact: true }).click()
-  await expect(place).toContainText('Merged into Shared')
+  // Merged, it stays on the workspace: what it merged, each page with a link to it.
+  await expect(page).toHaveURL(/view=merged&change=[0-9a-f-]+/, { timeout: 15_000 })
+  const summary = page.locator('crombolo-workspaces-page .summary')
+  await expect(summary.locator('.merged-badge')).toHaveText('Merged into Shared')
+  const merged = summary.locator('.merged-list li', { hasText: `${NAME} sale` })
+  await expect(merged).toBeVisible()
+  await expect(merged.getByRole('link', { name: 'Open' })).toHaveAttribute(
+    'href',
+    new RegExp(`/document/edit/${key}`, 'i'),
+  )
+  // And it is there again from the list's Merged entries.
+  await list.locator('.row.gone').first().click()
+  await expect(summary.locator('.merged-badge')).toBeVisible()
   await expect.poll(() => sharedName(page, key), { timeout: 10_000 }).toBe(`${NAME} sale`)
   await expect(switchButton(page)).toContainText('Shared', { timeout: 15_000 })
 })
