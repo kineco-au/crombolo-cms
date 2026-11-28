@@ -6,6 +6,8 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+## v0.85.0 — 2026-11-28
+
 ### Features
 
 **The content tree**
