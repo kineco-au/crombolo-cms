@@ -210,7 +210,7 @@ describe(`a workspace's site (${dialectUnderTest})`, () => {
     )
   })
 
-  test('an administrator not in it opens it only when they ask to include private ones (story 401)', async () => {
+  test('an administrator not in it opens it, asking or not (stories 401, 451)', async () => {
     const { h } = await site()
     const writer = await signInAsGroup(h, 'writer')
     const made = await writer.call(WORKSPACES, {
@@ -226,7 +226,7 @@ describe(`a workspace's site (${dialectUnderTest})`, () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ path: '/' }),
       })
-    expect((await open()).status).toBe(404)
+    expect((await open()).status).toBe(200)
     const opening = (await (await open('?includePrivate=true')).json()) as { url: string }
     const visitor = browser(h)
     expect((await visitor.get(opening.url)).status).toBe(303)

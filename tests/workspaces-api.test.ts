@@ -241,12 +241,14 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
     expect(await titleOf(h, home)).toBe('Welcome')
   })
 
-  test('an administrator lists and discards another’s, and does not read it', async () => {
+  test('an administrator lists, reads and discards another’s, without changing it', async () => {
     const { h, send, opened } = await site()
     const writer = await signInAsGroup(h, 'writer')
     const theirs = await opened(writer, 'Their work')
-    expect((await h.json<{ items: unknown[] }>(WORKSPACES)).items).toEqual([
+    // Story 451: an administrator sees every workspace, whoever it is shared with.
+    expect((await h.json<{ items: Array<{ key: string }> }>(WORKSPACES)).items).toEqual([
       expect.objectContaining({ key: 'shared', shared: true }),
+      expect.objectContaining({ key: theirs.key, member: false }),
     ])
     expect(
       (await h.json<{ items: Array<{ key: string }> }>(`${WORKSPACES}?all=true`)).items,
@@ -255,8 +257,11 @@ describe(`workspaces over HTTP (${dialectUnderTest})`, () => {
       expect.objectContaining({ key: theirs.key }),
     ])
     expect((await writer.call(`${WORKSPACES}?all=true`)).status).toBe(403)
-    expect((await h.call(`${WORKSPACES}/${theirs.key}`)).status).toBe(404)
-    expect((await h.call(`${WORKSPACES}/${theirs.key}/changes`)).status).toBe(404)
+    expect((await h.call(`${WORKSPACES}/${theirs.key}`)).status).toBe(200)
+    expect((await h.call(`${WORKSPACES}/${theirs.key}/changes`)).status).toBe(200)
+    expect((await send(h, 'PATCH', `${WORKSPACES}/${theirs.key}`, { name: 'Mine' })).status).toBe(
+      404,
+    )
     expect((await send(h, 'DELETE', `${WORKSPACES}/${theirs.key}`)).status).toBe(204)
     expect((await writer.call(`${WORKSPACES}/${theirs.key}`)).status).toBe(404)
   })
