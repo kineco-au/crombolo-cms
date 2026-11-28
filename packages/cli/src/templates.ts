@@ -161,6 +161,8 @@ export function findTemplate(id: string, root = TEMPLATES_DIR): SiteTemplate | u
 }
 
 export interface ScaffoldOptions {
+  /** `--empty`: no starter files for a bundle to replace, Tailwind's input among them. */
+  empty?: boolean
   /** `--name`; also the package name, slugified. */
   siteName?: string
   /** `--postgres`: write a `.env` naming the Postgres variables instead of using the SQLite default. */
@@ -457,7 +459,10 @@ export default await crombolo(config)
     // Server actions (story 219), imported by views as `#actions/<file>.ts`.
     ...(next || spa ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
     // Story 452: Tailwind's input, so a local editor's Tailwind extension switches on.
-    ...(next || spa ? [] : [{ path: 'css/tailwind.css', text: '@import "tailwindcss";\n' }]),
+    // Not for `--empty`: a bundle started on it brings its own, and would be refused over it.
+    ...(next || spa || options.empty
+      ? []
+      : [{ path: 'css/tailwind.css', text: '@import "tailwindcss";\n' }]),
     {
       path: '.gitignore',
       // `.crombolo/` holds the view snapshots: pure cache, rebuilt from `components/`

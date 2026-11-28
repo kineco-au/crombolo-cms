@@ -337,7 +337,7 @@ describe('creating a site, end to end through the CLI', () => {
     expect(html).toContain('Harbourstone')
     expect(html).toContain('A cliff-side distillery where Atlantic weather')
     // Sort order travels with the bundle: without that this arrives shuffled.
-    const nav = /<nav aria-label="Primary">(.*?)<\/nav>/s.exec(html)?.[1] ?? ''
+    const nav = /<nav aria-label="Primary"[^>]*>(.*?)<\/nav>/s.exec(html)?.[1] ?? ''
     expect([...nav.matchAll(/>([^<]+)<\/a>/g)].map((m) => m[1])).toEqual([
       'Home',
       'About',
@@ -389,7 +389,9 @@ describe('creating a site, end to end through the CLI', () => {
     expect(html).toContain('&lt;Layout model={model} nav={nav}&gt;')
     expect(html).toContain('&lt;/Layout&gt;')
     expect(html).not.toContain('<Layout')
-    const steps = [...html.matchAll(/<li><h3>([^<]+)<\/h3>/g)].map((m) => m[1])
+    // The numbered steps: each item's heading, whatever classes they carry (story 452).
+    const list = /<ol[^>]*>(.*?)<\/ol>/s.exec(html)?.[1] ?? ''
+    const steps = [...list.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map((m) => m[1])
     expect(steps).toEqual([
       'Install Bun',
       'Create a site',
@@ -405,11 +407,12 @@ describe('creating a site, end to end through the CLI', () => {
     const html = await page(demo, '/bottlings/the-cove')
     expect(html).toContain('The Cove')
     expect(html).toContain('House malt · 46% · 12 years')
-    for (const aspect of ['Nose', 'Palate', 'Finish']) expect(html).toContain(`<dt>${aspect}</dt>`)
+    const at = (aspect: string) => html.search(new RegExp(`<dt[^>]*>${aspect}</dt>`))
+    for (const aspect of ['Nose', 'Palate', 'Finish']) expect(at(aspect)).toBeGreaterThan(-1)
     expect(html).toContain('wet slate, a thread of vanilla')
     // The picked order, not the order the elements were created in.
-    expect(html.indexOf('<dt>Nose</dt>')).toBeLessThan(html.indexOf('<dt>Palate</dt>'))
-    expect(html.indexOf('<dt>Palate</dt>')).toBeLessThan(html.indexOf('<dt>Finish</dt>'))
+    expect(at('Nose')).toBeLessThan(at('Palate'))
+    expect(at('Palate')).toBeLessThan(at('Finish'))
   })
 
   test('its media travels: the file the template shipped is what the site serves', async () => {
@@ -573,7 +576,7 @@ describe('creating a site, end to end through the CLI', () => {
     const assets = await cli('demo', 'assets', 'list')
     expect(assets.out).toContain('stylesheet css/print.css')
     // The template's own stylesheet is there too.
-    expect(assets.out).toContain('stylesheet css/site.css')
+    expect(assets.out).toContain('stylesheet css/tailwind.css')
     expect(assets.out).toContain('script     scripts/menu.js')
 
     // Written once: a second attempt refuses rather than overwriting.

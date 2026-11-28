@@ -89,6 +89,7 @@ export default class Init extends BaseCommand {
 
     const created: string[] = []
     for (const file of scaffoldFiles({
+      empty: flags.empty,
       siteName: flags.name,
       postgres: flags.postgres,
       template,
