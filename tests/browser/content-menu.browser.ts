@@ -10,7 +10,7 @@ import { expect, goToSection, settle, signIn, test } from './fixtures.ts'
 const strip = (page: Page) => page.locator('crombolo-content-strip')
 const marked = (page: Page) => page.locator('umb-backoffice-header-sections uui-tab[active]')
 
-test('the menu opens each place, with Content marked throughout', async ({ page, diagnostics }) => {
+test('the menu opens each place, with Site marked throughout', async ({ page, diagnostics }) => {
   diagnostics.allowed.push(
     'Tree context is not set',
     'provideAt is not a function',
@@ -27,7 +27,7 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
     ['Translation', /\/section\/content\/translation/],
     ['Structure', /\/section\/content\/structure$/],
     ['Code', /\/section\/content\/code$/],
-    ['Pages', /\/section\/content/],
+    ['Content', /\/section\/content/],
   ] as const) {
     await strip(page).getByRole('link', { name: label }).click()
     await expect(page).toHaveURL(address)
@@ -35,7 +35,8 @@ test('the menu opens each place, with Content marked throughout', async ({ page,
       'aria-current',
       'page',
     )
-    await expect(marked(page)).toHaveAttribute('label', 'Content')
+    // The section is labelled Site; Content is its tree, one of the places beneath it.
+    await expect(marked(page)).toHaveAttribute('label', 'Site')
     // A section with no tabs once drew the word false where they would be.
     await expect(page.getByText('false', { exact: true })).toHaveCount(0)
   }
@@ -87,7 +88,7 @@ test('leaving a page while it opens throws nothing', async ({ page, diagnostics 
   await signIn(page)
   for (let i = 0; i < 6; i++) {
     await goToSection(page, 'Content')
-    await strip(page).getByRole('link', { name: 'Pages' }).click()
+    await strip(page).getByRole('link', { name: 'Content' }).click()
     await page.waitForTimeout(40 * i)
     await strip(page).getByRole('link', { name: 'Structure' }).click()
     await expect(page).toHaveURL(/structure/)

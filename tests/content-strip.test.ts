@@ -23,7 +23,7 @@ describe('what the menu offers', () => {
   test('every place a workspace holds, to an administrator, editing first; no Approvals', () => {
     const items = stripItems({ allowedSections: [...EVERY, SETTINGS], isAdmin: true })
     expect(items.map((i) => [i.label, i.path])).toEqual([
-      ['Pages', 'section/content'],
+      ['Content', 'section/content'],
       ['Media', 'section/content/media'],
       ['Library', 'section/content/library'],
       ['Translation', 'section/content/translation'],
@@ -34,7 +34,7 @@ describe('what the menu offers', () => {
 
   test('only the places someone holds; Settings opens none of them', () => {
     expect(labels({ allowedSections: [CONTENT, PAGES, MEDIA], isAdmin: false })).toEqual([
-      'Pages',
+      'Content',
       'Media',
     ])
     expect(labels({ allowedSections: [CONTENT, MEDIA, CODE], isAdmin: false })).toEqual([
@@ -50,7 +50,7 @@ describe('what the menu offers', () => {
       fallbackPermissions: ['Crombolo.Form.Read'],
       isAdmin: false,
     }
-    expect(labels(user)).toEqual(['Pages', 'Structure'])
+    expect(labels(user)).toEqual(['Content', 'Structure'])
     expect(stripItems(user).find((item) => item.label === 'Structure')?.path).toBe(
       'section/content/forms',
     )
@@ -64,15 +64,15 @@ describe('what the menu offers', () => {
 
   test('with workspaces on, that one place is offered, as the way back from Workspaces', () => {
     const one = { allowedSections: [CONTENT, PAGES], isAdmin: false }
-    expect(stripItems(one, true).map((item) => item.label)).toEqual(['Pages'])
+    expect(stripItems(one, true).map((item) => item.label)).toEqual(['Content'])
     expect(stripItems({ allowedSections: [], isAdmin: false }, true)).toEqual([])
   })
 })
 
 describe('where a page belongs', () => {
   test.each([
-    ['section/content', 'Pages'],
-    ['section/content/workspace/document/edit/1', 'Pages'],
+    ['section/content', 'Content'],
+    ['section/content/workspace/document/edit/1', 'Content'],
     ['section/content/media', 'Media'],
     ['section/content/media/workspace/media/edit/1', 'Media'],
     ['section/content/library', 'Library'],
@@ -87,7 +87,7 @@ describe('where a page belongs', () => {
     ['section/content/code', 'Code'],
     ['section/content/code/workspace/stylesheet/edit/1', 'Code'],
     ['section/content/workspaces', 'Workspaces'],
-    ['section/content/dashboard/home', 'Pages'],
+    ['section/content/dashboard/home', 'Content'],
   ])('%s is %s', (path, item) => {
     expect(activeItem(path)).toBe(item)
   })

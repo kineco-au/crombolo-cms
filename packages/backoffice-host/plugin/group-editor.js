@@ -244,10 +244,10 @@ export default class CromboloGroupEditorElement extends UmbLitElement {
 
   #renderAreaSettings(section) {
     const g = this._group
-    // Where a group's pages start, and in which languages: Pages', a place under Content (story 385).
+    // Where a group's pages start, and in which languages: Content's, a place under Site (story 385).
     if (section === 'Crombolo.Section.Pages')
       return html`
-        ${this.#renderWhere('Pages', g.documentRootAccess, g.documentStartNode, 'documentRootAccess', 'documentStartNode', (selection) => html`<umb-input-document max="1" ?readonly=${this.#permissionsLocked} .selection=${selection} @change=${this.#pick('documentStartNode')}></umb-input-document>`)}
+        ${this.#renderWhere('Content', g.documentRootAccess, g.documentStartNode, 'documentRootAccess', 'documentStartNode', (selection) => html`<umb-input-document max="1" ?readonly=${this.#permissionsLocked} .selection=${selection} @change=${this.#pick('documentStartNode')}></umb-input-document>`)}
         <div class="row">
           <span class="row-label">Languages</span>
           <div class="row-value">

@@ -1,7 +1,7 @@
 /**
- * What the menu under Content offers (story 289), and which item a page belongs
+ * What the menu under Site offers (story 289), and which item a page belongs
  * to. Pure, so each is tested on its own. Each place is a grant of its own and
- * lives at an address under Content (story 385): Pages, Media, Library, Translation,
+ * lives at an address under Site (story 385): Content (pages and files), Media, Library, Translation,
  * Structure and Code, which is what a workspace holds (story 419). Forms and
  * Workflows are nodes in Structure; someone with Forms and not Structure has
  * Structure open on Forms alone. Approvals is a section of its own.
@@ -21,7 +21,8 @@ const FORMS = 'Crombolo.Section.Forms'
 const STRUCTURE_ELSE = [{ path: 'section/content/forms', section: FORMS, verb: FORM_READ }]
 
 const ITEMS = [
-  { label: 'Pages', path: 'section/content', section: PAGES },
+  // The site's tree: its pages, and the files it serves (story 450).
+  { label: 'Content', path: 'section/content', section: PAGES },
   { label: 'Media', path: 'section/content/media', section: MEDIA },
   { label: 'Library', path: 'section/content/library', section: LIBRARY },
   { label: 'Translation', path: 'section/content/translation', section: TRANSLATION },
@@ -80,5 +81,5 @@ export function stripItems(user, withWorkspaces = false) {
 export function activeItem(path) {
   const section = /^section\/content(?:\/([^/]+))?/.exec(path)
   if (!section) return undefined
-  return PLACES[section[1] ?? ''] ?? 'Pages'
+  return PLACES[section[1] ?? ''] ?? 'Content'
 }

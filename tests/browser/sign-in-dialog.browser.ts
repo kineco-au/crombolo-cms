@@ -97,7 +97,7 @@ test('no section of the backoffice names Umbraco', async ({ page, diagnostics })
   await signIn(page)
   const found: string[] = []
   for (const section of [
-    'Content',
+    'Site',
     'Media',
     'Library',
     'Settings',

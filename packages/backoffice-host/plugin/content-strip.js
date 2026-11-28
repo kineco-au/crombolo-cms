@@ -183,5 +183,17 @@ export default class CromboloContentStripElement extends UmbLitElement {
 
 customElements.define('crombolo-content-strip', CromboloContentStripElement)
 
-/** Loaded on its own so that the element the header draws is defined. */
-export const onInit = () => {}
+/** The section Umbraco calls Content: Site here, since Content is the tree beneath it. */
+export const SITE_SECTION = 'Umb.Section.Content'
+export const SITE_LABEL = 'Site'
+
+/**
+ * Loaded on its own so that the element the header draws is defined; and labels the
+ * section Site, everything about the site, its tree of pages and files keeping Content.
+ */
+export const onInit = (_host, extensionRegistry) => {
+  const section = extensionRegistry?.getByAlias(SITE_SECTION)
+  if (!section || section.meta?.label === SITE_LABEL) return
+  extensionRegistry.unregister(SITE_SECTION)
+  extensionRegistry.register({ ...section, meta: { ...section.meta, label: SITE_LABEL } })
+}

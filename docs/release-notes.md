@@ -8,6 +8,11 @@ point at `docs/stories/`.
 
 ### Features
 
+- **The back office's main section is Site,** everything about the site, and its tree of
+  pages and files is **Content**, the first place beneath it (Content, Media, Library,
+  Translation, Structure, Code, Workspaces). Only the labels change: the section's alias,
+  its addresses and its grants are as they were. A user group's grants say Site and
+  Content the same way.
 - **A workspace's colour is its owner's to choose,** from the palette, beside its name on
   its page; Automatic goes back to the one it was given. `PATCH /{key} { colour }`
   (`#rrggbb`, or null). The workspaces list groups workspaces by colour, finds them by

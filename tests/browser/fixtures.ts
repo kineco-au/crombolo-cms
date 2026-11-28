@@ -196,7 +196,9 @@ export async function goToSection(page: Page, name: string): Promise<void> {
     await settle(page)
     return
   }
-  const tab = page.locator('umb-backoffice-header-sections').getByRole('tab', { name })
+  // The section the tests call Content is labelled Site; its tree is Content beneath it.
+  const label = name === 'Content' ? 'Site' : name
+  const tab = page.locator('umb-backoffice-header-sections').getByRole('tab', { name: label })
   // Clicking the open section's tab navigates again, closing whatever a test opens next
   if ((await tab.getAttribute('active')) === null) await tab.click()
   await settle(page)

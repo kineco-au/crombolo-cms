@@ -25,10 +25,15 @@ const SETTINGS = 'Umb.Section.Settings'
 export const AREAS = [
   {
     section: CONTENT,
-    label: 'Content',
+    label: 'Site',
     line: 'The places below, under one menu. Each needs this too.',
   },
-  { section: 'Crombolo.Section.Pages', label: 'Pages', line: "The site's pages.", under: CONTENT },
+  {
+    section: 'Crombolo.Section.Pages',
+    label: 'Content',
+    line: "The site's pages and files.",
+    under: CONTENT,
+  },
   {
     section: 'Umb.Section.Media',
     label: 'Media',
