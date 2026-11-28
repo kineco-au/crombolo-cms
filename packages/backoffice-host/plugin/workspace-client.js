@@ -262,22 +262,17 @@ export function markOf(marks, unique) {
 }
 
 /** Who can see a workspace, as the back office words the two choices. */
-export const VISIBILITY = [
-  { value: 'members', label: 'Admins' },
-  { value: 'editors', label: 'Admins and Editors' },
-  { value: 'custom', label: 'Custom' },
-]
-
 /**
- * Who a workspace is for, as the toggle shows it: every editor, the groups and people it
- * is shared with (`custom`), or, shared with none, its owner and the administrators. Pure.
+ * Who sees a workspace, in words: always its owner and the administrators, every editor
+ * when it is open to them, and the groups and people it is shared with, by name. Pure.
  */
-export const audienceOf = (view) =>
-  view?.visibility === 'editors'
-    ? 'editors'
-    : (view?.memberKeys ?? []).length + (view?.groupKeys ?? []).length > 0
-      ? 'custom'
-      : 'members'
+export function whoSees(view, groups = [], people = []) {
+  const names = [...groups, ...people.filter((p) => !p.owner)].map((x) => x.name)
+  const parts = ['Its owner', 'the administrators']
+  if (view?.visibility === 'editors') parts.push('every editor')
+  parts.push(...names)
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`
+}
 
 /**
  * The Workspaces page's list, in order: Shared, then each open workspace the person can

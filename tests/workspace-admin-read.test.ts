@@ -1,7 +1,7 @@
 /**
- * Story 401: an administrator reads a workspace they are not in only when they ask to
- * (`includePrivate=true`), a person's own included; writes stay
- * with its owner and members, and nobody else may ask.
+ * Story 401, and 451 after it: an administrator lists and reads every workspace, whoever
+ * it is shared with, a person's own included (`includePrivate=true` is still accepted);
+ * writes stay with its owner and members, and nobody else reads one they aren't in.
  */
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -91,7 +91,7 @@ async function site() {
 }
 
 describe(`an administrator reading a workspace they are not in (${dialectUnderTest})`, () => {
-  test('is refused unless they ask to; asking, they read every read route, and writes stay refused', async () => {
+  test('reads every read route, asking or not, and writes stay refused', async () => {
     const s = await site()
     const writer = await signInAsGroup(s.h, 'writer')
     const opened = await s.send(writer, 'POST', WORKSPACES, { name: 'Spring sale' })
@@ -99,7 +99,12 @@ describe(`an administrator reading a workspace they are not in (${dialectUnderTe
     const { key } = (await opened.json()) as { key: string }
     await s.save(writer, 'Sale on', key)
 
-    expect((await s.send(s.h, 'GET', `${WORKSPACES}/${key}`)).status).toBe(404)
+    expect((await s.send(s.h, 'GET', `${WORKSPACES}/${key}`)).status).toBe(200)
+    // Listed for them too.
+    const listed = (await (await s.send(s.h, 'GET', WORKSPACES)).json()) as {
+      items: Array<{ key: string }>
+    }
+    expect(listed.items.map((w) => w.key)).toContain(key)
     const asked = (path = '') => `${WORKSPACES}/${key}${path}?includePrivate=true`
     const view = await s.send(s.h, 'GET', asked())
     expect(view.status).toBe(200)

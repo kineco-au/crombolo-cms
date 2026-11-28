@@ -127,7 +127,6 @@ async function site(workspaces = true) {
 }
 
 import {
-  audienceOf,
   chooseWorkspace,
   colourOf,
   contrast,
@@ -142,6 +141,7 @@ import {
   onceKnown,
   PALETTE,
   WORKSPACE_HEADER,
+  whoSees,
   workspaceFacts,
   workspaceRows,
 } from '../packages/backoffice-host/plugin/workspace-client.js'
@@ -409,8 +409,16 @@ describe(`workspaces in the back office, on the server (${dialectUnderTest})`, (
       `${WORKSPACES}/touched/${home}`,
     )
     expect(told.items).toHaveLength(1)
-    expect(told.items[0]?.workspace).toBeUndefined()
+    // An administrator sees every workspace, so is told which.
+    expect(told.items[0]?.workspace).toEqual({ key: theirs.key, name: 'Their sale' })
     expect(JSON.stringify(told)).not.toContain('Theirs')
+    // An editor not in it is told whose, never which.
+    const editor = await signInAsGroup(h, 'editor')
+    const toldEditor = await editor.json<{ items: Array<{ workspace?: unknown }> }>(
+      `${WORKSPACES}/touched/${home}`,
+    )
+    expect(toldEditor.items).toHaveLength(1)
+    expect(toldEditor.items[0]?.workspace).toBeUndefined()
     // Not of one's own.
     expect(
       (await writer.json<{ items: unknown[] }>(`${WORKSPACES}/touched/${home}`)).items,
@@ -542,13 +550,22 @@ describe("a workspace's colour and Shared's grid", () => {
   })
 })
 
-describe('who a workspace is shared with (story 451)', () => {
-  test('the toggle reads Custom while any group or person is shared', () => {
-    expect(audienceOf({ visibility: 'editors', memberKeys: ['a'] })).toBe('editors')
-    expect(audienceOf({ visibility: 'members', memberKeys: [], groupKeys: [] })).toBe('members')
-    expect(audienceOf({ visibility: 'members', memberKeys: ['a'] })).toBe('custom')
-    expect(audienceOf({ visibility: 'members', memberKeys: [], groupKeys: ['g'] })).toBe('custom')
-    expect(audienceOf(undefined)).toBe('members')
+describe('who sees a workspace (story 451)', () => {
+  test('who sees it is said in words: its owner and the administrators, then the rest', () => {
+    expect(whoSees({ visibility: 'members' })).toBe('Its owner and the administrators')
+    expect(whoSees({ visibility: 'editors' })).toBe(
+      'Its owner, the administrators and every editor',
+    )
+    expect(
+      whoSees(
+        { visibility: 'members' },
+        [{ name: 'Writers' }],
+        [
+          { name: 'Ann', owner: true },
+          { name: 'Bo', owner: false },
+        ],
+      ),
+    ).toBe('Its owner, the administrators, Writers and Bo')
   })
 
   test('the Shared with card names its groups, then its people', () => {

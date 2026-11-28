@@ -19,6 +19,7 @@ import {
 } from '@crombolo/api-management/domain'
 import { fieldWords, type MergePlan, type OnlyKind } from '@crombolo/content'
 import {
+  ADMIN_GROUP_ALIAS,
   DocumentPermissions as D,
   normaliseUuid,
   ObjectTypes,
@@ -1121,7 +1122,11 @@ export function createWorkspacesApi(
           const shown = all
             ? []
             : (await workspaces.all()).filter(
-                (w) => w.visibility === 'editors' && w.state === 'open' && !mayUse(w, principal),
+                // An administrator sees every one, whoever it is shared with.
+                (w) =>
+                  (w.visibility === 'editors' || principal.isAdmin) &&
+                  w.state === 'open' &&
+                  !mayUse(w, principal),
               )
           const listed = [...mine, ...shown]
           const counts = await workspaces.conflictCounts(listed.map((w) => w.id))
@@ -1207,7 +1212,9 @@ export function createWorkspacesApi(
         return json({
           items: touching.map((w) => ({
             owner: owners.find((u) => normaliseUuid(u.key) === w.ownerKey)?.name ?? 'someone',
-            ...(w.visibility === 'editors' ? { workspace: { key: w.key, name: w.name } } : {}),
+            ...(w.visibility === 'editors' || principal.isAdmin
+              ? { workspace: { key: w.key, name: w.name } }
+              : {}),
           })),
         })
       }
@@ -1261,11 +1268,8 @@ export function createWorkspacesApi(
           (sub === undefined || WORKSPACE_READS.has(sub)) &&
           (sub !== 'changes' || !member)) ||
         (request.method === 'POST' && !member && sub !== undefined && POSTED_READS.has(sub))
-      const adminRead =
-        !usable &&
-        principal.isAdmin &&
-        new URL(request.url).searchParams.get('includePrivate') === 'true' &&
-        aRead
+      // An administrator reads any, whoever it is shared with.
+      const adminRead = !usable && principal.isAdmin && aRead
       // Story 384: one its owner shows to every editor is read by them, and changed by its
       // members; story 416: every read, by someone with the Content section.
       const readable = found?.visibility === 'editors' && hasSection(principal, 'content') && aRead
@@ -1686,7 +1690,9 @@ async function shareOptions(db: Db): Promise<{
     .filter((u) => u.kind === 'Default' && u.isApproved)
     .map((u) => ({ key: normaliseUuid(u.key), name: u.name, email: u.email }))
     .sort(byName)
+  // Administrators see every workspace already: sharing with them would change nothing.
   const groups = (await new UserGroupRepository(db).all())
+    .filter((g) => g.alias !== ADMIN_GROUP_ALIAS)
     .map((g) => ({ key: normaliseUuid(g.key), name: g.name }))
     .sort(byName)
   return { users, groups }

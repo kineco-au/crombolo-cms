@@ -8,13 +8,12 @@ import { css, html, nothing } from '@umbraco-cms/backoffice/external/lit'
 import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { ask } from './ask.js'
 import {
-  audienceOf,
   chooseWorkspace,
   colourOf,
   controlsFor,
   inkOn,
   mergeRows,
-  VISIBILITY,
+  whoSees,
   workspaceFacts,
   workspacesApi,
 } from './workspace-client.js'
@@ -327,11 +326,7 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
             key: view.key,
             loaded: true,
             node: audienceEditor(
-              audienceOf({
-                visibility: view.visibility,
-                memberKeys: shared.people.map((p) => p.key),
-                groupKeys: shared.groups.map((g) => g.key),
-              }),
+              view.visibility,
               shared,
               workspaceTarget(view, () => {
                 workspacesChanged()
@@ -463,7 +458,6 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
       mayMerge: this.#mine.mayMerge === true,
       changes: changes.length,
     })
-    const seenBy = VISIBILITY.find((v) => v.value === view.visibility)?.label
     return html`<section class="detail"><div class="head">
         <span class="dot" style=${`background:${colourOf(view.key)}`}></span>
         ${
@@ -496,8 +490,8 @@ export default class CromboloWorkspacesPageElement extends UmbLitElement {
           : html`<div class="field"><span class="label">Description</span><p>${view.description ?? 'It has no description.'}</p></div>`
       }
       <div class="field">
-        <span class="label">Who can see this workspace</span>
-        ${owner ? this.#audience(view) : html`<strong>${seenBy}</strong>`}
+        <span class="label">Shared with</span>
+        ${owner ? this.#audience(view) : html`<p>${whoSees(view, this._detail.groups ?? [], members)}.</p>`}
       </div>
       <div class="facts">
         ${workspaceFacts(view, members, changes.length, when, this._detail.groups ?? []).map(

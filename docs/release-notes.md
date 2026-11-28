@@ -19,11 +19,15 @@ point at `docs/stories/`.
   unknown group refused, each audited), a workspace answers `groupKeys`, `GET
   /{key}/members` answers `groups: [{ key, name }]`, and `GET /share-options` lists every
   enabled user and every user group for choosing. See `docs/workspaces.md`.
-  - **In the back office,** who can see a workspace is Admins, Admins and Editors, or
-    **Custom**: the groups and people it is shared with, each chosen in an autocomplete
-    box and saved as it is chosen, on its page and in the New workspace and Share
-    dialogs. Choosing Admins or Admins and Editors again stops sharing with them, and
-    says who with. Sharing by email is left to the command line.
+  - **In the back office,** a workspace is shared in two autocomplete boxes, Groups and
+    People, on its page and in the New workspace and Share dialogs, each choice saved as
+    it is made. Its owner and the administrators always see it; those chosen are added to
+    them. Administrators aren't offered, and sharing by email is left to the command line.
+    A workspace the command line opened to every editor says so, and can be limited to
+    those chosen.
+- **Administrators see every workspace,** listed and readable whoever it is shared with,
+  without asking (`includePrivate=true` is still accepted). They edit in one only when it
+  is shared with them.
 - **Shared's page lists the workspaces,** each with its status as an icon (ready,
   conflicts, staged from another site, or yours to look at) and a **Merge** button. A
   workspace with conflicts can't be merged from there: its conflicts link to it.

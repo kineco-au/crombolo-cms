@@ -11,14 +11,12 @@ import { UmbLitElement } from '@umbraco-cms/backoffice/lit-element'
 import { ask } from './ask.js'
 import { pageDialog } from './dialog-styles.js'
 import {
-  audienceOf,
   chooseWorkspace,
   colourOf,
   controlsFor,
   currentWorkspace,
   menuFor,
   tabWorkspace,
-  VISIBILITY,
   WORKSPACES_CHANGED,
   workspacesApi,
 } from './workspace-client.js'
@@ -46,51 +44,6 @@ const shown = (value) =>
     : typeof value === 'string'
       ? value
       : JSON.stringify(value)
-
-/**
- * Who can see a workspace, as two buttons of which one is pressed. `change` is told the
- * choice; `disabled` shows it without offering it.
- */
-export function visibilityToggle(chosen, change = () => {}, disabled = false) {
-  const group = el('span', { role: 'group', 'aria-label': 'Who can see this workspace' })
-  group.style.cssText =
-    'display:inline-flex;border:1px solid var(--uui-color-border);border-radius:var(--uui-border-radius);overflow:hidden;'
-  const paint = () => {
-    for (const button of group.children) {
-      const on = button.value === group.dataset.value
-      button.setAttribute('aria-pressed', on ? 'true' : 'false')
-      button.style.cssText = `font:inherit;border:none;margin:0;padding:var(--uui-size-space-2) var(--uui-size-space-4);cursor:${disabled ? 'default' : 'pointer'};background:${on ? 'var(--uui-color-selected)' : 'var(--uui-color-surface)'};color:${on ? 'var(--uui-color-selected-contrast)' : 'var(--uui-color-text)'};`
-    }
-  }
-  group.dataset.value = VISIBILITY.some((v) => v.value === chosen) ? chosen : 'members'
-  for (const { value, label } of VISIBILITY)
-    group.append(
-      el(
-        'button',
-        {
-          type: 'button',
-          value,
-          disabled,
-          on: {
-            click: async () => {
-              const was = group.dataset.value
-              if (was === value) return
-              group.dataset.value = value
-              paint()
-              // A change refused puts the toggle back as it was.
-              if ((await change(value)) === false) {
-                group.dataset.value = was
-                paint()
-              }
-            },
-          },
-        },
-        label,
-      ),
-    )
-  paint()
-  return group
-}
 
 /**
  * An autocomplete box: what is chosen as tags, each removable, and a box that offers the
@@ -240,96 +193,93 @@ export function tagPicker(label, options, chosen, { add, remove }) {
 }
 
 /**
- * Who sees a workspace, and with Custom, the groups and people it is shared with, each in
- * an autocomplete box. `target` saves each choice as it is made: a workspace's own calls,
- * or, for one not yet made, a draft. `say` reports what happened.
+ * Who sees a workspace besides its owner and the administrators: the groups and people it
+ * is shared with, each chosen in an autocomplete box. `target` saves each choice as it is
+ * made: a workspace's own calls, or, for one not yet made, a draft. One every editor may
+ * look at (`visibility: 'editors'`, from the command line) says so, and can be limited to
+ * those chosen. `say` reports what happened.
  */
-export function audienceEditor(chosen, shared, target, say = () => {}) {
+export function audienceEditor(visibility, shared, target, say = () => {}) {
   const now = {
     groups: shared.groups.map((g) => g.key),
     people: shared.people.map((p) => p.key),
   }
-  const custom = el('div', { class: 'custom' })
-  custom.style.cssText =
-    'display:grid;gap:var(--uui-size-space-4,12px);margin-top:var(--uui-size-space-3,9px);'
-  let options
-  const showCustom = async () => {
-    custom.hidden = false
-    if (custom.childElementCount > 0) return
-    options ??= await workspacesApi.shareOptions().catch(() => ({ users: [], groups: [] }))
-    const guard = (fn) => async (key) => {
-      try {
-        await fn(key)
-      } catch (error) {
-        say(error.message)
-        return false
-      }
-    }
-    custom.append(
-      tagPicker(
-        'Groups',
-        (options.groups ?? []).map((g) => ({ key: g.key, name: g.name })),
-        now.groups,
-        {
-          add: guard(async (key) => {
-            await target.addGroup(key)
-            now.groups.push(key)
-          }),
-          remove: guard(async (key) => {
-            await target.removeGroup(key)
-            now.groups = now.groups.filter((k) => k !== key)
-          }),
+  const editor = el('div', { class: 'audience' })
+  editor.style.cssText = 'display:grid;gap:var(--uui-size-space-4,12px);'
+  if (visibility === 'editors') {
+    const note = el('p', {}, 'Every editor can look at it too. ')
+    note.style.cssText = 'margin:0;'
+    const limit = el(
+      'button',
+      {
+        type: 'button',
+        class: 'link',
+        on: {
+          click: async () => {
+            try {
+              await target.visibility('members')
+              note.remove()
+              say('Only those chosen below, as well as you and the administrators, see it now.')
+            } catch (error) {
+              say(error.message)
+            }
+          },
         },
-      ),
-      tagPicker(
-        'People',
-        (options.users ?? [])
-          .filter((u) => !shared.ownerKey || u.key !== shared.ownerKey)
-          .map((u) => ({ key: u.key, name: u.name, detail: u.email })),
-        now.people,
-        {
-          add: guard(async (key) => {
-            await target.addPerson(key)
-            now.people.push(key)
-          }),
-          remove: guard(async (key) => {
-            await target.removePerson(key)
-            now.people = now.people.filter((k) => k !== key)
-          }),
-        },
-      ),
+      },
+      'Limit it to those chosen below',
     )
+    limit.style.cssText =
+      'border:none;background:none;padding:0;font:inherit;color:var(--uui-color-interactive);text-decoration:underline;cursor:pointer;'
+    note.append(limit)
+    editor.append(note)
   }
-  const toggle = visibilityToggle(chosen, async (value) => {
+  const guard = (fn) => async (key) => {
     try {
-      if (value === 'custom') {
-        await target.visibility('members')
-        await showCustom()
-        return true
-      }
-      const nameOf = (known, offered, key) =>
-        known.find((k) => k.key === key)?.name ?? offered?.find((o) => o.key === key)?.name ?? key
-      const names = [
-        ...now.groups.map((key) => nameOf(shared.groups, options?.groups, key)),
-        ...now.people.map((key) => nameOf(shared.people, options?.users, key)),
-      ]
-      for (const key of now.groups) await target.removeGroup(key)
-      for (const key of now.people) await target.removePerson(key)
-      now.groups = []
-      now.people = []
-      custom.replaceChildren()
-      custom.hidden = true
-      await target.visibility(value)
-      say(names.length > 0 ? `No longer shared with ${names.join(', ')}.` : 'Saved.')
-      return true
+      await fn(key)
     } catch (error) {
       say(error.message)
       return false
     }
-  })
-  custom.hidden = true
-  if (chosen === 'custom') showCustom()
-  const editor = el('div', { class: 'audience' }, toggle, custom)
+  }
+  workspacesApi
+    .shareOptions()
+    .catch(() => ({ users: [], groups: [] }))
+    .then((options) => {
+      editor.append(
+        tagPicker(
+          'Groups',
+          (options.groups ?? []).map((g) => ({ key: g.key, name: g.name })),
+          now.groups,
+          {
+            add: guard(async (key) => {
+              await target.addGroup(key)
+              now.groups.push(key)
+            }),
+            remove: guard(async (key) => {
+              await target.removeGroup(key)
+              now.groups = now.groups.filter((k) => k !== key)
+            }),
+          },
+        ),
+        tagPicker(
+          'People',
+          (options.users ?? [])
+            .filter((u) => !shared.ownerKey || u.key !== shared.ownerKey)
+            .map((u) => ({ key: u.key, name: u.name, detail: u.email })),
+          now.people,
+          {
+            add: guard(async (key) => {
+              await target.addPerson(key)
+              now.people.push(key)
+            }),
+            remove: guard(async (key) => {
+              await target.removePerson(key)
+              now.people = now.people.filter((k) => k !== key)
+            }),
+          },
+        ),
+      )
+    })
   return editor
 }
 
@@ -392,7 +342,7 @@ export function newWorkspace() {
     'New workspace',
     el('label', {}, el('span', {}, 'Name'), name),
     el('label', {}, el('span', {}, 'Description'), description),
-    el('div', { class: 'field' }, el('span', {}, 'Who can see this workspace'), audience),
+    el('div', { class: 'field' }, el('span', {}, 'Shared with'), audience),
     status,
     el(
       'button',
@@ -433,13 +383,9 @@ export async function sharePanel(current, view) {
     el(
       'div',
       { class: 'field' },
-      el('span', {}, 'Who can see this workspace'),
+      el('span', {}, 'Shared with'),
       audienceEditor(
-        audienceOf({
-          visibility: view?.visibility,
-          memberKeys: shared.people.map((p) => p.key),
-          groupKeys: shared.groups.map((g) => g.key),
-        }),
+        view?.visibility,
         shared,
         workspaceTarget(current, () => window.dispatchEvent(new CustomEvent(WORKSPACES_CHANGED))),
         (said) => {

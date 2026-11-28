@@ -256,9 +256,13 @@ describe(`a workspace shared with a group over HTTP (${dialectUnderTest})`, () =
     expect(options.users).toContainEqual(
       expect.objectContaining({ name: 'ed@example.com', email: 'ed@example.com' }),
     )
+    // Every group but the administrators, who see every workspace already.
     const all = await new UserGroupRepository(h.server.db).all()
     expect(options.groups.map((g) => g.key).sort()).toEqual(
-      all.map((g) => g.key.toLowerCase()).sort(),
+      all
+        .filter((g) => g.alias !== 'admin')
+        .map((g) => g.key.toLowerCase())
+        .sort(),
     )
     for (const list of [options.users, options.groups]) {
       expect(list.every((one) => one.key === one.key.toLowerCase())).toBe(true)

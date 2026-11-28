@@ -91,7 +91,9 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   const dialog = page.locator('dialog.crombolo-workspace-dialog')
   await dialog.locator('input[name="name"]').fill('Spring sale')
   await dialog.locator('textarea[name="description"]').fill('The spring prices')
-  await dialog.getByRole('button', { name: 'Admins and Editors', exact: true }).click()
+  // Shared with a group as it is made (story 451): chosen in its autocomplete box.
+  await dialog.getByRole('combobox', { name: 'Groups' }).fill('Edit')
+  await dialog.getByRole('option', { name: /^Editors/ }).click()
   await dialog.getByRole('button', { name: 'Create' }).click()
   await expect(switchButton(page)).toContainText('Spring sale')
   // In it, its colour is the dot beside its name, and the strip is as it was.
@@ -129,23 +131,13 @@ test('a workspace opened from the switch takes a change apart from Shared, and m
   await expect(page.locator('umb-section-main-views')).toHaveCount(0)
   await expect(all.locator('input.title')).toHaveValue('Spring sale')
   await expect(all.locator('textarea[name="description"]')).toHaveValue('The spring prices')
-  await expect(
-    all.getByRole('button', { name: 'Admins and Editors', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(all.locator('.facts')).toContainText('Created by')
-  // Its owner changes who sees it there.
-  await all.getByRole('button', { name: 'Admins', exact: true }).click()
-  await expect(all.locator('[slot="footer-info"]')).toHaveText('Saved.')
-  // Custom shares it with groups and people, chosen in autocomplete boxes (story 451).
-  await all.getByRole('button', { name: 'Custom', exact: true }).click()
-  const groups = all.getByRole('combobox', { name: 'Groups' })
-  await groups.fill('Edit')
-  await all.getByRole('option', { name: /^Editors/ }).click()
+  // The group chosen is listed where it is shared.
   await expect(all.locator('.tag', { hasText: 'Editors' })).toBeVisible()
+  await expect(all.locator('.facts')).toContainText('Created by')
   await expect(all.locator('.facts')).toContainText('Editors')
-  // Back to Admins, it is no longer shared with them, and says so.
-  await all.getByRole('button', { name: 'Admins', exact: true }).click()
-  await expect(all.locator('[slot="footer-info"]')).toHaveText('No longer shared with Editors.')
+  // Its owner takes the group away there, and the card says so.
+  await all.getByRole('button', { name: 'Remove Editors' }).click()
+  await expect(all.locator('.tag', { hasText: 'Editors' })).toHaveCount(0)
   await expect(all.locator('.facts')).not.toContainText('Editors')
   // Renamed there, it is called that at once in the switch too.
   await all.locator('input.title').fill('Spring offers')
