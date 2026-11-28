@@ -8,57 +8,59 @@ point at `docs/stories/`.
 
 ### Features
 
-- **A built-in Folder content type** (`fileFolder`) beside File. The Create menu offers it
-  right after File at the root, under every page, and with File alone under a File or a
+**The content tree**
+
+- **The main section is Site,** everything about the site, and its tree of pages and files
+  is **Content**, the first place beneath it: Content, Media, Library, Translation,
+  Structure, Code, and Workspaces at the right, set apart. Only the labels change: the
+  section's alias, its addresses and its grants are as they were, and a user group's
+  grants say Site and Content the same way.
+- **A built-in Folder type** (`fileFolder`) beside File. The Create menu offers it right
+  after File at the root and under every page, and only File and Folder under a File or a
   Folder. Its name is letters, digits and hyphens only (or `.well-known`). It holds Files
-  and Folders, whose addresses take its name exactly; it answers
-  nothing at its own address and stays out of menus and the sitemap. The File name editor
-  no longer offers "(folder)", so a File always has an ending. Extensionless Files made
-  as folders on 0.84.0 still work as folders, as before.
-- **The back office's main section is Site,** everything about the site, and its tree of
-  pages and files is **Content**, the first place beneath it (Content, Media, Library,
-  Translation, Structure, Code, Workspaces). Only the labels change: the section's alias,
-  its addresses and its grants are as they were. A user group's grants say Site and
-  Content the same way.
-- **A workspace's colour is its owner's to choose,** from the palette, beside its name on
-  its page; Automatic goes back to the one it was given. `PATCH /{key} { colour }`
-  (`#rrggbb`, or null). The workspaces list groups workspaces by colour, finds them by
-  name, pages ten at a time, filters Mine or All, switches from each row, and folds its
-  Merged section, which looks back 30, 60, 90 or 180 days. A merge stays on its
-  workspace and shows what it merged, with links to each page and file, and opens again
-  from the Merged section.
-- **Tailwind's typography plugin ships with the CMS.** `@plugin "@tailwindcss/typography";`
-  in a site's `css/tailwind.css` works with nothing installed, so `prose` styles rich-text
-  and Markdown bodies on any site, a bundle's included. A `@plugin` the site can't
-  resolve falls back to the CMS's own packages.
-- **A workspace shared with user groups (451).** Its owner shares a workspace with one or
-  more user groups as well as people, and everyone in a group, now or later, can see and
-  work in it; someone removed from the group no longer can. `POST /{key}/groups
-  { groupKey }` and `DELETE /{key}/groups/{groupKey}` share and unshare (its owner only, an
-  unknown group refused, each audited), a workspace answers `groupKeys`, `GET
-  /{key}/members` answers `groups: [{ key, name }]`, and `GET /share-options` lists every
-  enabled user and every user group for choosing. See `docs/workspaces.md`.
-  - **In the back office,** a workspace is shared in two autocomplete boxes, Groups and
-    People, on its page and in the New workspace and Share dialogs, each choice saved as
-    it is made. Its owner and the administrators always see it; those chosen are added to
-    them. Administrators aren't offered, and sharing by email is left to the command line.
-    A workspace the command line opened to every editor says so, and can be limited to
-    those chosen.
-- **Administrators see every workspace,** listed and readable whoever it is shared with,
-  without asking (`includePrivate=true` is still accepted). They edit in one only when it
-  is shared with them.
-- **Shared's page lists the workspaces,** each with its status as an icon (ready,
-  conflicts, staged from another site, or yours to look at) and a **Merge** button. A
-  workspace with conflicts can't be merged from there: its conflicts link to it.
-- **The workspaces list** marks the one this tab is in with a green dot, shows each
-  workspace's name on its colour in a text colour that reads on it, and sets Shared apart
-  with a line.
+  and Folders, whose addresses take its name exactly; it answers nothing at its own
+  address and stays out of menus and the sitemap.
 - **A File's name is typed without its ending,** chosen beside it from the kinds of File
-  the site serves, Markdown for a new one; **(folder)** makes a folder. A text File can
-  be filled from a file uploaded above its body.
+  the site serves, Markdown for a new one. Typing a whole name (`llms.txt`) picks its
+  ending. A text File can be filled from a file uploaded above its body.
 - **A File is previewed with Save and preview,** not beside its editor. A Markdown File's
-  preview has a **Markdown | Rendered** switch, the rendered page sandboxed as an HTML
-  File is.
+  preview has a **Markdown | Rendered** switch, the rendered page sandboxed as an HTML File
+  is.
+
+**Workspaces**
+
+- **Shared with user groups (451).** A workspace is shared with one or more user groups
+  as well as people, and everyone in a group, now or later, can see and work in it;
+  someone removed from the group no longer can.
+  - **In the back office:** two autocomplete boxes, Groups and People, under Shared with,
+    on the workspace's page and in the New workspace and Share dialogs, each choice saved
+    as it is made. Its owner and the administrators always see it; those chosen are added
+    to them. Sharing by email is left to the command line, and a workspace the command
+    line opened to every editor says so, and can be limited to those chosen.
+  - **The API:** `POST /{key}/groups { groupKey }` and `DELETE /{key}/groups/{groupKey}`
+    (its owner only, an unknown group refused, each audited); a workspace answers
+    `groupKeys`; `GET /{key}/members` answers `groups`; `GET /share-options` lists every
+    approved back-office user and every user group but the administrators. See
+    `docs/workspaces.md`.
+- **Administrators see every workspace,** listed and readable whoever it is shared with,
+  without asking. They edit in one only when it is shared with them.
+- **A workspace's colour is its owner's to choose,** from the palette beside its name;
+  Automatic goes back to the one it was given (`PATCH /{key} { colour }`, `#rrggbb` or
+  null).
+- **The workspaces list:** grouped by colour, each name on its colour in a text colour
+  that reads on it; a green dot for the one this tab is in, and a button on each row to
+  switch to it; Mine or All, a box that finds a workspace by any part of its name, and
+  ten at a time; and a Merged section that folds away and looks back 30, 60, 90 or 180
+  days.
+- **Shared's page lists the workspaces,** each with its status as an icon and a Merge
+  button; one with conflicts links to them instead.
+- **A workspace with no conflicts links to all its changes,** read only, and merging from
+  there merges at once when nothing is left to settle or accept.
+- **A merge stays on its workspace** and shows what it merged: pages published, saved as
+  drafts, sent for approval or deleted, and files changed, each linked; the same summary
+  opens again from the Merged section.
+
+**Tailwind**
 
 - **Tailwind on every site (452).** A site's views, partials and components are styled
   with Tailwind's classes, with no import or build step. The server generates the CSS for
@@ -66,31 +68,37 @@ point at `docs/stories/`.
   binaries) at boot, on every save in the template editor and as views change in
   development, serves it at `/css/tailwind.css` through `asset()`, hashed and kept for a
   year, and links it in every page's head before the site's own stylesheets. A site's
-  `css/tailwind.css` replaces the default input, for `@theme`, plugins, `@source` and
-  `@source inline(…)` for classes used only in content; one that doesn't compile is
-  logged with its line, the last good stylesheet stays served, and development shows it
-  in a banner. New sites get `css/tailwind.css` with `@import "tailwindcss";`, so
-  Tailwind's editor extension works locally, and the basic template is styled with
-  classes. The template editor completes classes inside `className`/`class` strings and
-  `clsx`/`cn` calls, with their CSS, the variants, a swatch for a colour and the site's
-  own theme, and shows a class's CSS on hover. `styles: { tailwind: false }` or
-  `CROMBOLO_STYLES_TAILWIND=false` turns it off. See `docs/rendering.md`, "Styling with
-  Tailwind".
+  `css/tailwind.css` is the input, for `@theme`, `@utility`, plugins, `@source` and
+  `@source inline(…)`; one that doesn't compile is logged with its line, the last good
+  stylesheet stays served, and development shows it in a banner. `styles: { tailwind:
+  false }` or `CROMBOLO_STYLES_TAILWIND=false` turns it off. See `docs/rendering.md`,
+  "Styling with Tailwind".
+  - **The typography plugin ships with the CMS:** `@plugin "@tailwindcss/typography";`
+    works on any site, a bundle's included, with nothing installed.
+  - **The template editor** completes classes inside `className`/`class` strings and
+    `clsx`/`cn` calls, with their CSS, the variants, a swatch for a colour and the site's
+    own theme and utilities, and shows a class's CSS on hover.
+  - **New sites** get `css/tailwind.css`, so Tailwind's editor extension works locally,
+    and every demo site and template is styled with Tailwind: utility classes in its
+    components, its tokens in `@theme` and its shared patterns as `@utility` rules.
+
+**The back office**
+
+- **One look for every dialog's buttons:** the action green and last, Cancel, Close or
+  Back before it, Delete in red, in the native dialogs and the modals alike.
 
 ### Migrations
 
 - **107 `AddWorkspaceGroups`** (expand, 451): `workspace_group`, each user group a
   workspace is shared with, by key, with when it was added.
-- **109 `AddWorkspaceColour`** (expand): a workspace's `colour`, empty until its owner
-  chooses one.
 - **108 `FileTypeWording`** (expand, 450): the File type's description becomes "A content
   file" and its body's description is removed, as the type now ships. A site that
   installed 0.84.0 had the first wording, which no longer matched the built-in type.
+- **109 `AddWorkspaceColour`** (expand): a workspace's `colour`, empty until its owner
+  chooses one.
 
 ### Upgrade notes
 
-- **Nothing to do for workspace groups (451).** The table starts empty: every workspace is
-  shared with the people it was, and with no group until its owner chooses one.
 - **Tailwind's base reset now applies to every page (452).** Each page links a generated
   stylesheet that includes Tailwind's preflight, which zeroes margins, makes headings the
   size of body text, takes the bullets and numbers off lists and makes images block-level,
@@ -99,6 +107,13 @@ point at `docs/stories/`.
   `crombolo.config.ts` or `CROMBOLO_STYLES_TAILWIND=false`. A site with its own
   `css/tailwind.css` from a build of its own will find it read as the input now, and the
   generated stylesheet served at its address.
+- **Administrators now see every workspace (451),** in their list and readable, where
+  before they had to ask (`includePrivate=true`, still accepted). A site whose
+  administrators shouldn't see a workspace's work in progress should know this before
+  upgrading.
+- **Nothing to do for workspace groups (451) or the Folder type:** every workspace is
+  shared with the people it was, and with no group until its owner chooses one;
+  extensionless Files made as folders on 0.84.0 still work as folders.
 
 ## v0.84.0 — 2026-11-28
 
