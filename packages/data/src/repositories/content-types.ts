@@ -14,6 +14,8 @@ import {
   type ContentTypeAggregate,
   ContentVariation,
   ENVIRONMENT_VARIATION,
+  isFileFolderType,
+  isFileTreeType,
   isFileType,
   normaliseUuid,
   ObjectTypes,
@@ -612,10 +614,10 @@ export class ContentTypeRepository {
    * level), as its parent's type allows children; nothing when it may.
    */
   async placementRefusal(typeKey: string, parentKey: string | null): Promise<string | undefined> {
-    // Story 450: a File may go anywhere, and only a File goes inside one.
-    if (isFileType(typeKey)) return undefined
-    if (parentKey !== null && (await this.#isFileItem(parentKey)))
-      return 'Only a File can go inside a File.'
+    // Story 450: a File or a Folder may go anywhere, and only those go inside one.
+    if (isFileTreeType(typeKey)) return undefined
+    const holder = parentKey === null ? undefined : await this.#fileTreeItem(parentKey)
+    if (holder) return `Only a File or a Folder can go inside a ${holder}.`
     if (this.#workspace) {
       const type = await this.byKey(typeKey)
       if (!type) return undefined
@@ -670,8 +672,8 @@ export class ContentTypeRepository {
       : `"${typeName}" isn't allowed under "${parent.text ?? parentKey}".`
   }
 
-  /** Whether the item with this key is a File. */
-  async #isFileItem(key: string): Promise<boolean> {
+  /** Which of File or Folder the item with this key is, if either. */
+  async #fileTreeItem(key: string): Promise<'File' | 'Folder' | undefined> {
     const rows = await this.#db.q
       .selectFrom('node as n')
       .innerJoin('content as c', 'c.node_id', 'n.id')
@@ -680,7 +682,10 @@ export class ContentTypeRepository {
       .select(['tn.unique_id', 'tct.origin_key'])
       .where('n.unique_id', '=', normaliseUuid(key))
       .execute()
-    return rows.some((row) => isFileType(String(row.origin_key ?? row.unique_id)))
+    const types = rows.map((row) => String(row.origin_key ?? row.unique_id))
+    if (types.some(isFileType)) return 'File'
+    if (types.some(isFileFolderType)) return 'Folder'
+    return undefined
   }
 
   async allowedChildren(

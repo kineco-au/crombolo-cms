@@ -8,6 +8,12 @@ point at `docs/stories/`.
 
 ### Features
 
+- **A built-in Folder content type** (`fileFolder`) beside File. The Create menu offers it
+  right after File at the root, under every page, and with File alone under a File or a
+  Folder. It holds Files and Folders, whose addresses take its name exactly; it answers
+  nothing at its own address and stays out of menus and the sitemap. The File name editor
+  no longer offers "(folder)", so a File always has an ending. Extensionless Files made
+  as folders on 0.84.0 still work as folders, as before.
 - **The back office's main section is Site,** everything about the site, and its tree of
   pages and files is **Content**, the first place beneath it (Content, Media, Library,
   Translation, Structure, Code, Workspaces). Only the labels change: the section's alias,

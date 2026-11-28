@@ -10,6 +10,7 @@ import {
   FILE_BODY_DATA_TYPE_KEY,
   FILE_BODY_PROPERTY_KEY,
   FILE_CONTENT_TYPE_KEY,
+  FILE_FOLDER_CONTENT_TYPE_KEY,
 } from './files.ts'
 
 export interface PropertyTypeModel {
@@ -168,13 +169,14 @@ export function isSystemMemberType(key: string): boolean {
  * site may add fields to one, but not remove or change the ones it ships with.
  */
 export const SYSTEM_CONTENT_TYPE_KEYS: Readonly<
-  Record<'SeoFields' | 'CacheFields' | 'Menu' | 'MenuItem' | 'File', string>
+  Record<'SeoFields' | 'CacheFields' | 'Menu' | 'MenuItem' | 'File' | 'FileFolder', string>
 > = {
   SeoFields: '5e0f1c2a-7b3d-4c8e-9a61-0d2b4f6e8a13',
   CacheFields: '7a1e4c93-2b6d-4f58-a0c7-5d3e9b1f8a24',
   Menu: '3c9e2f71-5a4d-4b86-9e13-7f0a2d6c8b45',
   MenuItem: '8b4d1a26-6e3f-4c90-a7d5-2e9c0f4b7a18',
   File: FILE_CONTENT_TYPE_KEY,
+  FileFolder: FILE_FOLDER_CONTENT_TYPE_KEY,
 }
 
 export function isSystemContentType(kind: 'document' | 'media' | 'member', key: string): boolean {

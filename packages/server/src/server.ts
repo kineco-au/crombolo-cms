@@ -82,6 +82,7 @@ import {
   fileKindOf,
   formTokenSubject,
   hasAccessToSensitiveData,
+  isFileTreeAlias,
   libraryFormId,
   libraryFormTypeKey,
   localReturnUrl,
@@ -3480,15 +3481,19 @@ export async function createServer(
     if (link && normaliseUuid(key) !== normaliseUuid(link.document)) return undefined
     // A published page is no File, and its draft is read once, by the page's own preview.
     const published = await cache.byKey(key)
-    if (published && published.contentType.alias !== FILE_CONTENT_TYPE_ALIAS) return undefined
+    if (published && !isFileTreeAlias(published.contentType.alias)) return undefined
     const draft = await draftModel(key, null, principal)
-    if (draft?.contentTypeAlias !== FILE_CONTENT_TYPE_ALIAS) return undefined
-    const body = await fileBodyOf(
-      draft.content.name,
-      draft.content.value(FILE_BODY_ALIAS),
-      mediaFiles.store,
-    )
+    if (!draft || !isFileTreeAlias(draft.contentTypeAlias)) return undefined
     const unkept = { 'cache-control': PRIVATE_NO_STORE }
+    // A Folder, like a folder File, has nothing to show.
+    const body =
+      draft.contentTypeAlias === FILE_CONTENT_TYPE_ALIAS
+        ? await fileBodyOf(
+            draft.content.name,
+            draft.content.value(FILE_BODY_ALIAS),
+            mediaFiles.store,
+          )
+        : undefined
     if (!body) return new Response('Not Found', { status: 404, headers: unkept })
     const markdown = markdownPreview(body, readCookie(request, MARKDOWN_VIEW_COOKIE))
     if (markdown)

@@ -7,6 +7,7 @@
 import {
   branchAccess,
   FILE_CONTENT_TYPE_ALIAS,
+  isFileTreeAlias,
   type MediaMember,
   type MediaRule,
   type SchemaForm,
@@ -461,8 +462,8 @@ export function createDeliveryApi(ports: DeliveryApiPorts): DeliveryApi {
 
     const routeIn = async (inCulture: string | null) => {
       const view = await source.navigation(inCulture)
-      // A File at the root is never the home page (story 450).
-      const isFile = (c: PublishedContent) => c.contentType.alias === FILE_CONTENT_TYPE_ALIAS
+      // A File or Folder at the root is never the home page (story 450).
+      const isFile = (c: PublishedContent) => isFileTreeAlias(c.contentType.alias)
       const first = view.root().find((c) => !isFile(c))
       const cultureRtl = isRightToLeft(inCulture)
       return (content: PublishedContent): ApiRoute | undefined => {

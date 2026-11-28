@@ -39,15 +39,12 @@ export const DEFAULT_EXTENSION = '.md'
 
 /**
  * The endings a File's name is chosen from, beside the name it is typed without:
- * Markdown first, the rest as listed, and none last, for a folder. Pure.
+ * Markdown first, the rest as listed. A folder is a Folder, not a File. Pure.
  */
 export const nameSuffixes = () => ({
-  options: [
-    ...[DEFAULT_EXTENSION, ...FILE_EXTENSIONS.filter((e) => e !== DEFAULT_EXTENSION)].map(
-      (value) => ({ value, label: value }),
-    ),
-    { value: '', label: '(folder)' },
-  ],
+  options: [DEFAULT_EXTENSION, ...FILE_EXTENSIONS.filter((e) => e !== DEFAULT_EXTENSION)].map(
+    (value) => ({ value, label: value }),
+  ),
   initial: DEFAULT_EXTENSION,
 })
 
@@ -93,18 +90,23 @@ export const editorFor = (name) => {
 export const isUpload = (value) =>
   Boolean(value && typeof value === 'object' && (value.src || value.temporaryFileId))
 
-/** Why a File can't have this name, or undefined when it can. Pure. */
-export function nameProblem(name, parentName) {
-  if (typeof name !== 'string' || name.length === 0) return 'A File needs a name.'
-  if (name !== name.trim()) return "A File's name can't start or end with a space."
+/**
+ * Why a File can't have this name, or undefined when it can. A Folder's name
+ * (`{ folder: true }`) is held to the same rules, but may have any ending. Pure.
+ */
+export function nameProblem(name, parentName, { folder = false } = {}) {
+  const noun = folder ? 'Folder' : 'File'
+  if (typeof name !== 'string' || name.length === 0) return `A ${noun} needs a name.`
+  if (name !== name.trim()) return `A ${noun}'s name can't start or end with a space.`
   if (/[/?#\\]/.test(name))
-    return `A File's name is one part of its address, so it can't have / ? # or \\ in it.`
+    return `A ${noun}'s name is one part of its address, so it can't have / ? # or \\ in it.`
   // biome-ignore lint/suspicious/noControlCharactersInRegex: a control character is what it refuses
   if (/[\u0000-\u001f\u007f]/.test(name))
-    return "A File's name can't have control characters in it."
-  if (name === '.' || name === '..') return `A File can't be named ${name}.`
+    return `A ${noun}'s name can't have control characters in it.`
+  if (name === '.' || name === '..') return `A ${noun} can't be named ${name}.`
   if (name.startsWith('.') && name !== WELL_KNOWN && parentName !== WELL_KNOWN)
-    return `A File's name can't start with a dot, except inside ${WELL_KNOWN}.`
+    return `A ${noun}'s name can't start with a dot, except inside ${WELL_KNOWN}.`
+  if (folder) return undefined
   const extension = extensionOf(name)
   if (extension && !kindOf(name))
     return `${extension} isn't a kind of File this site serves. Use one of: ${FILE_EXTENSIONS.join(', ')}.`

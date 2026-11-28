@@ -31,7 +31,8 @@ export interface BuiltInContentType {
   isElement?: boolean
   /** Offered for creating in the Library section. */
   allowedInLibrary?: boolean
-  tab: { key: string; name: string; alias: string }
+  /** The tab its fields sit on; none for a type with no fields. */
+  tab?: { key: string; name: string; alias: string }
   properties: readonly SystemPropertyModel[]
 }
 
@@ -97,12 +98,26 @@ export const FILE_TYPE: BuiltInContentType = {
   properties: FILE_PROPERTIES,
 }
 
+/**
+ * A Folder: a folder of Files, whose name is a segment of their addresses and
+ * which answers nothing at its own. Offered where a File is, as a File is.
+ */
+export const FILE_FOLDER_TYPE: BuiltInContentType = {
+  key: SYSTEM_CONTENT_TYPE_KEYS.FileFolder,
+  alias: 'fileFolder',
+  name: 'Folder',
+  description: 'A folder of content files',
+  icon: 'icon-folder',
+  properties: [],
+}
+
 export const SYSTEM_CONTENT_TYPES: readonly BuiltInContentType[] = [
   SEO_FIELDS_TYPE,
   CACHE_FIELDS_TYPE,
   MENU_TYPE,
   MENU_ITEM_TYPE,
   FILE_TYPE,
+  FILE_FOLDER_TYPE,
 ]
 
 export function systemContentTypeAggregate(def: BuiltInContentType): ContentTypeAggregate {
@@ -123,23 +138,25 @@ export function systemContentTypeAggregate(def: BuiltInContentType): ContentType
       keepAllVersionsNewerThanDays: null,
       keepLatestVersionPerDayForDays: null,
     },
-    containers: [
-      {
-        key: def.tab.key,
-        name: def.tab.name,
-        alias: def.tab.alias,
-        type: 'Tab',
-        sortOrder: 0,
-        parentKey: null,
-      },
-    ],
+    containers: def.tab
+      ? [
+          {
+            key: def.tab.key,
+            name: def.tab.name,
+            alias: def.tab.alias,
+            type: 'Tab',
+            sortOrder: 0,
+            parentKey: null,
+          },
+        ]
+      : [],
     properties: def.properties.map((p, sortOrder) => ({
       key: p.key,
       alias: p.alias,
       name: p.name,
       description: p.description,
       dataTypeKey: p.dataTypeKey,
-      containerKey: def.tab.key,
+      containerKey: def.tab?.key ?? null,
       sortOrder,
       variesByCulture: false,
       variesBySegment: false,

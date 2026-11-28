@@ -250,7 +250,7 @@ describe('story 021 content types', () => {
     )
     expect(ancestors.map((a) => a.id)).toEqual([folderKey, subKey])
     const siblings = await h.json<{ items: Array<{ id: string }>; totalBefore: number }>(
-      `${V1}/tree/document-type/siblings?target=${other}&before=5&after=5`,
+      `${V1}/tree/document-type/siblings?target=${other}&before=10&after=10`,
     )
     expect(siblings.items.map((i) => i.id).filter((id) => !SHIPPED_TYPE_KEYS.has(id))).toEqual([
       folderKey,

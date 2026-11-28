@@ -19,6 +19,7 @@ import {
   type ChoiceSource,
   FILE_CONTENT_TYPE_ALIAS,
   fileSegment,
+  isFileTreeAlias,
   keyFromReference,
   LIBRARY_FORM_PROPERTY,
   libraryFormId,
@@ -276,6 +277,10 @@ const EMPTY: CacheSnapshot = {
 
 const isFileNode = (node: { contentTypeAlias: string }) =>
   node.contentTypeAlias === FILE_CONTENT_TYPE_ALIAS
+
+/** A File or a Folder: named exactly in its address, never a page. */
+const isFileTreeNode = (node: { contentTypeAlias: string }) =>
+  isFileTreeAlias(node.contentTypeAlias)
 
 /** A path as a File's segments are written, however the browser escaped it. Pure. */
 export function canonicalPath(pathname: string): string {
@@ -1010,7 +1015,7 @@ export class PublishedCache {
 
     // A File at the root is never the home page.
     const firstRootId = nodes
-      .filter((node) => node.parentId <= 0 && !isFileNode(node))
+      .filter((node) => node.parentId <= 0 && !isFileTreeNode(node))
       .sort((a, b) => a.sortOrder - b.sortOrder)[0]?.id
     const { hideTopLevel } = (await source.loadUrlOptions?.()) ?? { hideTopLevel: true }
 
@@ -1050,8 +1055,8 @@ export class PublishedCache {
           ) ?? node.properties.find((p) => p.alias === URL_NAME_ALIAS && p.culture === null)
         segmentOf.set(
           node.id,
-          // Story 450: a File's name is its address exactly, extension included.
-          isFileNode(node)
+          // Story 450: a File's name is its address exactly, extension included, as is a Folder's.
+          isFileTreeNode(node)
             ? fileSegment(nameIn(node))
             : urlSegmentFor(
                 nameIn(node),
@@ -1086,8 +1091,8 @@ export class PublishedCache {
           if (!parent || !segmentOf.has(parent.id)) return undefined
           segments.unshift(segmentOf.get(current.id) as string)
           if (parent.parentId <= 0) {
-            // A folder File at the top level stays in its Files' paths (story 450).
-            if (!hideTopLevel || isFileNode(parent))
+            // A Folder, or a folder File, at the top level stays in its Files' paths (story 450).
+            if (!hideTopLevel || isFileTreeNode(parent))
               segments.unshift(segmentOf.get(parent.id) as string)
             break
           }
@@ -1216,11 +1221,11 @@ export class PublishedCache {
       }
       for (const siblings of view.childrenOf.values())
         siblings.sort((a, b) => a.sortOrder - b.sortOrder)
-      // A File at the root comes after the pages, so the first root is always a page.
+      // A File or Folder at the root comes after the pages, so the first root is always a page.
       view.roots.sort(
         (a, b) =>
-          Number(a.contentType.alias === FILE_CONTENT_TYPE_ALIAS) -
-            Number(b.contentType.alias === FILE_CONTENT_TYPE_ALIAS) || a.sortOrder - b.sortOrder,
+          Number(isFileTreeAlias(a.contentType.alias)) -
+            Number(isFileTreeAlias(b.contentType.alias)) || a.sortOrder - b.sortOrder,
       )
 
       // Pickers and links resolve against this culture's view.
@@ -1558,7 +1563,7 @@ export function contentForNode(
     id: node.id,
     name,
     contentTypeAlias: node.contentTypeAlias,
-    urlSegment: isFileNode(node)
+    urlSegment: isFileTreeNode(node)
       ? fileSegment(name)
       : urlSegmentFor(name, typeof override?.value === 'string' ? override.value : null),
     url,

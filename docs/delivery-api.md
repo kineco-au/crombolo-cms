@@ -516,8 +516,9 @@ published cache's `resolve`, which the renderer uses.
 ## Files
 
 A File in the content tree (story 450, `docs/rendering.md`, "Files in the content
-tree") is an item of type `fileItem`, listed and fetched as any item. Its `body`
-property describes it rather than holding it:
+tree") is an item of type `fileItem`, listed and fetched as any item; a Folder
+is one of type `fileFolder`, with no properties. A File's `body` property
+describes it rather than holding it:
 
 ```json
 {

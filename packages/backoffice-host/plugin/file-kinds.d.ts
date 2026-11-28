@@ -30,7 +30,11 @@ export function extensionOf(name: string): string
 export function kindOf(name: string): FileKindEntry | undefined
 export function editorFor(name: string): FileKindEditor | 'folder' | 'unknown'
 export function isUpload(value: unknown): boolean
-export function nameProblem(name: string, parentName?: string | null): string | undefined
+export function nameProblem(
+  name: string,
+  parentName?: string | null,
+  options?: { folder?: boolean },
+): string | undefined
 export function bodyProblem(
   name: string,
   value: unknown,

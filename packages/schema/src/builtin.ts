@@ -106,24 +106,26 @@ export function builtInContentTypeSchema(def: BuiltInContentType): SchemaContent
     components: [],
     cleanup: { prevent: false },
     properties: [],
-    tabs: [
-      {
-        name: def.tab.name,
-        alias: def.tab.alias,
-        groups: [],
-        properties: def.properties.map((p) => ({
-          key: p.key,
-          alias: p.alias,
-          name: p.name,
-          ...(p.description ? { description: p.description } : {}),
-          type: dataTypeAliasOf(p.dataTypeKey),
-          mandatory: false,
-          variesByCulture: false,
-          variesBySegment: false,
-          labelOnTop: false,
-        })),
-      },
-    ],
+    tabs: !def.tab
+      ? []
+      : [
+          {
+            name: def.tab.name,
+            alias: def.tab.alias,
+            groups: [],
+            properties: def.properties.map((p) => ({
+              key: p.key,
+              alias: p.alias,
+              name: p.name,
+              ...(p.description ? { description: p.description } : {}),
+              type: dataTypeAliasOf(p.dataTypeKey),
+              mandatory: false,
+              variesByCulture: false,
+              variesBySegment: false,
+              labelOnTop: false,
+            })),
+          },
+        ],
   }
 }
 

@@ -15,6 +15,7 @@ import {
   fileSegment,
   fileTextOf,
   fileUploadOf,
+  isFileTreeType,
   isFileType,
   markdownToHtml,
   normaliseUuid,
@@ -154,7 +155,7 @@ interface NodeFacts {
   typeKey: string
 }
 
-/** The save-time check of a File: its name, its body, its address (story 450). */
+/** The save-time check of a File or a Folder: its name, a File's body, its address (story 450). */
 export function createFileItemCheck(options: FileItemCheckOptions) {
   const { db } = options
   const objectTypes = [ObjectTypes.Document, ObjectTypes.WorkspaceDocument]
@@ -198,7 +199,7 @@ export function createFileItemCheck(options: FileItemCheckOptions) {
         const name = String(row.text ?? '')
         return {
           name,
-          segment: isFileType(String(row.type_key ?? ''))
+          segment: isFileTreeType(String(row.type_key ?? ''))
             ? fileSegment(name)
             : urlSegmentFor(name, null),
         }
@@ -215,7 +216,8 @@ export function createFileItemCheck(options: FileItemCheckOptions) {
   }
 
   return async (item: ItemCheck): Promise<ItemCheckResult | undefined> => {
-    if (!isFileType(item.contentTypeKey)) return undefined
+    if (!isFileTreeType(item.contentTypeKey)) return undefined
+    const folder = !isFileType(item.contentTypeKey)
     const key = normaliseUuid(item.key)
     let parent: NodeFacts | undefined
     if (item.parentKey === undefined) {
@@ -223,18 +225,20 @@ export function createFileItemCheck(options: FileItemCheckOptions) {
       parent = self && self.parentId > 0 ? await nodeFacts({ id: self.parentId }) : undefined
     } else if (item.parentKey !== null) parent = await nodeFacts({ key: item.parentKey })
 
-    const named = nameProblem(item.name, parent?.name)
+    const named = nameProblem(item.name, parent?.name, { folder })
     if (named) return { refused: named }
 
     const body = item.values.find((v) => v.alias === FILE_BODY_ALIAS && !v.segment)?.value
     const temporaryId = (body as { temporaryFileId?: unknown } | null)?.temporaryFileId
     const temporary =
       typeof temporaryId === 'string' ? await options.mediaFiles.temporary(temporaryId) : undefined
-    const problem = bodyProblem(
-      item.name,
-      body ?? null,
-      temporary ? { name: temporary.fileName, size: temporary.size } : undefined,
-    )
+    const problem = folder
+      ? undefined
+      : bodyProblem(
+          item.name,
+          body ?? null,
+          temporary ? { name: temporary.fileName, size: temporary.size } : undefined,
+        )
     if (problem)
       return {
         errors: [
@@ -258,7 +262,8 @@ export function createFileItemCheck(options: FileItemCheckOptions) {
         refused: `"${item.name}" and "${there.name}" would both answer at ${address}. Rename one of them.`,
       }
     const winners = options.winners?.()
-    const winner = fileKindOf(item.name) && winners ? fileWinner(address, winners) : undefined
+    const winner =
+      !folder && fileKindOf(item.name) && winners ? fileWinner(address, winners) : undefined
     return winner
       ? {
           warnings: [

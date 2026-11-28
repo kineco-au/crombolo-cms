@@ -1020,7 +1020,7 @@ describe('story 020 document workspace', () => {
       `${V1}/document-type/${item[0]?.documentType.id}/allowed-children?parentContentKey=${home}`,
     )
     // A File may sit under any page (story 450).
-    expect(children.items.map((i) => i.alias)).toEqual(['childPage', 'fileItem'])
+    expect(children.items.map((i) => i.alias)).toEqual(['childPage', 'fileItem', 'fileFolder'])
 
     const atRoot = await h.json<{ items: Array<{ alias: string }> }>(
       `${V1}/document-type/allowed-at-root?skip=0&take=100`,

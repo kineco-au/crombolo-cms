@@ -436,7 +436,9 @@ export async function syncSchema(
           ...BUILT_IN_MEDIA_TYPES.flatMap((t) =>
             t.group ? [[`${t.alias}|${t.group.name}`, t.group.key] as const] : [],
           ),
-          ...SYSTEM_CONTENT_TYPES.map((t) => [`${t.alias}|${t.tab.name}`, t.tab.key] as const),
+          ...SYSTEM_CONTENT_TYPES.flatMap((t) =>
+            t.tab ? [[`${t.alias}|${t.tab.name}`, t.tab.key] as const] : [],
+          ),
         ])
         for (const kind of kinds) {
           // ---- types: resolve keys, then save in composition order, twice

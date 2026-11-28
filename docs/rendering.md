@@ -2544,18 +2544,29 @@ field, its **body**: text written in the back office, or an uploaded file. It
 never has a view or a layout. The Create menu offers it at the root and under
 every page whatever a type lists as its children, since the server adds it to
 the allowed-at-root and allowed-children answers for documents; under a File
-only File is offered, and a page is refused there. Whoever may create content
-under a page may make one.
+or a Folder only File and Folder are offered, and a page is refused there.
+Whoever may create content under a page may make one.
+
+**The Folder type** is built in too (`fileFolder`, "Folder"), with no fields. It
+is offered right after File wherever File is, and may go wherever a File may. It
+holds Files and Folders: its name is a segment of their addresses, exact and
+never a slug, under the same name rules as a File's except that any ending is
+allowed (`v1.2` is a Folder's name). It answers nothing at its own address, has
+the folder icon in the tree, and is never in a menu built with `visibleOnly`, nor
+in the sitemap. The Delivery API lists it as any item, with no `body`.
 
 **Its name is its address.** Kept as typed, never made a slug, it is one segment
-of the address: no `/`, `?`, `#` or `\`, and no leading dot except inside a
-`.well-known` File. A File with no extension is a **folder**: it holds Files,
-has no body, and answers nothing at its own address. A top-level folder stays in
-its Files' addresses, so `docs/agents.md` is `/docs/agents.md` even where the
-top level is left out of page addresses. Two items that would answer at one
-address are refused when saved, naming both. Addresses match whatever their
-case, as page addresses do. A File at the root is never the home page, and never
-in a menu built with `visibleOnly`, nor in the sitemap.
+of the address: no `/`, `?`, `#` or `\`, and no leading dot except inside
+`.well-known`. The name editor offers only the kinds below as a File's ending, so
+a new File always has one, and a folder is a Folder. A File with no
+extension, which 0.84.0 made for a folder, is still one: it holds Files and
+Folders, has no body, and answers nothing at its own address, exactly as a
+Folder does. A top-level Folder or folder File stays in its Files' addresses, so
+`docs/agents.md` is `/docs/agents.md` even where the top level is left out of
+page addresses. Two items that would answer at one address are refused when
+saved, naming both. Addresses match whatever their case, as page addresses do. A
+File or Folder at the root is never the home page, and never in a menu built with
+`visibleOnly`, nor in the sitemap.
 
 **Kinds of File**, by extension; any other is refused, naming the list:
 

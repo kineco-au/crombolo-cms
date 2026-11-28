@@ -18,8 +18,23 @@ export const FILE_OBJECT_PREFIX = 'files/'
 /** The largest upload a File takes. */
 export const FILE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 
+/** The Folder content type: a folder of Files, whose name is a segment of their addresses. */
+export const FILE_FOLDER_CONTENT_TYPE_KEY = 'c4f1a9e2-6b3d-4e58-9a07-3d2f8b6c1e94'
+export const FILE_FOLDER_CONTENT_TYPE_ALIAS = 'fileFolder'
+
 export const isFileType = (key: string | null | undefined): boolean =>
   typeof key === 'string' && key.toLowerCase() === FILE_CONTENT_TYPE_KEY
+
+export const isFileFolderType = (key: string | null | undefined): boolean =>
+  typeof key === 'string' && key.toLowerCase() === FILE_FOLDER_CONTENT_TYPE_KEY
+
+/** A File or a Folder: an item whose name is its address segment exactly. */
+export const isFileTreeType = (key: string | null | undefined): boolean =>
+  isFileType(key) || isFileFolderType(key)
+
+/** A File or a Folder, by its type's alias. */
+export const isFileTreeAlias = (alias: string | null | undefined): boolean =>
+  alias === FILE_CONTENT_TYPE_ALIAS || alias === FILE_FOLDER_CONTENT_TYPE_ALIAS
 
 /** Which editor a File's body opens in. */
 export type FileEditor = 'markdown' | 'text' | 'json' | 'xml' | 'html' | 'svg' | 'csv' | 'upload'
@@ -73,7 +88,7 @@ export const FILE_KINDS: readonly FileKind[] = [
   kind('.ico', 'image/x-icon', 'upload'),
 ]
 
-/** A folder File's tree icon: one with no extension. */
+/** A Folder's tree icon, and an extensionless File's, which is a folder too. */
 export const FILE_FOLDER_ICON = 'icon-folder'
 
 /** `agents.md` is `.md`; a name with none, or only a leading dot, has none. Pure. */

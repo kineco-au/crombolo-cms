@@ -22,6 +22,7 @@ import {
 import { ok, route } from '@crombolo/common'
 import {
   FILE_CONTENT_TYPE_KEY,
+  FILE_FOLDER_CONTENT_TYPE_KEY,
   FILE_KINDS,
   fileIconFor,
   fileUploadOf,
@@ -145,6 +146,25 @@ async function site(
     if (made.status === 201 && published && key) await publish(key)
     return { response: made, key: key as string }
   }
+  /** A Folder made, answering the create's response; published unless told not to. */
+  const folder = async (
+    name: string,
+    {
+      parent = null,
+      publish: published = true,
+    }: { parent?: string | null; publish?: boolean } = {},
+  ) => {
+    const made = await h.post(`${V1}/document`, {
+      documentType: { id: FILE_FOLDER_CONTENT_TYPE_KEY },
+      template: null,
+      parent: parent ? { id: parent } : null,
+      values: [],
+      variants: [{ culture: null, segment: null, name }],
+    })
+    const key = made.headers.get('umb-generated-resource') as string | null
+    if (made.status === 201 && published && key) await publish(key)
+    return { response: made, key: key as string }
+  }
   const save = async (key: string, name: string, body: unknown) =>
     h.put(`${V1}/document/${key}`, {
       template: null,
@@ -159,7 +179,7 @@ async function site(
     expect((await h.call(`${V1}/temporary-file`, { method: 'POST', body: form })).status).toBe(201)
     return { temporaryFileId: id }
   }
-  return { h, root, write, visit, page, make, save, publish, upload }
+  return { h, root, write, visit, page, make, folder, save, publish, upload }
 }
 
 const problemOf = async (response: Response) => {
@@ -225,30 +245,156 @@ describe('a File item', () => {
   })
 })
 
+describe('a Folder', () => {
+  test('holds Files and Folders that answer at its name exactly; it answers nothing itself', async () => {
+    const { make, folder, page, visit, h } = await site()
+    await page('Home')
+    const docs = await folder('Docs v1.2')
+    expect(docs.response.status, await docs.response.clone().text()).toBe(201)
+    const guide = await make('agents.md', '# For agents', { parent: docs.key })
+    expect(guide.response.status, await guide.response.clone().text()).toBe(201)
+    const deeper = await folder('api', { parent: docs.key })
+    expect(deeper.response.status, await deeper.response.clone().text()).toBe(201)
+    await make('openapi.json', '{"openapi":"3.1.0"}', { parent: deeper.key })
+    const served = await visit('/Docs%20v1.2/agents.md')
+    expect(served.status).toBe(200)
+    expect(served.headers.get('content-type')).toBe('text/markdown; charset=utf-8')
+    expect(await served.text()).toBe('# For agents')
+    expect(await (await visit('/Docs%20v1.2/api/openapi.json')).text()).toBe('{"openapi":"3.1.0"}')
+    // Its name is kept exactly, never made a slug.
+    expect((await visit('/docs-v1-2/agents.md')).status).toBe(404)
+    expect((await visit('/Docs%20v1.2')).status).toBe(404)
+    expect((await visit('/Docs%20v1.2/api')).status).toBe(404)
+    // The first page is still the home page, a Folder at the root never is.
+    expect(await (await visit('/')).text()).toContain('The page')
+    const urls = await h.json<Array<{ urlInfos: Array<{ url: string }> }>>(
+      `${V1}/document/urls?id=${guide.key}`,
+    )
+    expect(urls[0]?.urlInfos[0]?.url).toBe('/Docs%20v1.2/agents.md')
+    // Out of menus and the sitemap.
+    const cache = h.server.cache
+    const shown = (await cache.navigation(null)).root().find((c) => c.key === docs.key)
+    expect(shown?.isVisible).toBe(false)
+    const sitemap = await (await visit('/sitemap.xml')).text()
+    expect(sitemap).not.toContain('Docs')
+    // A folder in the tree.
+    const roots = await h.json<{ items: Array<{ id: string; documentType: { icon: string } }> }>(
+      `${V1}/tree/document/root?take=100`,
+    )
+    expect(roots.items.find((item) => item.id === docs.key)?.documentType.icon).toBe('icon-folder')
+  })
+
+  test('takes no page, under the same name rules as a File, and any ending', async () => {
+    const { h, folder, make } = await site()
+    const pageType = (await new ContentTypeRepository(h.server.db).byAlias('page'))?.key as string
+    const docs = await folder('docs')
+    const refused = await h.post(`${V1}/document`, {
+      documentType: { id: pageType },
+      template: null,
+      parent: { id: docs.key },
+      values: [],
+      variants: [{ culture: null, segment: null, name: 'Inside' }],
+    })
+    expect(refused.status).toBe(400)
+    expect(await problemOf(refused)).toContain('Only a File or a Folder can go inside a Folder')
+    for (const [name, said] of [
+      ['a/b', '/ ? #'],
+      ['what?', '/ ? #'],
+      ['.hidden', 'dot'],
+      [' spaced', 'space'],
+      ['..', "can't be named"],
+    ] as const) {
+      const bad = await folder(name, { publish: false })
+      expect(bad.response.status, name).toBe(400)
+      const text = await problemOf(bad.response)
+      expect(text).toContain(said)
+      expect(text).toContain('Folder')
+    }
+    const wellKnown = await folder('.well-known')
+    expect(wellKnown.response.status).toBe(201)
+    expect((await folder('.inner', { parent: wellKnown.key })).response.status).toBe(201)
+    expect((await folder('v1.exe', { publish: false })).response.status).toBe(201)
+    // Two items at one address, whichever is a Folder.
+    await make('notes.txt', 'x')
+    const clash = await folder('Notes.txt', { publish: false })
+    expect(clash.response.status).toBe(400)
+    expect(await problemOf(clash.response)).toContain('"notes.txt"')
+    expect(nameProblem('docs', null, { folder: true })).toBeUndefined()
+    expect(nameProblem('a#b', null, { folder: true })).toContain("A Folder's name")
+  })
+
+  test('beside a folder File from before it, which still holds and serves its Files', async () => {
+    const { make, folder, visit } = await site()
+    const old = await make('legacy', undefined)
+    expect(old.response.status, await old.response.clone().text()).toBe(201)
+    const inner = await folder('inner', { parent: old.key })
+    expect(inner.response.status, await inner.response.clone().text()).toBe(201)
+    await make('a.txt', 'in legacy', { parent: old.key })
+    await make('b.txt', 'in inner', { parent: inner.key })
+    expect(await (await visit('/legacy/a.txt')).text()).toBe('in legacy')
+    expect(await (await visit('/legacy/inner/b.txt')).text()).toBe('in inner')
+    expect((await visit('/legacy')).status).toBe(404)
+  })
+
+  test('previews nothing, to an editor, and the Delivery API lists it as a folder File is', async () => {
+    const { folder, make, visit, h } = await site()
+    const docs = await folder('docs')
+    const legacy = await make('legacy', undefined)
+    for (const key of [docs.key, legacy.key]) {
+      const shown = await visit(`/${key}`, {
+        headers: { cookie: `${h.cookie()}; UMB_PREVIEW=preview` },
+      })
+      expect(shown.status, key).toBe(404)
+    }
+    const listed = await visit('/umbraco/delivery/api/v2/content?take=100', {
+      headers: { 'api-key': 'key' },
+    })
+    const body = (await listed.json()) as {
+      items: Array<{ name: string; contentType: string; route: { path: string } }>
+    }
+    const names = body.items.map((i) => i.name)
+    expect(names).toContain('docs')
+    expect(names).toContain('legacy')
+    expect(body.items.find((i) => i.name === 'docs')?.contentType).toBe('fileFolder')
+  })
+})
+
 describe('the Create menu', () => {
-  test('offers File at the root and under any page, and only File under a File', async () => {
+  test('offers File then Folder at the root and under any page, and only those under either', async () => {
     const { h } = await site()
     const pageType = (await new ContentTypeRepository(h.server.db).byAlias('page'))?.key as string
     const ids = (body: { items: Array<{ id: string }> }) => body.items.map((item) => item.id)
     const root = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/document-type/allowed-at-root?take=100`,
     )
-    expect(ids(root)).toContain(FILE_CONTENT_TYPE_KEY)
-    expect(ids(root)).toContain(pageType)
-    // The page type lists no children, and File is offered anyway.
+    expect(ids(root)).toEqual([pageType, FILE_CONTENT_TYPE_KEY, FILE_FOLDER_CONTENT_TYPE_KEY])
+    // The page type lists no children, and File and Folder are offered anyway.
     const under = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/document-type/${pageType}/allowed-children?take=100`,
     )
-    expect(ids(under)).toEqual([pageType, FILE_CONTENT_TYPE_KEY])
-    const inFile = await h.json<{ items: Array<{ id: string }> }>(
-      `${V1}/document-type/${FILE_CONTENT_TYPE_KEY}/allowed-children?take=100`,
-    )
-    expect(ids(inFile)).toEqual([FILE_CONTENT_TYPE_KEY])
+    expect(ids(under)).toEqual([pageType, FILE_CONTENT_TYPE_KEY, FILE_FOLDER_CONTENT_TYPE_KEY])
+    for (const holder of [FILE_CONTENT_TYPE_KEY, FILE_FOLDER_CONTENT_TYPE_KEY]) {
+      const inside = await h.json<{ items: Array<{ id: string }> }>(
+        `${V1}/document-type/${holder}/allowed-children?take=100`,
+      )
+      expect(ids(inside)).toEqual([FILE_CONTENT_TYPE_KEY, FILE_FOLDER_CONTENT_TYPE_KEY])
+    }
     // Documents only: media types are as they were.
     const media = await h.json<{ items: Array<{ id: string }> }>(
       `${V1}/media-type/allowed-at-root?take=100`,
     )
     expect(ids(media)).not.toContain(FILE_CONTENT_TYPE_KEY)
+    expect(ids(media)).not.toContain(FILE_FOLDER_CONTENT_TYPE_KEY)
+    // A built-in type, with no fields, that cannot be deleted.
+    const type = await h.json<{ alias: string; name: string; icon: string; properties: unknown[] }>(
+      `${V1}/document-type/${FILE_FOLDER_CONTENT_TYPE_KEY}`,
+    )
+    expect(type).toMatchObject({ alias: 'fileFolder', name: 'Folder', icon: 'icon-folder' })
+    expect(type.properties).toEqual([])
+    const deleted = await h.call(`${V1}/document-type/${FILE_FOLDER_CONTENT_TYPE_KEY}`, {
+      method: 'DELETE',
+    })
+    expect(deleted.status).toBe(400)
   })
 
   test('a page is refused inside a File, and a File shows its extension icon', async () => {
@@ -263,7 +409,7 @@ describe('the Create menu', () => {
       variants: [{ culture: null, segment: null, name: 'Inside' }],
     })
     expect(refused.status).toBe(400)
-    expect(await problemOf(refused)).toContain('Only a File can go inside a File')
+    expect(await problemOf(refused)).toContain('Only a File or a Folder can go inside a File')
     await make('logo.png', undefined, { parent: docs.key, publish: false })
     await make('data.json', '{}', { parent: docs.key })
     const roots = await h.json<{ items: Array<{ id: string; documentType: { icon: string } }> }>(
@@ -495,15 +641,14 @@ describe("the File's editor", () => {
 })
 
 describe("a File's name in its header", () => {
-  test('is typed without its ending, chosen from the kinds of File, Markdown first and a folder last', () => {
+  test('is typed without its ending, chosen from the kinds of File, Markdown first, and never none', () => {
     const { options, initial } = nameSuffixes()
     expect(initial).toBe('.md')
     expect(options[0]).toEqual({ value: '.md', label: '.md' })
-    expect(options.at(-1)).toEqual({ value: '', label: '(folder)' })
-    expect(options.map((o) => o.value).sort()).toEqual(
-      ['', ...EDITOR_KINDS.map((k) => k.extension)].sort(),
-    )
+    expect(options.some((o) => o.value === '' || o.label.includes('folder'))).toBe(false)
+    expect(options.map((o) => o.value).sort()).toEqual(EDITOR_KINDS.map((k) => k.extension).sort())
     expect(suffixesFor('8D9DF7AD-2312-4FB9-9F44-7FB37E3690A8')).toEqual(nameSuffixes())
+    expect(suffixesFor(FILE_FOLDER_CONTENT_TYPE_KEY)).toBeUndefined()
     expect(suffixesFor('3a1d0c2e-0000-4000-8000-000000000000')).toBeUndefined()
   })
 

@@ -6,8 +6,9 @@ import type { ResponseOf } from '@crombolo/contracts'
 import {
   type ContentTypeAggregate,
   FILE_CONTENT_TYPE_KEY,
+  FILE_FOLDER_CONTENT_TYPE_KEY,
   invalidSkipTake,
-  isFileType,
+  isFileTreeType,
   isSystemContentType,
   isSystemMediaType,
   notFound,
@@ -572,19 +573,25 @@ export function registerContentTypeHandlers(
   }
 
   /**
-   * Story 450: a File may sit anywhere, so the Create menu offers it at the root
-   * and under every page whatever the types list, and only it under a File.
+   * Story 450: a File may sit anywhere, so the Create menu offers it, and a
+   * Folder after it, at the root and under every page whatever the types list,
+   * and only those two under a File or a Folder.
    */
   const withFile = async (
     load: (paging: SkipTake) => Promise<{ total: number; items: ContentTypeAggregate[] }>,
     page: SkipTake,
   ) => {
     if (kind !== 'document') return load(page)
-    const file = await port.byKey(FILE_CONTENT_TYPE_KEY)
+    const fileTypes = (
+      await Promise.all([
+        port.byKey(FILE_CONTENT_TYPE_KEY),
+        port.byKey(FILE_FOLDER_CONTENT_TYPE_KEY),
+      ])
+    ).filter((type): type is ContentTypeAggregate => Boolean(type))
     const all = (await load({ skip: 0, take: 10_000 })).items.filter(
-      (item) => !isFileType(item.key),
+      (item) => !isFileTreeType(item.key),
     )
-    const items = file ? [...all, file] : all
+    const items = [...all, ...fileTypes]
     return { total: items.length, items: items.slice(page.skip, page.skip + page.take) }
   }
 
@@ -599,7 +606,7 @@ export function registerContentTypeHandlers(
   )
   handle(`Get${T}ByIdAllowedChildren`, (ctx) =>
     pagedAggregates(ctx, (page) =>
-      kind === 'document' && isFileType(ctx.params.id)
+      kind === 'document' && isFileTreeType(ctx.params.id)
         ? withFile(async () => ({ total: 0, items: [] }), page)
         : withFile((paging) => port.allowedChildren(ctx.params.id as string, paging), page),
     ),
