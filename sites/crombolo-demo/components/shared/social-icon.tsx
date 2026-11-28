@@ -8,13 +8,23 @@ const ICONS: Record<string, string> = {
 
 /** A place Crombolo can be found, as its icon: a link, or faded while it has no address. */
 export function SocialIcon({ name, url }: { name: keyof typeof ICONS; url: string | undefined }) {
-  const icon = <span setInnerHTML={{ __html: ICONS[name] as string, dangerously: true }} />
+  const icon = (
+    <span
+      class="block *:block *:size-6"
+      setInnerHTML={{ __html: ICONS[name] as string, dangerously: true }}
+    />
+  )
   return url ? (
-    <a class="social" href={url} aria-label={name} title={name}>
+    <a
+      class="block text-cocoa transition-colors hover:text-terracotta"
+      href={url}
+      aria-label={name}
+      title={name}
+    >
       {icon}
     </a>
   ) : (
-    <span class="social social--none" role="img" aria-label={name} title={name}>
+    <span class="block text-muted opacity-50" role="img" aria-label={name} title={name}>
       {icon}
     </span>
   )

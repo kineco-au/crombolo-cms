@@ -9,8 +9,11 @@ const FLAGS: Record<string, string> = {
 export function Flag({ culture }: { culture: string }) {
   const flag = FLAGS[culture]
   return flag ? (
-    <span class="flag" setInnerHTML={{ __html: flag, dangerously: true }} />
+    <span
+      class="block *:block *:w-6 *:border *:border-line"
+      setInnerHTML={{ __html: flag, dangerously: true }}
+    />
   ) : (
-    <span class="flag">{culture}</span>
+    <span class="text-sm">{culture}</span>
   )
 }

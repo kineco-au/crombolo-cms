@@ -12,10 +12,22 @@ export function Pager({
 }) {
   if (pages < 2) return null
   return (
-    <nav class="pager" aria-label={labels.position}>
-      {page > 1 ? <a href={href(page - 1)}>{labels.newer}</a> : <span />}
+    <nav class="flex justify-between gap-4 py-8 text-muted" aria-label={labels.position}>
+      {page > 1 ? (
+        <a class="text-green" href={href(page - 1)}>
+          {labels.newer}
+        </a>
+      ) : (
+        <span />
+      )}
       <span>{labels.position}</span>
-      {page < pages ? <a href={href(page + 1)}>{labels.older}</a> : <span />}
+      {page < pages ? (
+        <a class="text-green" href={href(page + 1)}>
+          {labels.older}
+        </a>
+      ) : (
+        <span />
+      )}
     </nav>
   )
 }

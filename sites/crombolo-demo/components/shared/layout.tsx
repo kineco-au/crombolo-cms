@@ -1,4 +1,4 @@
-import { asset, type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
+import { type Child, type PageProps, SeoHead } from '@crombolo/crombolo'
 import { LanguageSwitch } from './language-switch.tsx'
 import { Logo } from './logo.tsx'
 import { SiteBanner } from './site-banner.tsx'
@@ -21,19 +21,25 @@ export function Layout(props: PageProps & { children?: Child }) {
           title={model.text('title') || model.name}
           description={model.text('excerpt') || model.text('summary') || model.text('intro')}
         />
-        <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
-      <body>
+      <body class="flex min-h-screen flex-col bg-paper font-sans text-base/7 text-ink antialiased">
         <SiteBanner />
-        <header class="site-header">
-          <div class="site-header__inner">
-            <a class="wordmark" href={home?.url}>
+        <header class="border-b border-line">
+          <div class="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-5 px-5 py-3 lg:flex-nowrap">
+            <a
+              class="flex flex-none items-center gap-2 font-serif text-xl font-bold sm:text-2xl text-ink no-underline"
+              href={home?.url}
+            >
               <Logo />
               {siteName}
             </a>
-            <nav aria-label={dictionary('nav.primary')}>
+            <nav
+              class="order-1 flex basis-full flex-wrap gap-x-4 gap-y-1 lg:order-none lg:min-w-0 lg:shrink lg:basis-auto lg:flex-nowrap lg:overflow-x-auto lg:whitespace-nowrap"
+              aria-label={dictionary('nav.primary')}
+            >
               {menu('main').map((link) => (
                 <a
+                  class="text-ink no-underline hover:text-terracotta aria-[current=page]:font-semibold aria-[current=page]:text-terracotta"
                   href={link.url ?? undefined}
                   aria-current={
                     link.content && ancestry.includes(String(link.content.id)) ? 'page' : undefined
@@ -44,9 +50,10 @@ export function Layout(props: PageProps & { children?: Child }) {
               ))}
             </nav>
             {search ? (
-              <search>
-                <form class="site-search" action={search.url} method="get">
+              <search class="ms-auto flex-none">
+                <form action={search.url} method="get">
                   <input
+                    class="w-28 rounded border border-line bg-white px-2.5 py-1.5 text-sm placeholder:text-muted focus:border-green focus:outline-none sm:w-40"
                     type="search"
                     name="q"
                     placeholder={dictionary('search.placeholder')}
@@ -58,7 +65,7 @@ export function Layout(props: PageProps & { children?: Child }) {
             <LanguageSwitch {...props} />
           </div>
         </header>
-        <main>{children}</main>
+        <main class="flex-1 pb-16">{children}</main>
         <SiteFooter siteName={siteName} />
       </body>
     </html>

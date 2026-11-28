@@ -83,13 +83,12 @@ describe('the Crombolo demo, in English', () => {
     expect(status).toBe(200)
     expect(html).toContain('<html lang="en-US"')
     for (const part of [
-      'class="hero',
-      'class="feature-row',
-      'class="quote',
-      'class="call-to-action',
+      'Crombolo: the open source CMS for the agentic era',
+      'Editors keep the tools they know</h2>',
+      'At last... this is the CMS I always wanted.</blockquote>',
+      'Start a site in a minute</h2>',
     ])
       expect(html).toContain(part)
-    expect(html).toContain('Crombolo: the open source CMS for the agentic era')
     expect(html).toContain('href="/for-editors"')
     expect(html).toContain('href="/for-developers"')
   })
@@ -113,10 +112,11 @@ describe('the Crombolo demo, in English', () => {
     const { status, html } = await page('/for-developers')
     expect(status).toBe(200)
     expect(html).toContain('Crombolo: a CMS for agent-assisted development')
-    // The logo is artwork, shown as it is, beside or below the text rather than behind it.
-    expect(html).toContain('class="hero hero--artwork"')
-    expect(html).toContain('Everything the back office does, from the command line')
-    expect(html).toContain('class="feature-row')
+    // The logo is artwork, shown as it is, beside or below the text rather than faded behind it.
+    const logo = html.match(/<img class="([^"]*)" src="[^"]*crombolo-logo/)?.[1]
+    expect(logo).toContain('row-start-2')
+    expect(logo).not.toContain('opacity')
+    expect(html).toContain('Everything the back office does, from the command line</h2>')
     expect(html).toContain('<code>crombolo site deploy --profile production</code>')
   })
 
@@ -155,12 +155,10 @@ describe('the Crombolo demo, in English', () => {
   test('its footer comes from the site settings', async () => {
     const { html } = await page('/documentation')
     expect(html).toContain('Come say Hi')
-    expect(html).toContain(
-      '<a class="social" href="https://github.com/kineco-au/crombolo-cms" aria-label="GitHub"',
-    )
+    expect(html).toContain('href="https://github.com/kineco-au/crombolo-cms" aria-label="GitHub"')
     // No address yet, so no link.
     for (const label of ['Instagram', 'X'])
-      expect(html).toContain(`<span class="social social--none" role="img" aria-label="${label}"`)
+      expect(html).toMatch(new RegExp(`<span class="[^"]*" role="img" aria-label="${label}"`))
   })
 
   test('it has a page for each way to get started, linked from Getting Started', async () => {
@@ -224,13 +222,15 @@ describe('the Crombolo demo, in English', () => {
       const { html } = await page(path)
       expect(link(html, 'prev'), path).toBe(guide[n - 1])
       expect(link(html, 'next'), path).toBe(guide[n + 1])
-      const menu = html.match(/<nav class="step-menu".*?<\/nav>/s)?.[0] ?? ''
+      const menu = html.match(/<nav aria-label="Steps">.*?<\/nav>/s)?.[0] ?? ''
       expect([...menu.matchAll(/href="([^"]*)"/g)].map((m) => m[1])).toEqual(guide)
       expect(menu.match(/href="([^"]*)" aria-current="page"/)?.[1]).toBe(path)
       expect(menu.match(/aria-current/g)).toHaveLength(1)
       expect(html).not.toContain('Where next')
     }
-    expect((await page('/documentation/configuration')).html).not.toMatch(/class="step/)
+    const other = (await page('/documentation/configuration')).html
+    expect(other).not.toContain('aria-label="Steps"')
+    expect(other).not.toMatch(/rel="(prev|next)"/)
     expect((await page('/es/primeros-pasos')).html).toContain('Paso siguiente')
   })
 
@@ -265,7 +265,7 @@ describe('the Crombolo demo, in English', () => {
       ['/es/primeros-pasos', 'Opcional: configura la conexión con Postgres'],
     ] as const) {
       const { html } = await page(path)
-      const at = html.indexOf(`<summary>${title}</summary>`)
+      const at = html.indexOf(`>${title}</summary>`)
       expect(at).toBeGreaterThan(html.indexOf('https://bun.sh/install'))
       expect(at).toBeLessThan(html.indexOf('WSL'))
       expect(html.indexOf('CROMBOLO_POSTGRES_URL')).toBeGreaterThan(at)
@@ -295,11 +295,12 @@ describe('the Crombolo demo, in English', () => {
 
   test('its page about templates lists them in an expandable section', async () => {
     const { html } = await page('/getting-started/use-a-template')
-    expect(html).toContain('<summary>Available templates</summary>')
+    expect(html).toContain('>Available templates</summary>')
     expect(html).toContain('<code>demo/harbourstone</code>')
     const spanish = await page('/es/primeros-pasos/usar-una-plantilla')
-    expect(spanish.html).toContain('<summary>Plantillas disponibles</summary>')
-    expect((await page('/getting-started/a-fresh-site')).html).not.toContain('class="expandable')
+    expect(spanish.html).toContain('>Plantillas disponibles</summary>')
+    // The language switch is the one `<details>` on a page with no expandable section.
+    expect((await page('/getting-started/a-fresh-site')).html.match(/<details/g)).toHaveLength(1)
   })
 
   test('its banner, from the site settings, is on every page in its language', async () => {

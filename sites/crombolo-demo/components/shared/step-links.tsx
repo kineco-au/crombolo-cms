@@ -1,4 +1,5 @@
 import type { PageProps, PublishedContent } from '@crombolo/crombolo'
+import { buttons } from './styles.ts'
 
 type Props = Pick<PageProps, 'model' | 'nav' | 'dictionary'>
 
@@ -12,11 +13,15 @@ export function stepsOf({ model, nav }: Pick<Props, 'model' | 'nav'>): Published
 /** The guide's pages, with this one marked. */
 export function StepMenu({ model, nav, dictionary }: Props) {
   return (
-    <nav class="step-menu" aria-label={dictionary('steps.label')}>
-      <ol>
+    <nav aria-label={dictionary('steps.label')}>
+      <ol class="border-l border-line lg:sticky lg:top-6">
         {stepsOf({ model, nav }).map((step) => (
           <li>
-            <a href={step.url} aria-current={step.key === model.key ? 'page' : undefined}>
+            <a
+              class="-ml-px block border-l-3 border-transparent px-4 py-1.5 text-ink no-underline hover:text-terracotta aria-[current=page]:border-terracotta aria-[current=page]:font-semibold aria-[current=page]:text-terracotta"
+              href={step.url}
+              aria-current={step.key === model.key ? 'page' : undefined}
+            >
               {step.name}
             </a>
           </li>
@@ -34,16 +39,16 @@ export function StepLinks({ model, nav, dictionary }: Props) {
   const previous = steps[at - 1]
   const next = steps[at + 1]
   return (
-    <div class="steps">
+    <div class="mt-12 flex flex-wrap justify-between gap-4">
       {previous ? (
-        <a class="button button--quiet" rel="prev" href={previous.url}>
-          <small>{dictionary('steps.previous')}</small>
+        <a class={buttons.quiet} rel="prev" href={previous.url}>
+          <small class="block text-xs opacity-80">{dictionary('steps.previous')}</small>
           {previous.name}
         </a>
       ) : null}
       {next ? (
-        <a class="button" rel="next" href={next.url}>
-          <small>{dictionary('steps.next')}</small>
+        <a class={`${buttons.primary} ms-auto text-right`} rel="next" href={next.url}>
+          <small class="block text-xs opacity-80">{dictionary('steps.next')}</small>
           {next.name}
         </a>
       ) : null}

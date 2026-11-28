@@ -1,6 +1,7 @@
 import { type PageProps, search } from '@crombolo/crombolo'
 import { Layout } from '../shared/layout.tsx'
 import { Pager } from '../shared/pager.tsx'
+import { buttons, h1, narrow } from '../shared/styles.ts'
 
 const PER_PAGE = 10
 
@@ -16,39 +17,46 @@ export default async function SearchPage(props: PageProps) {
   const pages = Math.ceil(results.total / PER_PAGE)
   return (
     <Layout {...props}>
-      <header class="page-header wrap">
-        <h1>{model.text('title')}</h1>
+      <header class={`${narrow} pt-12 pb-8`}>
+        <h1 class={h1}>{model.text('title')}</h1>
         <search>
-          <form class="search-form" action={model.url} method="get">
+          <form class="mt-4 flex max-w-lg gap-2" action={model.url} method="get">
             <input
+              class="min-w-0 flex-1 rounded border border-line bg-white px-3 py-2 focus:border-green focus:ring-2 focus:ring-green/20 focus:outline-none"
               type="search"
               name="q"
               value={query}
               aria-label={dictionary('search.placeholder')}
             />
-            <button class="button" type="submit">
+            <button class={buttons.primary} type="submit">
               {dictionary('search.button')}
             </button>
           </form>
         </search>
         {query ? (
-          <p>
+          <p class="mt-4 text-muted">
             {results.total === 0
               ? `${dictionary('search.none')} “${query}”.`
               : `${results.total} ${dictionary('search.found')} “${query}”.`}
           </p>
         ) : null}
       </header>
-      <div class="wrap wrap--narrow">
-        <ol class="search-results">
+      <div class={narrow}>
+        <ol>
           {results.items.map((item) => (
-            <li>
-              <h2>
-                <a href={item.url}>{item.content.text('title') || item.name}</a>
+            <li class="border-t border-line py-5">
+              <h2 class="font-serif text-xl/snug font-bold">
+                <a class="text-ink no-underline hover:text-green" href={item.url}>
+                  {item.content.text('title') || item.name}
+                </a>
               </h2>
-              <p>
+              <p class="mt-1">
                 {item.excerpt.map((segment) =>
-                  segment.match ? <mark>{segment.text}</mark> : segment.text,
+                  segment.match ? (
+                    <mark class="rounded-sm bg-highlight px-0.5 text-ink">{segment.text}</mark>
+                  ) : (
+                    segment.text
+                  ),
                 )}
               </p>
             </li>

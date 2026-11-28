@@ -36,7 +36,7 @@ The back office is at <http://localhost:8080/crombolo>, and the start prints how
 │   ├── media/           pictures, each with a file describing it
 │   ├── pages/           pages, in folders as the site's tree is
 │   └── dictionary.toml  the words the views print, in each language
-├── css/                 stylesheets
+├── css/                 tailwind.css: the theme and plugins
 ├── public/              files served as they are
 ├── schema/              what the site can hold
 │   ├── content-types/   types of page, block and Library item

@@ -2,6 +2,7 @@ import { type BlockItem, Blocks, type PageProps } from '@crombolo/crombolo'
 import { Layout } from '../shared/layout.tsx'
 import { PageHeader } from '../shared/page-header.tsx'
 import { StepLinks, StepMenu, stepsOf } from '../shared/step-links.tsx'
+import { narrow, prose, wideImage, wrap } from '../shared/styles.ts'
 
 export default async function ContentPage(props: PageProps) {
   const { model } = props
@@ -9,19 +10,25 @@ export default async function ContentPage(props: PageProps) {
   const guide = stepsOf(props).length > 0
   return (
     <Layout {...props}>
-      <PageHeader model={model} />
-      <div class={guide ? 'wrap with-menu' : 'wrap wrap--narrow'}>
+      <PageHeader model={model} narrow={!guide} />
+      <div
+        class={
+          guide
+            ? `${wrap} grid grid-cols-1 gap-x-16 gap-y-10 lg:grid-cols-[14rem_minmax(0,46rem)]`
+            : narrow
+        }
+      >
         {guide ? <StepMenu {...props} /> : null}
         <div>
           {image ? (
             <img
-              class="wide-image"
+              class={wideImage}
               src={image.cropUrl({ width: 1200, height: 640 })}
               alt={image.name}
             />
           ) : null}
           <Blocks items={model.value('sections') as BlockItem[]} />
-          <div class="prose">{model.html('body')}</div>
+          <div class={prose}>{model.html('body')}</div>
           <StepLinks {...props} />
         </div>
       </div>

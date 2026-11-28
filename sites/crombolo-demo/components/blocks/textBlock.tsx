@@ -1,5 +1,6 @@
 import type { BlockProps } from '@crombolo/crombolo'
+import { prose } from '../shared/styles.ts'
 
 export default function TextBlock({ content }: BlockProps) {
-  return <div class="prose">{content.html('body')}</div>
+  return <div class={prose}>{content.html('body')}</div>
 }

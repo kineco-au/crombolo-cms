@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* A well-set manual: warm paper, one strong green, a serif for headings. */
+@theme {
+  --color-paper: #fbf9f4;
+  --color-panel: #f1ede3;
+  --color-ink: #1d2320;
+  --color-muted: #5d6660;
+  --color-green: #1f5c46;
+  --color-green-deep: #143d2f;
+  --color-line: #dcd6c8;
+  --color-cocoa: #54321f;
+  --color-terracotta: #974b2b;
+  --color-cream: #fff7ea;
+  --color-highlight: #e7efd6;
+  --color-danger: #a3322a;
+
+  --font-serif: Charter, "Iowan Old Style", Georgia, serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}

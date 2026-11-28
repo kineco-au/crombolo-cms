@@ -3,6 +3,7 @@ import { formatDate } from '../shared/dates.ts'
 import { Layout } from '../shared/layout.tsx'
 import { PageHeader } from '../shared/page-header.tsx'
 import { Pager } from '../shared/pager.tsx'
+import { chip, eyebrow, filters, wrap } from '../shared/styles.ts'
 
 const tagsOf = (post: PublishedContent) => (post.value('tags') ?? []) as string[]
 
@@ -29,29 +30,33 @@ export default async function BlogList(props: PageProps) {
   return (
     <Layout {...props}>
       <PageHeader model={model} />
-      <div class="wrap">
-        <nav class="filters" aria-label={dictionary('blog.tags')}>
-          <a href={model.url} aria-current={tag ? undefined : 'true'}>
+      <div class={wrap}>
+        <nav class={filters} aria-label={dictionary('blog.tags')}>
+          <a class={chip} href={model.url} aria-current={tag ? undefined : 'true'}>
             {dictionary('blog.all')}
           </a>
           {allTags.map((name) => (
-            <a href={tagged(name)} aria-current={name === tag ? 'true' : undefined}>
+            <a class={chip} href={tagged(name)} aria-current={name === tag ? 'true' : undefined}>
               {name}
             </a>
           ))}
         </nav>
-        <ol class="posts">
+        <ol>
           {shown.map(async (post) => {
             const image = (await post.media('image'))[0]
             return (
-              <li class="post-row">
-                {image ? <img src={image.cropUrl({ width: 480, height: 320 })} alt="" /> : null}
+              <li class="grid grid-cols-1 gap-4 border-t border-line py-6 sm:grid-cols-[minmax(0,15rem)_1fr] sm:gap-6">
+                {image ? (
+                  <img class="rounded" src={image.cropUrl({ width: 480, height: 320 })} alt="" />
+                ) : null}
                 <div>
-                  <p class="eyebrow">{formatDate(post.value('publishDate'), culture)}</p>
-                  <h2>
-                    <a href={post.url}>{post.text('title')}</a>
+                  <p class={eyebrow}>{formatDate(post.value('publishDate'), culture)}</p>
+                  <h2 class="font-serif text-2xl/snug font-bold">
+                    <a class="text-ink no-underline hover:text-green" href={post.url}>
+                      {post.text('title')}
+                    </a>
                   </h2>
-                  <p>{post.text('excerpt')}</p>
+                  <p class="mt-2">{post.text('excerpt')}</p>
                 </div>
               </li>
             )

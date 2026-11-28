@@ -1,5 +1,6 @@
 import { usePage } from '@crombolo/crombolo'
 import { SocialIcon } from './social-icon.tsx'
+import { wrap } from './styles.ts'
 
 /** The footer, from the site's settings page, which editors change in Content. */
 export function SiteFooter({ siteName }: { siteName: string }) {
@@ -10,15 +11,15 @@ export function SiteFooter({ siteName }: { siteName: string }) {
     { label: 'X', url: settings?.text('xUrl') },
   ]
   return (
-    <footer class="site-footer">
-      <div class="wrap site-footer__inner">
+    <footer class="bg-panel py-10">
+      <div class={`${wrap} grid grid-cols-1 gap-8 sm:grid-cols-[1fr_auto]`}>
         <div>
-          <p class="wordmark">{siteName}</p>
+          <p class="mb-1 font-serif text-xl font-bold">{siteName}</p>
           <p>{settings?.text('tagline')}</p>
         </div>
         <div>
-          <p>{settings?.text('footerNote')}</p>
-          <ul class="site-footer__links">
+          <p class="mb-2">{settings?.text('footerNote')}</p>
+          <ul class="flex gap-4">
             {links.map(({ label, url }) => (
               <li>
                 <SocialIcon name={label} url={url} />
