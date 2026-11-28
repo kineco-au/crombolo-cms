@@ -359,13 +359,15 @@ export async function connect(options: ConnectOptions = {}): Promise<Db> {
     if (!file || file === ':memory:' || !existsSync(file))
       throw new Error(`There is no database at ${file ?? '(none configured)'}.`)
     const sqlite = new BunSqlite(file, { readonly: true })
-    sqlite.exec('PRAGMA busy_timeout = 5000')
+    sqlite.exec(`PRAGMA busy_timeout = ${resolveLockTimeoutMs(options)}`)
     return new SqliteDb(sqlite, undefined, false, undefined, resolveLockTimeoutMs(options))
   }
   const sqlite = new BunSqlite(options.file ?? ':memory:', { create: true })
   sqlite.exec('PRAGMA journal_mode = WAL')
   sqlite.exec('PRAGMA foreign_keys = ON')
-  sqlite.exec('PRAGMA busy_timeout = 5000')
+  // A write waits for the lock as long as a content lock is waited for on Postgres (15s by
+  // default), so a command run beside a busy server waits for it rather than failing.
+  sqlite.exec(`PRAGMA busy_timeout = ${resolveLockTimeoutMs(options)}`)
   return new SqliteDb(
     sqlite,
     undefined,

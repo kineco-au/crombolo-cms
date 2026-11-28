@@ -27,6 +27,10 @@ import {
 import { escapeLike, searchWords, type UnsearchableProperty, valueText } from './search-text.ts'
 import { siteEntriesFor } from './site-search.ts'
 
+/** How long indexing runs on SQLite before it pauses, and for how long, to let another writer in. */
+export const INDEX_YIELD_EVERY_MS = 200
+export const INDEX_YIELD_MS = 100
+
 /** Umbraco's names for the two backoffice indexes, which the dashboard shows. */
 export type SearchIndexName = BackofficeIndexName
 
@@ -208,7 +212,15 @@ export class SearchIndex {
       .limit(limit)
       .execute()
     let indexed = 0
+    let since = Date.now()
     for (const row of queued) {
+      // SQLite has one writer at a time: a pause now and then lets a waiting one in, so a
+      // long run of indexing never starves a save or a command (its busy handler retries
+      // up to 100ms apart).
+      if (this.#db.dialect.name === 'sqlite' && Date.now() - since >= INDEX_YIELD_EVERY_MS) {
+        await Bun.sleep(INDEX_YIELD_MS)
+        since = Date.now()
+      }
       const nodeId = Number(row.node_id)
       const generation = Number(row.generation)
       if (outside.backoffice || outside.site) {

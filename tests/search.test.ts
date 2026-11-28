@@ -3,13 +3,16 @@
  * index, the queue that keeps it current, who may see a result, and the Examine
  * dashboard's indexers and searchers. docs/search.md.
  */
-import { afterEach, describe, expect, test } from 'bun:test'
+import { afterEach, describe, expect, spyOn, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SYSTEM_MEDIA_TYPE_KEYS } from '@crombolo/core'
 import {
   ComponentRepository,
   ContentTypeRepository,
+  connect,
+  INDEX_YIELD_EVERY_MS,
+  INDEX_YIELD_MS,
   queueForSearch,
   SearchIndex,
   searchTerms,
@@ -430,6 +433,56 @@ describe(`the queue (${process.env.CROMBOLO_DB ?? 'sqlite'})`, () => {
     expect((a ?? 0) + (b ?? 0)).toBe(3)
     const rows = await h.server.db.query<{ n: number }>('SELECT COUNT(*) AS n FROM search_document')
     expect(Number(rows[0]?.n)).toBe(3)
+  })
+})
+
+describe('indexing beside other writers', () => {
+  test.skipIf(process.env.CROMBOLO_DB === 'postgres')(
+    'pauses now and then on SQLite, so a waiting writer gets the lock',
+    async () => {
+      const { h, page, index } = await site()
+      await index()
+      const keys = [await page('One'), await page('Two'), await page('Three')]
+      const ids = (
+        await h.server.db.query<{ id: number }>(
+          `SELECT id FROM node WHERE unique_id IN (?, ?, ?)`,
+          keys,
+        )
+      ).map((row) => Number(row.id))
+      await queueForSearch(h.server.db, ids)
+      // Each page seems to take longer than a run is let go on without a pause.
+      let clock = 0
+      const now = spyOn(Date, 'now').mockImplementation(() => {
+        clock += INDEX_YIELD_EVERY_MS
+        return clock
+      })
+      const sleep = spyOn(Bun, 'sleep')
+      try {
+        expect(await new SearchIndex(h.server.db).indexQueued()).toBe(3)
+        expect(
+          sleep.mock.calls.filter((call) => call[0] === INDEX_YIELD_MS).length,
+        ).toBeGreaterThan(0)
+      } finally {
+        now.mockRestore()
+        sleep.mockRestore()
+      }
+    },
+  )
+
+  test('a SQLite write waits for the lock as long as a content lock is waited for', async () => {
+    const dir = mkdtempSync(join(process.cwd(), 'output', 'busy-'))
+    try {
+      const db = await connect({
+        dialect: 'sqlite',
+        file: join(dir, 'a.sqlite'),
+        lockTimeoutMs: 12_345,
+      })
+      const [row] = await db.query<{ timeout: number }>('PRAGMA busy_timeout')
+      expect(Number(Object.values(row ?? {})[0])).toBe(12_345)
+      await db.close()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

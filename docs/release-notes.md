@@ -6,6 +6,15 @@ point at `docs/stories/`.
 
 ## Unreleased
 
+### Fixes
+
+- **A command run beside a busy SQLite site waits rather than failing.** SQLite waited 5
+  seconds for the write lock whatever `CROMBOLO_LOCK_TIMEOUT_SECONDS` said; it now waits
+  as long as that says, 15 seconds by default, as Postgres does. And search indexing,
+  which right after a large import or publish commits page after page, pauses for a
+  moment every 200ms on SQLite, so a save or a command waiting for the lock gets it
+  instead of being told "Someone else is changing this content right now".
+
 ## v0.85.0 — 2026-11-28
 
 ### Features
