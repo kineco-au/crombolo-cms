@@ -60,11 +60,16 @@ test('a block placed in an area that allows it, the area offering nothing else, 
   await columns.getByRole('link', { name: 'Add Quote' }).click()
   const opened = page.locator('umb-block-catalogue-modal, umb-block-workspace-editor').first()
   await expect(opened).toBeVisible()
+  // The catalogue may go straight on to the block's editor, opening over itself: pick from it
+  // only while the editor isn't open yet, and until it is.
   const catalogue = page.locator('umb-block-catalogue-modal')
-  if (await catalogue.isVisible()) {
+  const workspace = page.locator('umb-block-workspace-editor')
+  await expect(async () => {
+    if (await workspace.isVisible()) return
     await expect(catalogue.getByText('Card', { exact: true })).toHaveCount(0)
-    await catalogue.getByText('Quote', { exact: true }).click()
-  }
+    await catalogue.getByText('Quote', { exact: true }).click({ timeout: 2_000 })
+    await expect(workspace).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
   await blockField(page, 'text').fill('In the left area')
   await submitBlock(page)
   await expect(columns.locator('umb-block-grid-entry')).toHaveCount(1)

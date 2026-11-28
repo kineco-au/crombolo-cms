@@ -31,8 +31,15 @@ test('a block inserted in rich text, deleted and undone, is saved, published and
   await body.getByRole('button', { name: 'Insert Block' }).click()
   const opened = page.locator('umb-block-catalogue-modal, umb-block-workspace-editor').first()
   await expect(opened).toBeVisible()
+  // The catalogue may go straight on to the block's editor, opening over itself: pick from it
+  // only while the editor isn't open yet, and until it is.
   const catalogue = page.locator('umb-block-catalogue-modal')
-  if (await catalogue.isVisible()) await catalogue.getByText('Quote', { exact: true }).click()
+  const workspace = page.locator('umb-block-workspace-editor')
+  await expect(async () => {
+    if (await workspace.isVisible()) return
+    await catalogue.getByText('Quote', { exact: true }).click({ timeout: 2_000 })
+    await expect(workspace).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 30_000 })
   await blockField(page, 'text').fill('Quoted in the text')
   await submitBlock(page)
   const blocks = body.locator('umb-rte-block, umb-rte-block-inline')
