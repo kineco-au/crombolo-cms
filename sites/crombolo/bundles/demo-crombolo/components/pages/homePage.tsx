@@ -1,17 +1,8 @@
 import type { PageProps } from '@crombolo/crombolo'
-import { CARD, CARD_HEADING, FeatureCards, FeatureChecklist } from '../shared/features.tsx'
+import { FeatureCards, FeatureChecklist } from '../shared/features.tsx'
 import { Layout } from '../shared/layout.tsx'
 import { Logo } from '../shared/logo.tsx'
 import { developerPage, elementsOf, repositoryUrl } from '../shared/site.tsx'
-import {
-  BUTTON_LIGHT,
-  BUTTON_OUTLINE,
-  CONTAINER,
-  LEAD,
-  NARROW,
-  PROSE,
-  SECTION_HEADING,
-} from '../shared/styles.tsx'
 
 const BAND_HEADING = 'mb-3 text-3xl font-medium tracking-tight text-white text-balance md:text-4xl'
 const BAND_LEAD = 'mx-auto mb-8 max-w-2xl text-lg'
@@ -22,7 +13,7 @@ export default function HomePage(props: PageProps) {
   return (
     <Layout {...props}>
       <section class="bg-linear-to-b from-terracotta-deep to-terracotta-text pt-14 pb-16 text-center text-white md:pt-20 md:pb-24">
-        <div class={CONTAINER}>
+        <div class="page-column">
           <Logo size="large" />
           <h1 class="mt-6 mb-4 text-4xl font-medium tracking-tight text-balance sm:text-5xl">
             {model.text('title')}
@@ -34,11 +25,11 @@ export default function HomePage(props: PageProps) {
           ) : null}
           <div class="flex flex-wrap justify-center gap-3">
             {model.hasValue('heroCtaLabel') ? (
-              <a class={BUTTON_LIGHT} href="#get-started">
+              <a class="btn-light" href="#get-started">
                 {model.text('heroCtaLabel')}
               </a>
             ) : null}
-            <a class={BUTTON_OUTLINE} href="#why">
+            <a class="btn-outline" href="#why">
               Why Crombolo
             </a>
           </div>
@@ -46,23 +37,23 @@ export default function HomePage(props: PageProps) {
       </section>
 
       <section id="why" class="scroll-mt-16 py-14 md:py-20">
-        <div class={CONTAINER}>
-          <h2 class={SECTION_HEADING}>{model.text('whyHeading')}</h2>
-          {model.hasValue('whyIntro') ? <p class={LEAD}>{model.text('whyIntro')}</p> : null}
+        <div class="page-column">
+          <h2 class="section-heading">{model.text('whyHeading')}</h2>
+          {model.hasValue('whyIntro') ? <p class="lede">{model.text('whyIntro')}</p> : null}
           <FeatureCards items={elementsOf(model, 'reasons')} />
         </div>
       </section>
 
       <section id="editors" class="scroll-mt-16 bg-white py-14 md:py-20">
-        <div class={CONTAINER}>
-          <h2 class={SECTION_HEADING}>{model.text('editorsHeading')}</h2>
-          {model.hasValue('editorsIntro') ? <p class={LEAD}>{model.text('editorsIntro')}</p> : null}
+        <div class="page-column">
+          <h2 class="section-heading">{model.text('editorsHeading')}</h2>
+          {model.hasValue('editorsIntro') ? <p class="lede">{model.text('editorsIntro')}</p> : null}
           <div class="grid items-center gap-10 *:min-w-0 md:grid-cols-2 md:gap-14">
             <FeatureChecklist items={elementsOf(model, 'editorFeatures')} />
             {model.hasValue('migrateHeading') ? (
-              <aside class={`${CARD} bg-cream`}>
-                <h3 class={CARD_HEADING}>{model.text('migrateHeading')}</h3>
-                <div class={`${PROSE} text-muted`}>{model.html('migrateBody')}</div>
+              <aside class="card bg-cream">
+                <h3 class="card-heading">{model.text('migrateHeading')}</h3>
+                <div class="prose-site text-muted">{model.html('migrateBody')}</div>
               </aside>
             ) : null}
           </div>
@@ -71,13 +62,13 @@ export default function HomePage(props: PageProps) {
 
       {developers ? (
         <section class="bg-ink py-14 text-center text-arc md:py-20">
-          <div class={NARROW}>
+          <div class="text-column">
             <h2 class={BAND_HEADING}>{model.text('developersHeading')}</h2>
             {model.hasValue('developersIntro') ? (
               <p class={BAND_LEAD}>{model.text('developersIntro')}</p>
             ) : null}
             {model.hasValue('developersCtaLabel') ? (
-              <a class={BUTTON_LIGHT} href={developers.url}>
+              <a class="btn-light" href={developers.url}>
                 {model.text('developersCtaLabel')}
               </a>
             ) : null}
@@ -86,7 +77,7 @@ export default function HomePage(props: PageProps) {
       ) : null}
 
       <section id="get-started" class="bg-terracotta-text py-14 text-center text-white md:py-20">
-        <div class={NARROW}>
+        <div class="text-column">
           <h2 class={BAND_HEADING}>{model.text('closingHeading')}</h2>
           {model.hasValue('closingBody') ? (
             <p class={BAND_LEAD}>{model.text('closingBody')}</p>
@@ -97,11 +88,11 @@ export default function HomePage(props: PageProps) {
             </pre>
           ) : null}
           <div class="flex flex-wrap justify-center gap-3">
-            <a class={BUTTON_LIGHT} href={repositoryUrl(nav)}>
+            <a class="btn-light" href={repositoryUrl(nav)}>
               View on GitHub
             </a>
             {developers ? (
-              <a class={BUTTON_OUTLINE} href={developers.url}>
+              <a class="btn-outline" href={developers.url}>
                 Developer guide
               </a>
             ) : null}

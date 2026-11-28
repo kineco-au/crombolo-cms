@@ -1,5 +1,4 @@
 import type { Navigation, PublishedContent } from '@crombolo/crombolo'
-import { shell } from './classes.ts'
 
 /**
  * The masthead and the primary nav.
@@ -25,7 +24,7 @@ export function SiteHeader({ model, nav }: { model: PublishedContent; nav: Navig
   const links = [home, ...children.filter((child) => child !== searchPage)]
   return (
     <header class="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur-md">
-      <div class={`${shell} flex flex-wrap items-center justify-between gap-x-8 gap-y-3 py-4`}>
+      <div class="page-column flex flex-wrap items-center justify-between gap-x-8 gap-y-3 py-4">
         <a class="font-display text-2xl tracking-wide no-underline" href={home.url}>
           <Wordmark />
         </a>

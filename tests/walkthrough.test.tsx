@@ -54,7 +54,7 @@ describe('the walkthrough', () => {
     expect(html).toMatch(/<h3 id="make-the-site" tabindex="-1"[^>]*>Make the site<\/h3>/)
     expect(html).toMatch(/<span>Terminal<\/span><button type="button"[^>]*>Copy<\/button>/)
     expect(html).toContain('<code class="language-sh">bunx crombolo init</code>')
-    expect(html).toMatch(/<div class="prose [^"]*"><p>You&#39;ll see a site.<\/p><\/div>/)
+    expect(html).toMatch(/<div class="prose-site [^"]*"><p>You&#39;ll see a site.<\/p><\/div>/)
     expect(html).toMatch(/<button type="button" class="[^"]*" aria-current="step">/)
     // Nothing to go back to, and Next names the step it leads to
     expect(html).not.toContain('← Back')

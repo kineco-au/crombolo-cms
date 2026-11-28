@@ -22,10 +22,3 @@ export function Layout(props: PageProps & { children?: Child }) {
     </html>
   )
 }
-
-/** A page's title. */
-export const heading = 'mb-4 text-3xl/tight font-bold tracking-tight sm:text-4xl/tight'
-
-/** Rich text from the editor: Tailwind's typography, in the site's colours. */
-export const prose =
-  'prose max-w-none [--tw-prose-body:var(--color-ink)] [--tw-prose-headings:var(--color-ink)] [--tw-prose-lead:var(--color-muted)] [--tw-prose-links:var(--color-accent)] [--tw-prose-bold:var(--color-ink)] [--tw-prose-counters:var(--color-muted)] [--tw-prose-bullets:var(--color-muted)] [--tw-prose-hr:var(--color-line)] [--tw-prose-quote-borders:var(--color-line)] [--tw-prose-captions:var(--color-muted)] [--tw-prose-th-borders:var(--color-line)] [--tw-prose-td-borders:var(--color-line)]'

@@ -77,10 +77,3 @@ export function Layout({
     </html>
   )
 }
-
-/**
- * A rich-text body: Tailwind's typography in the site's own colours, which
- * follow light and dark by themselves, so it needs no `prose-invert`.
- */
-export const prose =
-  'prose [--tw-prose-body:var(--color-ink)] [--tw-prose-headings:var(--color-ink)] [--tw-prose-lead:var(--color-muted)] [--tw-prose-links:var(--color-ink)] [--tw-prose-bold:var(--color-ink)] [--tw-prose-counters:var(--color-muted)] [--tw-prose-bullets:var(--color-muted)] [--tw-prose-hr:var(--color-rule)] [--tw-prose-quotes:var(--color-ink)] [--tw-prose-quote-borders:var(--color-accent)] [--tw-prose-captions:var(--color-muted)] [--tw-prose-code:var(--color-ink)] [--tw-prose-th-borders:var(--color-rule)] [--tw-prose-td-borders:var(--color-rule)] prose-headings:font-serif prose-headings:font-bold prose-a:decoration-accent prose-a:underline-offset-[0.18em] prose-h2:mt-10 prose-h2:mb-3'

@@ -1,6 +1,5 @@
 import { actionState } from '@crombolo/crombolo'
 import * as bottlings from '#actions/bottlings.ts'
-import { field } from './classes.ts'
 
 /**
  * A server action from a page (story 219): it posts without JavaScript and the
@@ -21,7 +20,7 @@ export function RemindMe({ name }: { name: string }) {
         <label class="flex min-w-56 flex-1 flex-col gap-3 text-sm text-ink">
           Tell me when the next batch of {name} is out
           <input
-            class={field}
+            class="field"
             type="email"
             name="email"
             value={state?.values?.email ?? ''}

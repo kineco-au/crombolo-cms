@@ -20,6 +20,9 @@
 
   --tracking-caps: 0.2em;
 
+  /* The column every section's content sits in: max-w-page. */
+  --container-page: 72rem;
+
   --animate-slide-in: slide-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 
   @keyframes slide-in {
@@ -31,5 +34,134 @@
       opacity: 1;
       transform: none;
     }
+  }
+}
+
+/* Patterns several views share, made from the theme. */
+
+@utility page-column {
+  @apply mx-auto w-full max-w-page px-5 sm:px-8;
+}
+
+/* A heading in the display serif. Sizes are the view's. */
+@utility heading-display {
+  @apply font-display font-medium tracking-tight text-balance;
+}
+
+/* An outlined link that fills on hover; btn-light sits on a photograph or the sea. */
+@utility btn {
+  @apply inline-flex min-h-11 items-center border px-5 text-xs font-medium tracking-caps uppercase no-underline motion-safe:transition-colors;
+}
+
+@utility btn-ink {
+  @apply btn border-ink hover:bg-ink hover:text-foam;
+}
+
+@utility btn-light {
+  @apply btn border-brass text-foam hover:bg-brass hover:text-ink;
+}
+
+/* A text box: the search fields and the reminder. */
+@utility field {
+  @apply w-full border border-line bg-card px-3 py-3 text-base text-ink outline-none focus-visible:border-brass motion-safe:transition-colors;
+}
+
+/* A rich-text body, as the editor wrote it, in the site's faces and colours. */
+@utility prose-site {
+  @apply prose max-w-xl prose-headings:font-display prose-headings:font-medium prose-headings:tracking-tight prose-h2:text-3xl prose-strong:font-medium;
+  --tw-prose-body: var(--color-muted);
+  --tw-prose-bold: var(--color-ink);
+  --tw-prose-bullets: var(--color-brass);
+  --tw-prose-counters: var(--color-brass-deep);
+  --tw-prose-headings: var(--color-ink);
+  --tw-prose-links: var(--color-brass-deep);
+  --tw-prose-quotes: var(--color-ink);
+  --tw-prose-quote-borders: var(--color-line);
+  --tw-prose-hr: var(--color-line);
+
+  /* Typography writes these against .prose itself, so @apply leaves them behind. */
+  & :where(& > ul > li p) {
+    @apply my-[0.75em];
+  }
+  & :where(& > :is(ul, ol) > li > p:first-child) {
+    @apply mt-[1.25em];
+  }
+  & :where(& > :is(ul, ol) > li > p:last-child) {
+    @apply mb-[1.25em];
+  }
+  & :where(& > :first-child) {
+    @apply mt-0;
+  }
+  & :where(& > :last-child) {
+    @apply mb-0;
+  }
+}
+
+/*
+ * <Form> writes its own markup, so it is styled from a wrapper: each rule reaches a
+ * part by element and position rather than by the form's own class names. The text
+ * controls are :read-write, which a tick box is not.
+ */
+@utility form-site {
+  /* the thanks, once it is sent */
+  & > div {
+    @apply font-display text-2xl leading-snug;
+  }
+
+  /* a page's fields, and a group's caption */
+  & fieldset > div {
+    @apply grid gap-5;
+  }
+  & legend {
+    @apply mb-4 text-xs font-medium tracking-caps text-brass-deep uppercase;
+  }
+
+  /* a field's label, the mark of a required one, and its help */
+  & label {
+    @apply block text-xs font-medium tracking-widest text-muted uppercase;
+  }
+  & label > span {
+    @apply ml-1 text-brass-deep;
+  }
+  & label + p {
+    @apply mt-1 text-sm text-muted;
+  }
+
+  /* the controls */
+  & :is(:read-write, select) {
+    @apply mt-2 w-full border border-line bg-card p-3 text-base text-ink outline-none focus-visible:border-brass aria-invalid:border-wine;
+  }
+  & textarea {
+    @apply resize-y;
+  }
+
+  /* what went wrong: under a field, and the summary at the top */
+  & :is(input, select, textarea) ~ p {
+    @apply mt-2 text-sm text-wine;
+  }
+  & form > div:has(> ul) {
+    @apply mb-6 border border-wine bg-wine/5 p-4 text-wine;
+  }
+
+  /* a tick box reads box then label, so its field is a row with the box moved first */
+  & div:has(> input:not(:read-write)) {
+    @apply flex flex-wrap gap-x-3 gap-y-1;
+  }
+  & input:not(:read-write) {
+    @apply order-first mt-0.5 size-4 accent-brass-deep;
+  }
+  & div:has(> input:not(:read-write)) > label {
+    @apply flex-1 text-base font-normal tracking-normal text-ink normal-case;
+  }
+  & div:has(> input:not(:read-write)) > p {
+    @apply basis-full pl-7;
+  }
+
+  /* the button */
+  & button {
+    @apply mt-8 min-h-12 cursor-pointer bg-ink px-6 text-xs font-medium tracking-caps text-foam uppercase;
+  }
+  & button:hover {
+    @apply bg-brass-deep;
   }
 }

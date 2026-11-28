@@ -1,7 +1,6 @@
 import type { Navigation, PublishedContent } from '@crombolo/crombolo'
 import { Logo } from './logo.tsx'
 import { developerPage, docsSection, homeOf, repositoryUrl } from './site.tsx'
-import { CONTAINER } from './styles.tsx'
 
 const NAV_LINK =
   'font-medium text-white/85 transition-colors hover:text-white motion-reduce:transition-none aria-[current=page]:text-white aria-[current=page]:underline aria-[current=page]:underline-offset-[0.3em]'
@@ -20,7 +19,7 @@ export function SiteHeader({ model, nav }: { model: PublishedContent; nav: Navig
     (docs.key === model.key || nav.ancestors(model).some((page) => page.key === docs.key))
   return (
     <header class="sticky top-0 z-10 bg-ink text-white shadow-md">
-      <div class={`${CONTAINER} flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3`}>
+      <div class="page-column flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3">
         <a class="inline-flex items-center gap-2.5 text-2xl font-bold" href={home.url}>
           <Logo />
           crombolo

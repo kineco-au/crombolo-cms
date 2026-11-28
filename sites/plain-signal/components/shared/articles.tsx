@@ -55,7 +55,7 @@ export async function ArticleCard({
         />
       ) : null}
       <div class="flex flex-col gap-2">
-        {section ? <p class={kicker}>{section.name}</p> : null}
+        {section ? <p class="kicker">{section.name}</p> : null}
         <h2
           class={
             lead
@@ -78,11 +78,3 @@ export async function ArticleCard({
     </article>
   )
 }
-
-/** The small capitals above a headline that name its section. */
-export const kicker = 'text-xs font-semibold tracking-widest text-accent uppercase'
-
-/** A page's headline, its standfirst and the line of small print under them. */
-export const headline =
-  'mt-1 mb-4 font-serif text-4xl/[1.08] font-bold tracking-tight text-balance sm:text-5xl/[1.06]'
-export const standfirst = 'mb-4 font-serif text-xl/snug text-pretty text-muted sm:text-2xl/snug'

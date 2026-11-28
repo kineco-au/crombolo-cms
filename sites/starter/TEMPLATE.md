@@ -6,4 +6,4 @@
 
 ## Where to look first
 
-Restyle the Tailwind classes in `components/shared/` and the colours in `css/tailwind.css`, then replace the placeholder text in the back office or with `crombolo content update`.
+Restyle the colours, the page title (`page-title`) and the rich text (`prose-site`) in `css/tailwind.css` and the Tailwind classes in `components/`, then replace the placeholder text in the back office or with `crombolo content update`.

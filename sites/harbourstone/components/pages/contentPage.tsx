@@ -1,8 +1,7 @@
 import type { PageProps } from '@crombolo/crombolo'
-import { shell } from '../shared/classes.ts'
 import { HighlightRows, highlightsOf } from '../shared/highlights.tsx'
 import { Layout } from '../shared/layout.tsx'
-import { PageHeader, Prose, SectionIntro } from '../shared/section-intro.tsx'
+import { PageHeader, SectionIntro } from '../shared/section-intro.tsx'
 
 export default async function ContentPage({ model, nav }: PageProps) {
   const image = (await model.media('heroImage'))[0]
@@ -12,7 +11,7 @@ export default async function ContentPage({ model, nav }: PageProps) {
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
 
-      <section class={`${shell} grid items-center gap-10 py-20 md:grid-cols-2 md:gap-12 md:py-28`}>
+      <section class="page-column grid items-center gap-10 py-20 md:grid-cols-2 md:gap-12 md:py-28">
         {image ? (
           <img
             class="h-112 w-full object-cover"
@@ -25,13 +24,13 @@ export default async function ContentPage({ model, nav }: PageProps) {
             eyebrow={model.text('sectionEyebrow')}
             heading={model.text('sectionHeading')}
           />
-          <Prose>{model.html('bodyText')}</Prose>
+          <div class="prose-site mt-5">{model.html('bodyText')}</div>
         </div>
       </section>
 
       {highlights.length > 0 ? (
         <section class="bg-sea py-20 text-foam md:py-28">
-          <div class={`${shell} grid items-center gap-10 md:grid-cols-2 md:gap-12`}>
+          <div class="page-column grid items-center gap-10 md:grid-cols-2 md:gap-12">
             <div>
               <SectionIntro
                 eyebrow={model.text('highlightsEyebrow')}

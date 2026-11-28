@@ -1,5 +1,5 @@
 import type { PageProps } from '@crombolo/crombolo'
-import { ArticleCard, articlesUnder, headline, standfirst } from '../shared/articles.tsx'
+import { ArticleCard, articlesUnder } from '../shared/articles.tsx'
 import { Layout } from '../shared/layout.tsx'
 
 export default function SectionPage({ model, nav }: PageProps) {
@@ -8,9 +8,9 @@ export default function SectionPage({ model, nav }: PageProps) {
     <Layout model={model} nav={nav}>
       <header class="mb-10 border-b border-rule pb-4">
         <div class="max-w-2xl">
-          <h1 class={headline}>{model.text('title')}</h1>
+          <h1 class="headline">{model.text('title')}</h1>
           {model.hasValue('standfirst') ? (
-            <p class={standfirst}>{model.text('standfirst')}</p>
+            <p class="standfirst">{model.text('standfirst')}</p>
           ) : null}
         </div>
       </header>

@@ -1,6 +1,6 @@
 import type { PageProps } from '@crombolo/crombolo'
-import { displayDate, headline, kicker, standfirst } from '../shared/articles.tsx'
-import { Layout, prose } from '../shared/layout.tsx'
+import { displayDate } from '../shared/articles.tsx'
+import { Layout } from '../shared/layout.tsx'
 
 const label = 'mb-2 text-xs font-semibold tracking-widest text-muted uppercase'
 
@@ -13,12 +13,12 @@ export default async function Article({ model, nav }: PageProps) {
       <article>
         <header class="mx-auto mb-8 max-w-2xl">
           {section ? (
-            <p class={kicker}>
+            <p class="kicker">
               <a href={section.url}>{section.name}</a>
             </p>
           ) : null}
-          <h1 class={headline}>{model.text('title')}</h1>
-          <p class={standfirst}>{model.text('standfirst')}</p>
+          <h1 class="headline">{model.text('title')}</h1>
+          <p class="standfirst">{model.text('standfirst')}</p>
           <p class="text-sm text-muted">
             {model.text('byline')}
             {model.hasValue('publishedOn') ? ` · ${displayDate(model)}` : ''}
@@ -45,11 +45,11 @@ export default async function Article({ model, nav }: PageProps) {
             <p>{model.text('whyItMatters')}</p>
           </aside>
         ) : null}
-        <div class={`${prose} mx-auto max-w-2xl prose-lg`}>{model.html('bodyText')}</div>
+        <div class="prose-site mx-auto max-w-2xl prose-lg">{model.html('bodyText')}</div>
         {model.hasValue('sources') ? (
           <section class="mx-auto mt-10 max-w-2xl border-t border-rule pt-5">
             <h2 class={label}>Sources</h2>
-            <div class={`${prose} prose-sm`}>{model.html('sources')}</div>
+            <div class="prose-site prose-sm">{model.html('sources')}</div>
           </section>
         ) : null}
         {topics.length > 0 ? (

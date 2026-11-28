@@ -1,5 +1,4 @@
 import type { PublishedContent, PublishedElement } from '@crombolo/crombolo'
-import { display } from './classes.ts'
 import { Eyebrow } from './section-intro.tsx'
 
 /**
@@ -54,7 +53,7 @@ export async function BottlingCard({
       ) : null}
       <div class="p-6">
         <Eyebrow>{specOf(bottling)}</Eyebrow>
-        <h3 class={`${display} mt-2 text-3xl leading-tight`}>
+        <h3 class="heading-display mt-2 text-3xl leading-tight">
           <a
             class="no-underline hover:text-brass-deep motion-safe:transition-colors"
             href={bottling.url}

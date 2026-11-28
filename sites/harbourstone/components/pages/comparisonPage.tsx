@@ -1,5 +1,4 @@
 import type { PageProps, PublishedContent, PublishedElement } from '@crombolo/crombolo'
-import { shell } from '../shared/classes.ts'
 import Compare, { type Bottling } from '../shared/compare.tsx'
 import { Layout } from '../shared/layout.tsx'
 import { Eyebrow, PageHeader } from '../shared/section-intro.tsx'
@@ -48,7 +47,7 @@ export default async function ComparisonPage({ model, nav }: PageProps) {
   return (
     <Layout model={model} nav={nav}>
       <PageHeader model={model} />
-      <section class={`${shell} mt-10`}>
+      <section class="page-column mt-10">
         <Compare bottlings={bottlings.map((b) => b.data)}>
           <ul class="grid gap-2">
             {bottlings.map(({ page, data }) => (

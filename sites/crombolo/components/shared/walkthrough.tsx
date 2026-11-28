@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 'use client'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { PROSE } from './styles.tsx'
 
 export interface WalkthroughCode {
   lang: string
@@ -196,7 +195,7 @@ export default function WalkthroughView({ walk }: { walk: Walkthrough; children?
 
   return (
     <div ref={top}>
-      <div className={PROSE} dangerouslySetInnerHTML={{ __html: walk.intro }} />
+      <div className="prose-site" dangerouslySetInnerHTML={{ __html: walk.intro }} />
       {walk.choice ? (
         <fieldset className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-1">
           <legend className="float-left mr-1 font-semibold">{walk.choice.name}</legend>
@@ -246,19 +245,19 @@ export default function WalkthroughView({ walk }: { walk: Walkthrough; children?
         >
           {current.step.title}
         </h3>
-        <div className={PROSE} dangerouslySetInnerHTML={{ __html: current.step.text }} />
+        <div className="prose-site" dangerouslySetInnerHTML={{ __html: current.step.text }} />
         {current.step.code.map((code) => (
           <Code key={`${current.step.id}:${code.file ?? ''}:${code.text}`} code={code} />
         ))}
         {current.step.see ? (
           <div
-            className={`${PROSE} mt-4 rounded-r-lg border-l-4 border-line bg-cream px-4 py-3`}
+            className="prose-site mt-4 rounded-r-lg border-l-4 border-line bg-cream px-4 py-3"
             dangerouslySetInnerHTML={{ __html: current.step.see }}
           />
         ) : null}
         {current.step.note ? (
           <div
-            className={`${PROSE} mt-4 rounded-r-lg border-l-4 border-terracotta bg-arc px-4 py-3`}
+            className="prose-site mt-4 rounded-r-lg border-l-4 border-terracotta bg-arc px-4 py-3"
             role="note"
             dangerouslySetInnerHTML={{ __html: current.step.note }}
           />

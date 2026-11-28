@@ -1,9 +1,8 @@
 import type { PageProps, PublishedElement } from '@crombolo/crombolo'
 import { specOf, TastingNotes } from '../shared/bottling.tsx'
-import { display, shell } from '../shared/classes.ts'
 import { Layout } from '../shared/layout.tsx'
 import { RemindMe } from '../shared/remind-me.tsx'
-import { Eyebrow, Prose, Standfirst } from '../shared/section-intro.tsx'
+import { Eyebrow, Standfirst } from '../shared/section-intro.tsx'
 
 export default async function Expression({ model, nav }: PageProps) {
   const bottle = (await model.media('bottleImage'))[0]
@@ -11,9 +10,7 @@ export default async function Expression({ model, nav }: PageProps) {
   const range = nav.parent(model)
   return (
     <Layout model={model} nav={nav}>
-      <article
-        class={`${shell} grid items-start gap-10 pt-12 pb-16 md:grid-cols-[minmax(0,2fr)_3fr] md:gap-12`}
-      >
+      <article class="page-column grid items-start gap-10 pt-12 pb-16 md:grid-cols-[minmax(0,2fr)_3fr] md:gap-12">
         <div class="border border-line bg-foam">
           {bottle ? (
             <img
@@ -25,9 +22,11 @@ export default async function Expression({ model, nav }: PageProps) {
         </div>
         <div>
           <Eyebrow>{specOf(model)}</Eyebrow>
-          <h1 class={`${display} mt-3 text-5xl leading-none md:text-6xl`}>{model.text('title')}</h1>
+          <h1 class="heading-display mt-3 text-5xl leading-none md:text-6xl">
+            {model.text('title')}
+          </h1>
           {model.hasValue('summary') ? <Standfirst>{model.text('summary')}</Standfirst> : null}
-          <Prose>{model.html('bodyText')}</Prose>
+          <div class="prose-site mt-5">{model.html('bodyText')}</div>
           <TastingNotes notes={notes} />
           <RemindMe name={model.text('title')} />
           {range ? (

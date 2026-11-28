@@ -1,6 +1,5 @@
 import type { Child, Navigation, PageProps, PublishedContent } from '@crombolo/crombolo'
 import { Layout } from './layout.tsx'
-import { CONTAINER, LINK, SEARCH_BUTTON, SEARCH_FORM, SEARCH_INPUT } from './styles.tsx'
 
 const DOCS_PAGE = 'docsPage'
 
@@ -103,21 +102,19 @@ export function DocsLayout(props: PageProps & { children?: Child; headings?: Hea
 
   return (
     <Layout {...props}>
-      <div
-        class={`${CONTAINER} grid gap-8 pt-8 pb-14 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-14 md:pt-12 md:pb-20`}
-      >
+      <div class="page-column grid gap-8 pt-8 pb-14 md:grid-cols-[15rem_minmax(0,1fr)] md:gap-14 md:pt-12 md:pb-20">
         <aside class="border-b border-line pb-6 text-[0.9375rem] md:border-0 md:pb-0">
           {search ? (
             <search>
-              <form class={SEARCH_FORM} action={search.url} method="get">
+              <form class="search-form" action={search.url} method="get">
                 <input
-                  class={SEARCH_INPUT}
+                  class="search-input"
                   type="search"
                   name="q"
                   aria-label="Search the docs"
                   placeholder="Search"
                 />
-                <button class={SEARCH_BUTTON} type="submit">
+                <button class="search-button" type="submit">
                   Search
                 </button>
               </form>
@@ -140,7 +137,7 @@ export function DocsLayout(props: PageProps & { children?: Child; headings?: Hea
               <ol class="mb-3 flex flex-wrap gap-x-2 gap-y-1 text-sm">
                 {trail.map((page) => (
                   <li class="not-first:before:mr-2 not-first:before:text-muted not-first:before:content-['/']">
-                    <a class={LINK} href={page.url}>
+                    <a class="link" href={page.url}>
                       {page.name}
                     </a>
                   </li>
@@ -163,7 +160,7 @@ export function DocsLayout(props: PageProps & { children?: Child; headings?: Hea
               <ul class="space-y-1">
                 {headings.map((heading) => (
                   <li>
-                    <a class={LINK} href={`#${heading.id}`}>
+                    <a class="link" href={`#${heading.id}`}>
                       {heading.text}
                     </a>
                   </li>

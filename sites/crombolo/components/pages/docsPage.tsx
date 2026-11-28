@@ -1,6 +1,5 @@
 import type { PageProps } from '@crombolo/crombolo'
 import { DocsLayout, headingsOf } from '../shared/docs.tsx'
-import { LINK, PROSE } from '../shared/styles.tsx'
 import WalkthroughView, { type Walkthrough } from '../shared/walkthrough.tsx'
 
 export default function DocsPage(props: PageProps) {
@@ -11,7 +10,7 @@ export default function DocsPage(props: PageProps) {
   const generatedFrom = model.text('generatedFrom')
   const editUrl = model.text('editUrl')
   const walkthrough = model.text('walkthrough')
-  const body = <div class={PROSE}>{model.html('body')}</div>
+  const body = <div class="prose-site">{model.html('body')}</div>
   return (
     <DocsLayout {...props} headings={headingsOf(model.text('body'))}>
       {/* A walkthrough shows a step at a time once it mounts, and the whole page until then. */}
@@ -27,7 +26,7 @@ export default function DocsPage(props: PageProps) {
         <ul class="mt-6 space-y-4">
           {children.map((child) => (
             <li>
-              <a class={`${LINK} text-lg font-semibold`} href={child.url}>
+              <a class="link text-lg font-semibold" href={child.url}>
                 {child.name}
               </a>
               {child.hasValue('standfirst') ? (
@@ -42,7 +41,7 @@ export default function DocsPage(props: PageProps) {
           {generatedFrom ? <p>Generated from {generatedFrom}.</p> : null}
           {editUrl ? (
             <p>
-              <a class={LINK} href={editUrl}>
+              <a class="link" href={editUrl}>
                 Suggest a change to this page
               </a>
             </p>

@@ -1,6 +1,5 @@
 import { type PageProps, search } from '@crombolo/crombolo'
 import { DocsLayout } from '../shared/docs.tsx'
-import { LINK, SEARCH_BUTTON, SEARCH_FORM, SEARCH_INPUT } from '../shared/styles.tsx'
 
 const PER_PAGE = 10
 
@@ -23,15 +22,15 @@ export default async function SearchPage(props: PageProps) {
   return (
     <DocsLayout {...props}>
       <search>
-        <form class={SEARCH_FORM} action={model.url} method="get">
+        <form class="search-form" action={model.url} method="get">
           <input
-            class={SEARCH_INPUT}
+            class="search-input"
             type="search"
             name="q"
             value={query}
             aria-label="Search the docs"
           />
-          <button class={SEARCH_BUTTON} type="submit">
+          <button class="search-button" type="submit">
             Search
           </button>
         </form>
@@ -46,7 +45,7 @@ export default async function SearchPage(props: PageProps) {
       <ol class="space-y-6">
         {results.items.map((item) => (
           <li>
-            <a class={`${LINK} text-lg font-semibold`} href={item.url}>
+            <a class="link text-lg font-semibold" href={item.url}>
               {item.content.text('title') || item.name}
             </a>
             <p class="mt-1 text-muted">
@@ -64,7 +63,7 @@ export default async function SearchPage(props: PageProps) {
       {pages > 1 ? (
         <nav class="mt-10 flex items-center gap-6" aria-label="Search results pages">
           {page > 1 ? (
-            <a class={`${LINK} font-semibold`} href={link(page - 1)}>
+            <a class="link font-semibold" href={link(page - 1)}>
               Previous
             </a>
           ) : null}
@@ -72,7 +71,7 @@ export default async function SearchPage(props: PageProps) {
             Page {page} of {pages}
           </span>
           {page < pages ? (
-            <a class={`${LINK} font-semibold`} href={link(page + 1)}>
+            <a class="link font-semibold" href={link(page + 1)}>
               Next
             </a>
           ) : null}

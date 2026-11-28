@@ -14,3 +14,91 @@
   --color-panel: light-dark(#f1efe9, #1d2024);
   --color-accent: light-dark(#c2410c, #fb923c);
 }
+
+/* Patterns several views share, made from the theme. */
+
+/* The small capitals above a headline that name its section. */
+@utility kicker {
+  @apply text-xs font-semibold tracking-widest text-accent uppercase;
+}
+
+/* A page's headline, and its standfirst under it. */
+@utility headline {
+  @apply mt-1 mb-4 font-serif text-4xl/[1.08] font-bold tracking-tight text-balance sm:text-5xl/[1.06];
+}
+
+@utility standfirst {
+  @apply mb-4 font-serif text-xl/snug text-pretty text-muted sm:text-2xl/snug;
+}
+
+/* A rich-text body: Tailwind's typography in the site's own colours, which follow
+   light and dark by themselves, so it needs no prose-invert. */
+@utility prose-site {
+  @apply prose prose-headings:font-serif prose-headings:font-bold prose-a:decoration-accent prose-a:underline-offset-[0.18em];
+  --tw-prose-body: var(--color-ink);
+  --tw-prose-headings: var(--color-ink);
+  --tw-prose-lead: var(--color-muted);
+  --tw-prose-links: var(--color-ink);
+  --tw-prose-bold: var(--color-ink);
+  --tw-prose-counters: var(--color-muted);
+  --tw-prose-bullets: var(--color-muted);
+  --tw-prose-hr: var(--color-rule);
+  --tw-prose-quotes: var(--color-ink);
+  --tw-prose-quote-borders: var(--color-accent);
+  --tw-prose-captions: var(--color-muted);
+  --tw-prose-code: var(--color-ink);
+  --tw-prose-th-borders: var(--color-rule);
+  --tw-prose-td-borders: var(--color-rule);
+
+  /* Above prose-lg and prose-sm, which come later and set their own. */
+  & h2 {
+    @apply mt-10 mb-3;
+  }
+
+  /* Typography writes these against .prose itself, so @apply leaves them behind. */
+  & :where(& > ul > li p) {
+    @apply my-[0.75em];
+  }
+  & :where(& > :is(ul, ol) > li > p:first-child) {
+    @apply mt-[1.25em];
+  }
+  & :where(& > :is(ul, ol) > li > p:last-child) {
+    @apply mb-[1.25em];
+  }
+  & :where(& > :first-child) {
+    @apply mt-0;
+  }
+  & :where(& > :last-child) {
+    @apply mb-0;
+  }
+}
+
+/*
+ * The server's own form, shown until the contact island mounts and wherever scripts
+ * do not run. Its markup is the CMS's, so it is styled from a wrapper to match the
+ * island: :read-write picks out the text fields, and a field holding any other input
+ * is the checkbox.
+ */
+@utility form-site {
+  & .crombolo-form [data-field] {
+    @apply mb-5 grid gap-1.5;
+  }
+  & .crombolo-form [data-field]:has(input:not(:read-write)) {
+    @apply flex flex-row-reverse items-baseline justify-end gap-2.5;
+  }
+  & .crombolo-form label {
+    @apply font-medium;
+  }
+  & .crombolo-form p {
+    @apply text-sm text-muted;
+  }
+  & .crombolo-form :is(:read-write, select) {
+    @apply w-full rounded border border-rule px-3 py-2;
+  }
+  & .crombolo-form input:not(:read-write) {
+    @apply size-4 shrink-0 accent-accent;
+  }
+  & .crombolo-form button {
+    @apply cursor-pointer rounded bg-ink px-6 py-2.5 font-semibold text-paper;
+  }
+}

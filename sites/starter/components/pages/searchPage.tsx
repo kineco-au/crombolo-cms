@@ -1,5 +1,5 @@
 import { type PageProps, search } from '@crombolo/crombolo'
-import { heading, Layout } from '../shared/layout.tsx'
+import { Layout } from '../shared/layout.tsx'
 
 const PER_PAGE = 10
 
@@ -17,7 +17,7 @@ export default async function SearchPage(props: PageProps) {
 
   return (
     <Layout {...props}>
-      <h1 class={heading}>{model.text('title') || model.name}</h1>
+      <h1 class="page-title">{model.text('title') || model.name}</h1>
       <search>
         <form class="mb-6 flex max-w-xl gap-2" action={model.url} method="get">
           <input

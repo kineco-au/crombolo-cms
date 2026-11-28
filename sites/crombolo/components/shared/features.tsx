@@ -1,8 +1,5 @@
 import type { PublishedElement } from '@crombolo/crombolo'
 
-export const CARD = 'rounded-xl border border-line bg-white p-7 shadow-sm shadow-terracotta/10'
-export const CARD_HEADING = 'mb-2 text-xl font-medium text-terracotta-text'
-
 /** Features as cards: a heading, and the sentence that earns it. */
 export function FeatureCards({ items }: { items: PublishedElement[] }) {
   if (items.length === 0) return null
@@ -11,8 +8,8 @@ export function FeatureCards({ items }: { items: PublishedElement[] }) {
   return (
     <div class={`grid gap-6 sm:grid-cols-2 ${columns}`}>
       {items.map((item) => (
-        <article class={CARD}>
-          <h3 class={CARD_HEADING}>{item.text('heading')}</h3>
+        <article class="card">
+          <h3 class="card-heading">{item.text('heading')}</h3>
           {item.text('detail') ? <p class="text-muted">{item.text('detail')}</p> : null}
         </article>
       ))}
