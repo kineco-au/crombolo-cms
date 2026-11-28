@@ -121,7 +121,7 @@ not cover.
 | `276` | The pages list view sorts by its property columns | could | M | done | 269 |
 | `277` | The back office on Umbraco 19 | should | L | ready | 235 |
 | `345` | The Single Block | should | L | done | — |
-| `456` | The block editors behave as Umbraco's | must | L | in progress | 184, 345 |
+| `456` | The block editors behave as Umbraco's | must | L | done | 184, 345 |
 | `429` | Users are in Settings | should | M | done | 234, 385 |
 | `433` | Service accounts in Settings | should | M | done | 026, 207, 298, 389, 405, 429 |
 | `288` | The overview is the home of the back office | should | M | done | — |
