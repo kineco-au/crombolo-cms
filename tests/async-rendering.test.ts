@@ -196,8 +196,9 @@ export default async function Home({ model }) {
     })
     const response = await h.server.fetch(new Request(`${ORIGIN}/`))
     expect(response.status).toBe(200)
-    expect(await response.text()).toBe(
-      '<!DOCTYPE html><html><head><title>Site</title></head><body><h1>Hello</h1><aside>aside</aside></body></html>',
+    // Story 452: every page with a head links the Tailwind stylesheet.
+    expect(await response.text()).toMatch(
+      /^<!DOCTYPE html><html><head><title>Site<\/title><link rel="stylesheet" href="\/css\/tailwind\.[0-9a-f]{8}\.css"><\/head><body><h1>Hello<\/h1><aside>aside<\/aside><\/body><\/html>$/,
     )
   })
 

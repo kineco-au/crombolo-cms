@@ -19,10 +19,15 @@ export class SiteAssets {
   readonly #watch: boolean
   readonly #hashes = new Map<string, string>()
   readonly #watchers: FSWatcher[] = []
+  readonly #onChange: ((path: string) => void) | undefined
 
-  constructor(roots: readonly AssetRoot[], options: { watch?: boolean } = {}) {
+  constructor(
+    roots: readonly AssetRoot[],
+    options: { watch?: boolean; onChange?: (path: string) => void } = {},
+  ) {
     this.#roots = roots
     this.#watch = options.watch !== false
+    this.#onChange = options.onChange
   }
 
   /** Hashes every file, and watches each folder for changes. */
@@ -33,7 +38,9 @@ export class SiteAssets {
       if (!existsSync(root.dir)) continue
       try {
         const watcher = watch(root.dir, { recursive: true }, (_event, name) => {
-          if (name) this.#hash(root, join(root.dir, name.toString()))
+          if (!name) return
+          this.#hash(root, join(root.dir, name.toString()))
+          this.#onChange?.(`${root.prefix}/${name.toString().split(sep).join('/')}`)
         })
         watcher.on('error', () => {})
         this.#watchers.push(watcher)

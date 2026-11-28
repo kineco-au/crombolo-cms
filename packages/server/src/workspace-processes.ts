@@ -24,6 +24,7 @@ import type {
   RenderRequest,
   RenderResult,
 } from '@crombolo/render'
+import { withPageStylesheet } from '@crombolo/render'
 import type { ChildAnswer, ChildInit, ChildRender, PlainRequest } from './workspace-render-child.ts'
 
 const CHILD = fileURLToPath(new URL('./workspace-render-child.ts', import.meta.url))
@@ -50,6 +51,8 @@ export interface WorkspaceProcessOptions {
   /** The environment whose own values its pages show (story 387). */
   environment?: string
   componentsCacheDir: string
+  /** The stylesheet the pages it renders link (story 452), which the node makes. */
+  stylesheet?: () => string | undefined
   /** How many run at once on this node. */
   limit: number
   idleMs: number
@@ -216,7 +219,7 @@ export function createWorkspaceProcesses(options: WorkspaceProcessOptions) {
           request: plainOf(request),
           revision: revision(),
         })
-        return resultOf(answer, content)
+        return resultOf(answer, content, options.stylesheet?.())
       }
       return new Proxy(shared, {
         get(target, property) {
@@ -345,15 +348,27 @@ function plainOf(request: RenderRequest): PlainRequest {
   return plain
 }
 
-function resultOf(answer: ProcessRender, content: PublishedContent): RenderResult {
+function resultOf(
+  answer: ProcessRender,
+  content: PublishedContent,
+  stylesheet: string | undefined,
+): RenderResult {
   const caching = {
     personal: answer.personal ?? false,
     ...(answer.revalidate !== undefined ? { revalidate: answer.revalidate } : {}),
     ...(answer.memberFiles ? { memberFiles: answer.memberFiles } : {}),
   }
   switch (answer.status) {
-    case 'ok':
-      return { status: 'ok', html: answer.html ?? '', content, ...caching }
+    case 'ok': {
+      // Story 452: the process has no stylesheet of its own; the page links the node's.
+      const html = answer.html ?? ''
+      return {
+        status: 'ok',
+        html: stylesheet ? withPageStylesheet(html, stylesheet) : html,
+        content,
+        ...caching,
+      }
+    }
     case 'outcome':
       return {
         status: 'outcome',

@@ -240,6 +240,7 @@ rather than the running server. Secret ones are never printed or logged.
 | `CROMBOLO_PUBLIC_URL` | string | — | Where visitors see the site, when that is an app on another address, such as https://www.example.com. Used for preferred addresses, the sitemap and robots.txt. |
 | `CROMBOLO_SHOW_ERROR_DETAILS` | `true` / `false` | — | Shows a server error's message, the template file and line, and the stack on the error page. On in development, off otherwise; with it off a visitor sees only the error's reference, which the log carries too. |
 | `CROMBOLO_LIVE_RELOAD` | `true` / `false` | — | Reloads open pages when the components, the schema or the content change, and shows type errors on them. On in development, off in production and under `bun test`. |
+| `CROMBOLO_STYLES_TAILWIND` | `true` / `false` | `true` | Generates the Tailwind CSS for the classes the views use and links it in every page's head, Tailwind's base reset included. `false` generates and links nothing; `styles.tailwind` in `crombolo.config.ts` does the same. |
 | `CROMBOLO_SITEMAP` | `true` / `false` | `true` | Serves `/sitemap.xml`. |
 | `CROMBOLO_TRACK_REDIRECTS` | `true` / `false` | `true` | Renaming or moving a page records a redirect from the address it had. |
 | `CROMBOLO_DELIVERY_API` | `true` / `false` | `true` | The Delivery API, which serves the published pages anyone may see as JSON. false turns it off. |
@@ -434,6 +435,21 @@ wins field by field ([`seo.md`](seo.md)). `pages.notFound`, when set, wins over
 the not-found page.
 
 `errors.showDetails` has `CROMBOLO_SHOW_ERROR_DETAILS` above; the config file wins.
+
+`styles.tailwind` has `CROMBOLO_STYLES_TAILWIND` above, and the config file wins too.
+Tailwind is on for every site (story 452): the server generates the CSS for the classes
+the views use and links it in every page's head, Tailwind's base reset included. A site
+that wants none of it turns it off:
+
+```ts
+export default defineConfig({
+  styles: { tailwind: false },
+})
+```
+
+Nothing is then generated or linked, `/css/tailwind.css` serves the site's own file of
+that name if it has one, and the template editor offers no classes. See
+[`rendering.md`](rendering.md#styling-with-tailwind).
 
 `bundles` has no environment variable deliberately, and the absence is tested. A
 variable naming a package would be a way to start third-party code in the server

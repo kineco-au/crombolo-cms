@@ -119,6 +119,7 @@ export default defineConfig({
   islands: { manifest: 'dist/islands/manifest.json' },
   pages: { notFound: '/not-found', unauthorized: '/sign-in', error: '/error' },
   errors: { showDetails: false }, // CROMBOLO_SHOW_ERROR_DETAILS
+  styles: { tailwind: true }, // CROMBOLO_STYLES_TAILWIND: Tailwind generated and linked on every page (story 452)
 
   // ── Addresses ───────────────────────────────────────────────────────────────
   redirects: [redirect('/old-menu', '/menu'), redirect('/blog/*', '/news')],

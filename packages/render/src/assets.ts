@@ -61,3 +61,27 @@ export function setFileResolver(resolve: FileResolver | undefined): void {
 export function file(path: string): string {
   return sharedFiles[FILES_KEY]?.(path) ?? path
 }
+
+/** A link to `/css/tailwind.css`, at its plain address or any hashed one. */
+const LINKS_TAILWIND = /<link\b[^>]*\bhref\s*=\s*["']?\/css\/tailwind(?:\.[0-9a-f]{8})?\.css\b/i
+const HEAD = /<head(?:\s[^>]*)?>/i
+const STYLESHEET = /<link\b[^>]*\brel\s*=\s*["']?stylesheet\b|<style\b/i
+
+/**
+ * A page's HTML with a link to `href` in its head, before the first stylesheet
+ * so the site's own rules win, or before `</head>`. A page with no head, or that
+ * links the stylesheet itself, is as it was. Pure.
+ */
+export function withPageStylesheet(html: string, href: string): string {
+  const head = HEAD.exec(html)
+  if (!head || LINKS_TAILWIND.test(html)) return html
+  const from = head.index + head[0].length
+  const close = html.toLowerCase().indexOf('</head>', from)
+  const within = html.slice(from, close < 0 ? html.length : close)
+  const first = STYLESHEET.exec(within)
+  const at = first ? from + first.index : close < 0 ? from : close
+  return `${html.slice(0, at)}<link rel="stylesheet" href="${escapeAttribute(href)}">${html.slice(at)}`
+}
+
+const escapeAttribute = (value: string) =>
+  value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;')

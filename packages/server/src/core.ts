@@ -146,6 +146,8 @@ export interface CoreHooks {
   onCacheInvalidate?: () => void
   /** A newer views generation replaced the one in use. */
   onViewsSwap?: () => void
+  /** The stylesheet every page links (story 452), at its hashed address now. */
+  pageStylesheet?: () => string | undefined
   /** Whether a views generation builds its islands' browser code; e-mails need none. */
   buildIslands: boolean
   /** What an open back office hears of a change. */
@@ -506,6 +508,7 @@ export async function createCore(config: CromboloConfig, hooks: CoreHooks) {
   const renderer = new Renderer({
     cache,
     componentsDir: config.componentsDir,
+    stylesheet: () => hooks.pageStylesheet?.(),
     extensionComponents,
     snapshots,
     renderTimeoutMs: config.renderTimeoutMs,

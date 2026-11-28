@@ -3,7 +3,8 @@
 What a plain `crombolo init` gives you:
 
 - one content type, `contentPage`, with a title, an image and a description;
-- its template, `components/contentPage.tsx`;
+- its template, `components/contentPage.tsx`, styled with Tailwind's classes;
+- `css/tailwind.css`, Tailwind's input, for a `@theme` of your own;
 - one published page, the home page, welcoming you to Crombolo, as a content file in `content/pages/`;
 - the Crombolo logo, the home page's image, in `content/media/`.
 

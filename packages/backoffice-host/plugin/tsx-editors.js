@@ -11,6 +11,13 @@
  * (an import as well as a tag) and Razor's sections, are hidden.
  */
 import { PartialViewService, TemplateService } from '@umbraco-cms/backoffice/external/backend-api'
+import {
+  classAt,
+  classContextAt,
+  hoverFor,
+  indexClassList,
+  suggestClasses,
+} from './tailwind-completion.js'
 import { highlightJsx } from './tsx-highlighting.js'
 import { toTsxSnippet } from './tsx-snippets.js'
 import {
@@ -123,6 +130,87 @@ async function typeLibs() {
   }
 }
 
+/** The site's Tailwind classes (story 452), or undefined when it has Tailwind off or will not say. */
+async function tailwindClasses() {
+  try {
+    const response = await fetch(`${pluginApi()}/tailwind-classes`, {
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    })
+    if (!response.ok) throw new Error(`the server answered ${response.status}`)
+    const body = await response.json()
+    return body?.enabled ? indexClassList(body) : undefined
+  } catch (error) {
+    console.warn('Crombolo could not fetch the Tailwind classes for the view editor', error)
+    return undefined
+  }
+}
+
+/** Each view's model and the classes it offers; a model not here offers none. */
+const tailwindModels = new WeakMap()
+let tailwindRegistered = false
+
+/**
+ * The completion and hover providers, registered once on monaco's TypeScript
+ * and answering only in a view's model, inside a class string.
+ */
+function registerTailwind(monaco) {
+  if (tailwindRegistered) return
+  tailwindRegistered = true
+  const { CompletionItemKind } = monaco.languages
+  monaco.languages.registerCompletionItemProvider('typescript', {
+    triggerCharacters: ['"', "'", '`', ' ', ':', '-'],
+    provideCompletionItems(model, position) {
+      const index = tailwindModels.get(model)
+      if (!index) return { suggestions: [] }
+      const text = model.getValue()
+      const at = classContextAt(text, model.getOffsetAt(position))
+      if (!at) return { suggestions: [] }
+      const { items, incomplete } = suggestClasses(index, at.typed)
+      const from = model.getPositionAt(at.start)
+      const to = model.getPositionAt(at.end)
+      const range = new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column)
+      return {
+        incomplete,
+        suggestions: items.map((item, order) => ({
+          label: item.label,
+          insertText: item.label,
+          filterText: item.label,
+          sortText: String(order).padStart(5, '0'),
+          range,
+          kind: item.color
+            ? CompletionItemKind.Color
+            : item.kind === 'variant'
+              ? CompletionItemKind.Keyword
+              : CompletionItemKind.Constant,
+          detail: item.css ? item.css.replace(/\s+/g, ' ') : 'variant',
+          // A colour's documentation is the colour, which monaco draws as a swatch.
+          documentation:
+            item.color ?? (item.css ? { value: `\`\`\`css\n${item.css}\n\`\`\`` } : undefined),
+          ...(item.kind === 'variant'
+            ? { command: { id: 'editor.action.triggerSuggest', title: 'Classes' } }
+            : {}),
+        })),
+      }
+    },
+  })
+  monaco.languages.registerHoverProvider('typescript', {
+    provideHover(model, position) {
+      const index = tailwindModels.get(model)
+      if (!index) return null
+      const at = classAt(model.getValue(), model.getOffsetAt(position))
+      const shown = at && hoverFor(index, at.word)
+      if (!shown) return null
+      const from = model.getPositionAt(at.start)
+      const to = model.getPositionAt(at.end)
+      return {
+        range: new monaco.Range(from.lineNumber, from.column, to.lineNumber, to.column),
+        contents: [{ value: shown }],
+      }
+    },
+  })
+}
+
 let loaded
 let highlighted
 
@@ -198,10 +286,11 @@ function viewEditor() {
   let configured = { monaco: undefined, ok: false }
   let model
   let file
+  let classes
   return {
     language: 'typescript',
     async prepare() {
-      configured = await configureTsx()
+      ;[configured, classes] = await Promise.all([configureTsx(), tailwindClasses()])
       file = await openFile()
     },
     created(editor) {
@@ -226,6 +315,14 @@ function viewEditor() {
       editor.setModel(model)
       created.dispose()
       editor.onDidDispose(() => model.dispose())
+      // Story 452: Tailwind's classes as they are typed, strings included.
+      if (classes) {
+        tailwindModels.set(model, classes)
+        registerTailwind(monaco)
+        editor.updateOptions?.({
+          quickSuggestions: { other: true, comments: false, strings: true },
+        })
+      }
       // Story 264: a file that shows the signed-in member says what that does to sharing.
       const note = () =>
         monaco.editor.setModelMarkers(

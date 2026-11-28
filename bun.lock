@@ -225,7 +225,7 @@
         "@crombolo/extension": "workspace:*",
       },
       "peerDependencies": {
-        "@crombolo/crombolo": ">=0.84.0",
+        "@crombolo/crombolo": ">=0.85.0",
       },
     },
     "packages/extension": {
@@ -322,6 +322,7 @@
         "kysely": "0.29.6",
         "node-diff3": "3.1.2",
         "sigstore": "^3.1.0",
+        "tailwindcss": "4.3.5",
       },
     },
     "packages/simple-redirects": {
@@ -331,7 +332,7 @@
         "@crombolo/extension": "workspace:*",
       },
       "peerDependencies": {
-        "@crombolo/crombolo": ">=0.84.0",
+        "@crombolo/crombolo": ">=0.85.0",
       },
     },
     "packages/transfer": {
@@ -1187,6 +1188,8 @@
     "styled-jsx": ["styled-jsx@5.1.6", "", { "dependencies": { "client-only": "0.0.1" }, "peerDependencies": { "@babel/core": "*", "babel-plugin-macros": "*", "react": ">= 16.8.0 || 17.x.x || ^18.0.0-0 || ^19.0.0-0" }, "optionalPeers": ["@babel/core", "babel-plugin-macros"] }, "sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA=="],
 
     "supports-color": ["supports-color@9.4.0", "", {}, "sha512-VL+lNrEoIXww1coLPOmiEmK/0sGigko5COxI09KzHc2VJXJsQ37UaQ+8quuxjDeA7+KnLGTWRyOXSLLR2Wb4jw=="],
+
+    "tailwindcss": ["tailwindcss@4.3.5", "", {}, "sha512-FcQk9BuffmEHJP2G0XmB2SplU1aLTI7j07Kunk+U74Ny+XiWOtzXz9aujFZ/avntw1e2cOv/3PkgzflQ7gX2vQ=="],
 
     "tar": ["tar@7.5.22", "", { "dependencies": { "@isaacs/fs-minipass": "^4.0.0", "chownr": "^3.0.0", "minipass": "^7.1.2", "minizlib": "^3.1.0", "yallist": "^5.0.0" } }, "sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA=="],
 

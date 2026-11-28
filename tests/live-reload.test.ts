@@ -122,6 +122,19 @@ describe('the event stream', () => {
     live.close()
   })
 
+  test('a stylesheet that does not compile is shown to each page that connects, until it does', async () => {
+    const live = createLiveReload()
+    const problem = { file: 'css/tailwind.css', line: 3, message: 'Missing closing }' }
+    live.styles({ problem })
+    const events = listen(live.stream(new Request(`${ORIGIN}${LIVE_EVENTS_PATH}`)))
+    expect((await events.next('styles')).data).toEqual({ problem })
+    live.styles({})
+    expect((await events.next('styles')).data).toEqual({})
+    expect(LIVE_RELOAD_SCRIPT).toContain("addEventListener('styles'")
+    await events.close()
+    live.close()
+  })
+
   test('a page that leaves stops listening', async () => {
     const live = createLiveReload()
     const leaving = new AbortController()

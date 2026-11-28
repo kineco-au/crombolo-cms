@@ -175,6 +175,7 @@ describe('the settings list', () => {
       CROMBOLO_MAX_FAILED_PASSWORD_ATTEMPTS: (c) => c.maxFailedPasswordAttempts,
       CROMBOLO_INDEXABLE: (c) => c.seo.indexable ?? true,
       CROMBOLO_SITEMAP: (c) => c.seo.sitemap ?? true,
+      CROMBOLO_STYLES_TAILWIND: (c) => c.styles.tailwind,
       CROMBOLO_TRACK_REDIRECTS: (c) => c.trackRedirects,
       CROMBOLO_DELIVERY_API: (c) => c.deliveryApi.enabled ?? true,
       CROMBOLO_DELIVERY_API_PRIVATE: (c) => !(c.deliveryApi.publicAccess ?? true),

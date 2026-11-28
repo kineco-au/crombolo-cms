@@ -2368,6 +2368,100 @@ import { asset } from '@crombolo/crombolo'
 - **Nothing inside a stylesheet is rewritten**: a `url(...)` keeps the address
   it names, which still works. Bundling is a build step a site chooses.
 
+## Styling with Tailwind
+
+Every site can style its views, partials and components with
+[Tailwind](https://tailwindcss.com)'s classes, with no import and no build step
+(story 452). A class written in a view is styled on the page, in development and in
+production:
+
+```tsx
+export default function Card({ model }: PageProps) {
+  return <article className="rounded-lg bg-white p-6 shadow md:p-8">{model.name}</article>
+}
+```
+
+- **The server generates the stylesheet** with Tailwind's JavaScript compiler (the
+  `tailwindcss` package, version 4, which the CMS ships and upgrades in its releases): at
+  boot, on every save of a view, partial or component in the template editor, and in
+  development as a view changes on disk. It reads every `.tsx`, `.ts`, `.jsx`, `.js` and
+  `.html` file under `components/` for anything that could be a class, and Tailwind keeps
+  those that are. No native binary is involved, so the container image and a Windows host
+  need nothing new.
+- **It is served at `/css/tailwind.css`** through `asset()`, as the site's own stylesheets
+  are: `/css/tailwind.3f9a1c2b.css`, kept for a year, its hash of its bytes. A new class
+  saved makes a new hash, and the next page links the new one. A node keeps its last few
+  stylesheets at their addresses, so a page rendered just before a change still finds
+  its own. Every server builds the same file from the same views, so the nodes of a
+  cluster agree without telling each other.
+- **Every page links it**, in its `<head>`, before the first stylesheet there, so the
+  site's own CSS wins where both set something. Tailwind's rules are in CSS layers, which
+  an unlayered stylesheet beats anyway. A view that links `/css/tailwind.css` itself,
+  usually as `asset('/css/tailwind.css')`, is not given a second link. A page with no
+  `<head>`, and an e-mail, gets none.
+- **Tailwind's base reset (preflight) is included.** It zeroes margins, makes headings
+  the size of body text and takes the bullets off lists, where the site's own CSS says
+  nothing about them. `styles: { tailwind: false }` in `crombolo.config.ts`, or
+  `CROMBOLO_STYLES_TAILWIND=false`, turns all of it off
+  ([`configuration.md`](configuration.md#settings-with-no-environment-variable)).
+
+### The site's own input
+
+`css/tailwind.css`, when the site has one, replaces Tailwind's default input
+(`@import "tailwindcss";`). A new site starts with exactly that line, so Tailwind's own
+editor extension (VS Code, Cursor) switches on for anyone working on it locally. It is
+where a site adds its theme, plugins and extra sources:
+
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #ff6600;
+  --font-display: "Fraunces", serif;
+}
+
+@plugin "@tailwindcss/typography";
+@source "../content";
+@source inline("prose prose-lg text-brand");
+```
+
+- `@theme` values are classes at once: `bg-brand`, `font-display`.
+- `@source` names more files to read for classes, relative to `css/`; `@source not`
+  leaves some out, and `@import "tailwindcss" source(none);` reads only what `@source`
+  names.
+- `@import` reads Tailwind's own files, the site's files under its folder, and a
+  package's stylesheet; `@plugin` loads a package the site installed.
+- The file is still a stylesheet of the site's, edited in Settings like the others, but
+  what is served at `/css/tailwind.css` is always the generated stylesheet, never the
+  input.
+
+**A `css/tailwind.css` that doesn't compile** is logged with its line
+(`css/tailwind.css:3 does not compile, so the last good Tailwind stylesheet stays served:
+Missing closing } at @theme`), and the last stylesheet that compiled keeps being served
+and linked. In development the page shows the error in a banner, as it does a type
+error, until the file compiles again. `crombolo install` reports it as a problem.
+
+### Classes in content
+
+Classes typed into a rich text editor, or into pasted HTML, are in no view, so the server
+never sees them and they are not generated. Name them in `css/tailwind.css` with
+`@source inline(…)`, which takes Tailwind's brace expansion:
+
+```css
+@source inline("text-center bg-{red,amber,green}-{100,500}");
+```
+
+### Completion in the template editor
+
+The back office's template editor completes Tailwind's classes as they are typed, inside
+`className="…"` and `class="…"`, and in strings and template strings given to them,
+`clsx(…)` and `cn(…)` included: the classes matching what is typed, the variants
+(`hover:`, `md:`, `dark:` and the rest) combining with them, each with the CSS it makes
+and a swatch for a colour. Hovering a class shows its CSS. The site's own `@theme` is in
+the list, read once as a view is opened from
+`/umbraco/crombolo/api/tailwind-classes`. A class Tailwind doesn't know isn't marked:
+it may be the site's own. With Tailwind off, nothing is offered.
+
 ## Public files
 
 Files in `public/` are served at the root of the site at the same paths (story

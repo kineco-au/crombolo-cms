@@ -1026,6 +1026,14 @@ const DECLARED = [
       'Reloads open pages when the components, the schema or the content change, and shows type errors on them. On in development, off in production and under `bun test`.',
   },
   {
+    env: 'CROMBOLO_STYLES_TAILWIND',
+    kind: 'boolean',
+    default: 'true',
+    section: 'Public site',
+    description:
+      "Generates the Tailwind CSS for the classes the views use and links it in every page's head, Tailwind's base reset included. `false` generates and links nothing; `styles.tailwind` in `crombolo.config.ts` does the same.",
+  },
+  {
     env: 'CROMBOLO_SITEMAP',
     kind: 'boolean',
     default: 'true',

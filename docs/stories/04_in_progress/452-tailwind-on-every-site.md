@@ -75,30 +75,30 @@ class can appear without a deploy. The CSS can't come only from a build step.
 
 ## Acceptance criteria
 
-- [ ] **A class in a view** is styled on the page with no import or build, in
+- [x] **A class in a view** is styled on the page with no import or build, in
       development and in production.
-- [ ] **A class saved in the template editor** is styled on the next page load; the
+- [x] **A class saved in the template editor** is styled on the next page load; the
       stylesheet's hash changes and pages link the new one.
-- [ ] **`css/tailwind.css`** replaces the default input: a `@theme` colour is usable as a
+- [x] **`css/tailwind.css`** replaces the default input: a `@theme` colour is usable as a
       class, and `@source inline(…)` generates classes used only in content.
-- [ ] **The link** is in every page's head before the site's own CSS, once.
-- [ ] **`styles.tailwind: false`** generates and links nothing, and the editor offers no
+- [x] **The link** is in every page's head before the site's own CSS, once.
+- [x] **`styles.tailwind: false`** generates and links nothing, and the editor offers no
       classes.
-- [ ] **The template editor completes classes** inside `className`/`class` strings and
+- [x] **The template editor completes classes** inside `className`/`class` strings and
       `clsx`/`cn` calls: matching classes with their CSS, variants combined, a swatch for
       a colour, the site's own `@theme` included; hovering a class shows its CSS.
-- [ ] **A new site has `css/tailwind.css`**, so Tailwind's IntelliSense works in a local
+- [x] **A new site has `css/tailwind.css`**, so Tailwind's IntelliSense works in a local
       editor.
-- [ ] **A broken `css/tailwind.css`** is logged with its line and the last good
+- [x] **A broken `css/tailwind.css`** is logged with its line and the last good
       stylesheet stays served.
-- [ ] **No native binaries:** the container image and the Windows host job build and
+- [x] **No native binaries:** the container image and the Windows host job build and
       pass unchanged.
-- [ ] **Tests:** scanning, compiling, the link, the setting, a save regenerating, two
+- [x] **Tests:** scanning, compiling, the link, the setting, a save regenerating, two
       servers giving the same hash, and the error; the class list's route and what the
       completion offers where (a pure function of the text and cursor); browser
       journeys: a class saved in a view styles the page, and typing in `className`
       offers a class that is then inserted.
-- [ ] **Docs:** `docs/rendering.md` (styling with Tailwind), `docs/configuration.md`,
+- [x] **Docs:** `docs/rendering.md` (styling with Tailwind), `docs/configuration.md`,
       the settings reference, and the release notes. The upgrade notes warn that
       Tailwind's base reset may change an existing site's headings, margins and lists,
       and say how to turn it off.
@@ -107,3 +107,68 @@ class can appear without a deploy. The CSS can't come only from a build step.
 
 - Tailwind in the back office, which has its own styles.
 - A Tailwind version a site chooses: the CMS ships one and upgrades it in its releases.
+
+## Built (2026-11-28)
+
+- **Compiler:** `tailwindcss` 4.3.5 (MIT), a dependency of `@crombolo/server`, pinned. It has
+  no dependencies, no optional dependencies and no install script: JavaScript and CSS
+  only, nothing platform-specific (`bun.lock`: `"tailwindcss@4.3.5", "", {}`). Its
+  `compile()` builds the stylesheet from candidates the CMS scans itself; its
+  `__unstable__loadDesignSystem()` gives the editor's class list. `@tailwindcss/node`,
+  oxide and lightningcss are not used.
+- **Server:** `packages/server/src/tailwind.ts`. `SiteTailwind` reads `css/tailwind.css` or
+  `@import "tailwindcss";`, scans `components/` (`.tsx .ts .jsx .js .html`, sorted, each
+  file's candidates kept until its size or time changes) and any `@source` (and
+  `@source not`, `source(none)`), builds, and keeps the current and four previous builds
+  at their hashed addresses. `classCandidates` is the scanner; `tailwindProblem` finds a
+  broken input's line (Tailwind's own location, or an `@apply` class by name). A build
+  runs at boot (not on an `api` node), on every views swap (a save, a push, another node's
+  instruction, the dev watcher), after a template-editor save before it answers, when
+  `css/tailwind.css` changes on disk or another node says the stylesheets changed. Builds
+  are serialised, a request during one runs once after it.
+- **Serving:** `/css/tailwind.css` (`no-cache`, ETag) and `/css/tailwind.<hash>.css` (a year,
+  `immutable`; an unknown hash `404 no-store`) from memory, ahead of the site's own
+  `css/`; `asset('/css/tailwind.css')` answers the hashed address. Pages' ETags include the
+  stylesheet's hash.
+- **The link:** `withPageStylesheet` (`@crombolo/render`, pure) puts
+  `<link rel="stylesheet" href="/css/tailwind.<hash>.css">` before the head's first
+  stylesheet or `<style>`, else before `</head>`; nothing for a page that links
+  `/css/tailwind…` itself or has no head. The renderer applies it to every page, given the node's
+  current address by its `stylesheet` option (Shared's renderer, a workspace's site's and
+  a workspace's own views'), and the node applies it to a page a workspace's own process
+  rendered. An option rather than a resolver on `globalThis`, as `asset()` has: a process
+  running several servers (the browser suite's three) would otherwise link the last
+  one's. E-mails and deferred parts get none.
+- **Setting:** `styles: { tailwind: boolean }` in the config, `CROMBOLO_STYLES_TAILWIND`
+  (Public site), on by default.
+- **Errors:** logged once per distinct problem under `styles`
+  (`css/tailwind.css:3 does not compile, so the last good Tailwind stylesheet stays served:
+  …`), and once when it compiles again; the live-reload stream has a `styles` event and the
+  dev script a banner at the top of the page. `crombolo install`'s build-ahead reports it.
+- **Editor:** `GET /umbraco/crombolo/api/tailwind-classes` (signed in): `{ enabled, version,
+  classes: [name, css, colour?][], variants }`, the CSS without its `@property` blocks, a
+  colour as `#rrggbb` from the theme (`cssColorToHex`: oklch, rgb, hex), cached per input,
+  tagged and gzipped (≈5 MB of JSON, ≈260 KB sent). `tailwind-completion.js` (pure):
+  `classStringAt`/`classContextAt`/`classAt` find the class string at the cursor
+  (`className=`/`class=` strings, strings and template strings inside `className={…}` and
+  `clsx`/`cn`/`cx`/`classnames`/`twMerge`/`twJoin` calls), `suggestClasses` the variants
+  and classes, `hoverFor` the hover. `tsx-editors.js` fetches the list in the
+  `viewEditor` seam's `prepare`, and in `created` registers (once) a completion and a hover
+  provider on monaco's TypeScript that answer only for that view's model, and turns on
+  quick suggestions in strings for it. A colour is a `Color` item whose documentation is
+  its hex, which monaco draws as a swatch. No fork change.
+- **Scaffold and demo:** `crombolo init` writes `css/tailwind.css` (`@import "tailwindcss";`)
+  for every site rendered by the CMS (not `--next` or a single-page app); the basic
+  template's `contentPage.tsx` is styled with classes instead of a `<style>`; the product
+  site's layout uses `antialiased`, and its bundle is rebuilt.
+- **Not covered:** classes in an extension's own components (rendered in its process) are
+  not scanned; a workspace's own views are not scanned until merged, its pages link
+  Shared's stylesheet.
+- **Tests:** `tests/tailwind.test.ts` (scanning, compiling, the link, before the site's CSS
+  and once, the setting and its variable, a save regenerating at a new hash with the old one
+  still served, two servers giving one hash, `@theme` and `@source inline`, a broken input's
+  line with the last good kept, `install` reporting it, the class list's route, colours,
+  the scaffold); `tests/tailwind-completion.test.ts` (what is offered where, as a function
+  of text and cursor); the `styles` event in `tests/live-reload.test.ts`;
+  `CROMBOLO_STYLES_TAILWIND` in `tests/settings-list.test.ts`; the journeys in
+  `tests/browser/tailwind.browser.ts`.

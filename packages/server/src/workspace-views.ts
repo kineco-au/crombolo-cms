@@ -30,6 +30,8 @@ export function createWorkspaceViews(options: {
   db: Db
   config: CromboloConfig
   cache: PublishedCache
+  /** The stylesheet its pages link (story 452). */
+  stylesheet?: () => string | undefined
 }) {
   const trees = new Map<string, Tree>()
   const base = resolve(`${options.config.componentsCacheDir}-workspaces`)
@@ -69,6 +71,7 @@ export function createWorkspaceViews(options: {
           cache,
           componentsDir: src,
           snapshots,
+          ...(options.stylesheet ? { stylesheet: options.stylesheet } : {}),
           renderTimeoutMs: options.config.renderTimeoutMs,
         }),
       }

@@ -319,6 +319,7 @@ import { SiteAssets } from './site-assets.ts'
 import { unknownHostProvided } from './site-file.ts'
 import { PublicFiles } from './site-public.ts'
 import { signerTrusted } from './site-trust.ts'
+import { SiteTailwind, TAILWIND_PATH, tailwindClassesResponse, tailwindPlace } from './tailwind.ts'
 import {
   activeSpan,
   inSpan,
@@ -582,6 +583,15 @@ export async function createServer(
   // Set once they exist: a Postgres notification can wake the poller before then,
   // and they read the disk as they start anyway.
   let siteFilesChanged: ((change: 'assets' | 'public') => void) | undefined
+  // Story 452: made once the views are, and rebuilt whenever they or its input change.
+  let tailwind: SiteTailwind | undefined
+  const refreshTailwind = () =>
+    tailwind?.refresh().catch((error: unknown) =>
+      logger('styles').error('The Tailwind stylesheet could not be built: {error}', {
+        error: String(error),
+      }),
+    )
+  const pageStylesheet = () => tailwind?.current()?.address
   const core = await createCore(config, {
     onSiteFiles: (change) => siteFilesChanged?.(change),
     onCacheInvalidate: () => {
@@ -590,6 +600,7 @@ export async function createServer(
     },
     onViewsSwap: () => {
       live?.changed('views')
+      void refreshTailwind()
       void typeWatch
         ?.schedule()
         .catch((error: unknown) =>
@@ -597,6 +608,7 @@ export async function createServer(
         )
     },
     buildIslands: true,
+    pageStylesheet: () => pageStylesheet(),
     announce: (event) => announce(event),
     onDocumentChanged: (key) =>
       events.broadcast('notify', [
@@ -1299,6 +1311,7 @@ export async function createServer(
       // A push or an apply may have replaced views: a new snapshot here, as an
       // edit in the back office takes one, and every other node told.
       const hash = await snapshots.refresh()
+      await refreshTailwind()
       await appendCacheInstruction(db, {
         kind: 'components',
         payload: hash ? { hash } : {},
@@ -1345,14 +1358,46 @@ export async function createServer(
       { prefix: '/css', dir: config.stylesheetsDir, extension: '.css' },
       { prefix: '/scripts', dir: config.scriptsDir, extension: '.js' },
     ],
-    { watch: serverOptions.watchSiteFiles },
+    {
+      watch: serverOptions.watchSiteFiles,
+      onChange: (path) => {
+        if (path === TAILWIND_PATH) void refreshTailwind()
+      },
+    },
   )
   siteAssets.start()
+  if (config.styles.tailwind) {
+    const stylesLog = logger('styles')
+    tailwind = new SiteTailwind({
+      siteDir: config.siteDir,
+      componentsDir: config.componentsDir,
+      stylesheetsDir: config.stylesheetsDir,
+      onProblem: (problem) => {
+        stylesLog.error(
+          '{where} does not compile, so the last good Tailwind stylesheet stays served: {message}',
+          { where: tailwindPlace(problem), message: problem.message },
+        )
+        live?.styles({ problem })
+      },
+      onRecovered: () => {
+        stylesLog.info('The Tailwind stylesheet compiles again')
+        live?.styles({})
+      },
+      onChanged: (_build, previous) => {
+        if (previous) live?.changed('styles')
+      },
+    })
+    if (config.role !== 'api') await refreshTailwind()
+  }
   const publicFiles = new PublicFiles(config.publicDir, config.backOfficePath, {
     watch: serverOptions.watchSiteFiles,
   })
   publicFiles.start()
-  siteFilesChanged = (change) => (change === 'public' ? publicFiles.changed() : siteAssets.rescan())
+  siteFilesChanged = (change) => {
+    if (change === 'public') return publicFiles.changed()
+    siteAssets.rescan()
+    void refreshTailwind()
+  }
   // A file wins at its path (story 284), so a page it hides is worth saying once.
   if (config.role !== 'api' && publicFiles.paths().length > 0)
     void publicFiles
@@ -1401,7 +1446,11 @@ export async function createServer(
     })().catch(() => {})
   const missingAssets = new Set<string>()
   setAssetResolver((path) => {
-    const found = generatedPaths.get(path) ?? siteAssets.address(path) ?? publicFiles.address(path)
+    const found =
+      tailwind?.address(path) ??
+      generatedPaths.get(path) ??
+      siteAssets.address(path) ??
+      publicFiles.address(path)
     if (found) return found
     if (config.development && !missingAssets.has(path)) {
       missingAssets.add(path)
@@ -1458,7 +1507,9 @@ export async function createServer(
     const checkpoint = cache.served()?.checkpoint
     const generation = views ? snapshots.status().hash : ''
     if (checkpoint === undefined || generation === undefined) return undefined
-    return `${checkpoint}|${generation}|${installed}|${VERSION}`
+    // Story 452: a page links the stylesheet by its hash, so a new one is a new answer.
+    const styles = views ? (tailwind?.current()?.hash ?? '') : ''
+    return `${checkpoint}|${generation}|${styles}|${installed}|${VERSION}`
   }
   const publishedValidator =
     caching.validator === 'published' || [...caching.validators.values()].includes('published')
@@ -1915,6 +1966,8 @@ export async function createServer(
       // this write produced rather than the generation it replaced, and the
       // editor's next request renders what they just saved.
       const hash = await snapshots.refresh()
+      // Story 452: the next page links the stylesheet with the classes just saved.
+      await refreshTailwind()
       void appendCacheInstruction(db, {
         kind: 'components',
         payload: hash ? { alias, hash } : { alias },
@@ -2151,6 +2204,7 @@ export async function createServer(
         nodeId: core.schema.nodeId,
         componentsCacheDir: config.componentsCacheDir,
         environment: config.environment,
+        stylesheet: pageStylesheet,
         limit: config.workspaceProcesses,
         idleMs: config.workspaceProcessIdleMinutes * 60_000,
         memoryMb: config.workspaceProcessMemoryMb,
@@ -2329,6 +2383,7 @@ export async function createServer(
     componentsDir: config.componentsDir,
     snapshots,
     renderTimeoutMs: config.renderTimeoutMs,
+    stylesheet: pageStylesheet,
     limit: config.workspaceSites,
     idleMs: config.workspaceSiteIdleMinutes * 60_000,
   })
@@ -3358,6 +3413,11 @@ export async function createServer(
       const routed = await siteRoutes.handle(request, url)
       if (routed) return routed
     }
+    if (
+      tailwind &&
+      (pathname === TAILWIND_PATH || splitHashedAddress(pathname)?.path === TAILWIND_PATH)
+    )
+      return serveTailwind(request, pathname, tailwind)
     if (pathname.startsWith('/css/'))
       return serveSiteFile(request, config.stylesheetsDir, pathname, '.css')
     if (pathname.startsWith('/scripts/'))
@@ -3758,6 +3818,15 @@ export async function createServer(
         findings: result.findings,
         state: { version: schema.nodeState.version, revision: schema.nodeState.revision },
       })
+    }
+
+    // Non-contract, signed-in (story 452): the classes the view editor completes,
+    // with their CSS and colours, and the variants; none when Tailwind is off.
+    if (pathname === `${paths.pluginPath}/api/tailwind-classes`) {
+      const principal = await authenticate(request)
+      if (!principal) return new Response('Unauthorized', { status: 401 })
+      if (request.method !== 'GET') return new Response('Method Not Allowed', { status: 405 })
+      return tailwindClassesResponse(request, tailwind)
     }
 
     // Non-contract, signed-in: the declarations the view editor type-checks a
@@ -5460,6 +5529,22 @@ export async function createServer(
     // Hashed from the bytes about to be sent, so a change the watcher missed is never kept under this address.
     if (contentHash(bytes) !== hashed.hash) return notFound({ 'cache-control': 'no-store' })
     const response = siteFileResponse(file.type, bytes)
+    response.headers.set('cache-control', 'public, max-age=31536000, immutable')
+    return response
+  }
+
+  /**
+   * Story 452: the generated stylesheet, never the site's input of the same name.
+   * Its hashed address is kept for a year while this node built it.
+   */
+  function serveTailwind(request: Request, pathname: string, styles: SiteTailwind): Response {
+    const css = pathname === TAILWIND_PATH ? styles.current()?.css : styles.kept(pathname)
+    if (css === undefined)
+      return new Response('Not Found', { status: 404, headers: { 'cache-control': 'no-store' } })
+    const bytes = new TextEncoder().encode(css)
+    const response = siteFileResponse('text/css;charset=utf-8', bytes)
+    if (pathname === TAILWIND_PATH)
+      return withNoCache(cacheable(request, response, bytes, { lifetime: undefined }))
     response.headers.set('cache-control', 'public, max-age=31536000, immutable')
     return response
   }

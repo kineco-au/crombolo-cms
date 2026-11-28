@@ -23,7 +23,8 @@ export function Layout(props: PageProps & { children?: Child }) {
         <link rel="icon" type="image/svg+xml" href={FAVICON} />
         <link rel="stylesheet" href={asset('/css/site.css')} />
       </head>
-      <body>
+      {/* `antialiased` is Tailwind's (story 452): the server generates and links its CSS. */}
+      <body class="antialiased">
         <SiteHeader model={model} nav={nav} />
         <main>{children}</main>
         <SiteFooter nav={nav} />

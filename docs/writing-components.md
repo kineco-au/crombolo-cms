@@ -750,6 +750,11 @@ code it imports, changes. Open pages keep up by themselves (story 214):
   installed). They are printed in the terminal, and a banner on open pages
   shows how many there are and the first one, until they are fixed. A type
   error never stops a page rendering.
+- **The Tailwind stylesheet** is generated again as a view or `css/tailwind.css`
+  changes, and pages reload with it (story 452). A `css/tailwind.css` that doesn't
+  compile shows a banner at the top of open pages with the file, line and error, and
+  the last good stylesheet keeps being served until it compiles
+  ([`rendering.md`](rendering.md#styling-with-tailwind)).
 
 Pages carry a small script, `/crombolo/dev/live.js`, served as a file so a
 strict `script-src 'self'` still holds. It listens on `/crombolo/dev/events`.

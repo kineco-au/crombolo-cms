@@ -456,6 +456,8 @@ export default await crombolo(config)
     ...Object.entries(siteMediaTypeFiles()).map(([path, text]) => ({ path, text })),
     // Server actions (story 219), imported by views as `#actions/<file>.ts`.
     ...(next || spa ? [] : [{ path: 'actions/.gitkeep', text: '' }]),
+    // Story 452: Tailwind's input, so a local editor's Tailwind extension switches on.
+    ...(next || spa ? [] : [{ path: 'css/tailwind.css', text: '@import "tailwindcss";\n' }]),
     {
       path: '.gitignore',
       // `.crombolo/` holds the view snapshots: pure cache, rebuilt from `components/`

@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { type FormSubmissionState, isOutcome, type Outcome } from '@crombolo/core'
+import { withPageStylesheet } from './assets.ts'
 import { componentStackOf, trackComponent } from './component-stack.ts'
 import { emailScope, markPersonal, type PageActions, renderScope } from './context.ts'
 import {
@@ -78,6 +79,8 @@ export interface RenderOptions {
    * extension's process.
    */
   extensionComponents?: { module(alias: string): ComponentModule | undefined }
+  /** The stylesheet every page links in its head (story 452): the server's Tailwind, hashed. */
+  stylesheet?: () => string | undefined
 }
 
 export const DEFAULT_RENDER_TIMEOUT_MS = 10_000
@@ -235,6 +238,7 @@ export class Renderer {
   #islandsManifest: (generation: string | undefined) => string | undefined
 
   #extensionComponents: RenderOptions['extensionComponents']
+  #stylesheet: RenderOptions['stylesheet']
 
   constructor(options: RenderOptions) {
     this.#cache = options.cache
@@ -244,6 +248,7 @@ export class Renderer {
     this.#snapshots = options.snapshots
     this.#renderTimeoutMs = options.renderTimeoutMs ?? DEFAULT_RENDER_TIMEOUT_MS
     this.#extensionComponents = options.extensionComponents
+    this.#stylesheet = options.stylesheet
     this.#islandsManifest =
       options.islandsManifest ??
       ((generation) => (generation ? `${ISLANDS_PATH}/${generation}/manifest.json` : undefined))
@@ -600,7 +605,9 @@ export class Renderer {
         },
       )
       if (html === undefined || request.part) return html
-      const withParts = deferred?.used ? beforeBodyEnd(html, DEFERRED_TAGS) : html
+      const stylesheet = this.#stylesheet?.()
+      const styled = stylesheet ? withPageStylesheet(html, stylesheet) : html
+      const withParts = deferred?.used ? beforeBodyEnd(styled, DEFERRED_TAGS) : styled
       if (!islands.used) return withParts
       // The generation the views were imported from, so the page loads the code built with them.
       const manifest = this.#islandsManifest(

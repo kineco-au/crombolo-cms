@@ -4,7 +4,7 @@
  * shows. docs/writing-components.md, "The development loop".
  */
 import { watch } from 'node:fs'
-import type { LiveChange, LiveTypes } from '@crombolo/render'
+import type { LiveChange, LiveStyles, LiveTypes } from '@crombolo/render'
 
 export interface LiveReloadOptions {
   /** This process's identity; a page that reconnects to a different one reloads. */
@@ -21,6 +21,8 @@ export interface LiveReload {
   changed(what: LiveChange): void
   /** The background type check's latest findings, sent now and to each page that connects. */
   types(findings: LiveTypes): void
+  /** The stylesheet's latest problem, or none (story 452), sent now and to each page that connects. */
+  styles(styles: LiveStyles): void
   /** The `text/event-stream` answer for a page's `EventSource`. */
   stream(request: Request): Response
   /** How many pages are listening. */
@@ -37,6 +39,7 @@ export function createLiveReload(options: LiveReloadOptions = {}): LiveReload {
   const collectMs = options.collectMs ?? 200
   const listeners = new Set<ReadableStreamDefaultController<Uint8Array>>()
   let latestTypes: LiveTypes = { count: 0 }
+  let latestStyles: LiveStyles = {}
   const pending = new Set<LiveChange>()
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -71,6 +74,10 @@ export function createLiveReload(options: LiveReloadOptions = {}): LiveReload {
       latestTypes = findings
       send(frame('types', findings))
     },
+    styles(styles) {
+      latestStyles = styles
+      send(frame('styles', styles))
+    },
     stream(request) {
       let self: ReadableStreamDefaultController<Uint8Array> | undefined
       const body = new ReadableStream<Uint8Array>({
@@ -81,6 +88,7 @@ export function createLiveReload(options: LiveReloadOptions = {}): LiveReload {
           controller.enqueue(encoder.encode('retry: 500\n\n'))
           controller.enqueue(frame('hello', { boot: bootId }))
           controller.enqueue(frame('types', latestTypes))
+          controller.enqueue(frame('styles', latestStyles))
           request.signal.addEventListener('abort', () => {
             listeners.delete(controller)
             try {

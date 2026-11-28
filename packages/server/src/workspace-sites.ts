@@ -68,6 +68,8 @@ export function createWorkspaceSites(options: {
   componentsDir: string
   snapshots?: ViewSnapshots
   renderTimeoutMs?: number
+  /** The stylesheet every page links (story 452). */
+  stylesheet?: () => string | undefined
   /** How many a node keeps. */
   limit: number
   /** How long one is kept unused. */
@@ -83,6 +85,7 @@ export function createWorkspaceSites(options: {
           renderTimeoutMs: options.renderTimeoutMs,
         } as CromboloConfig,
         cache: undefined as never,
+        ...(options.stylesheet ? { stylesheet: options.stylesheet } : {}),
       })
 
   const sweep = (now: number, keep: string) => {
@@ -126,6 +129,7 @@ export function createWorkspaceSites(options: {
             componentsDir: options.componentsDir,
             snapshots: options.snapshots,
             renderTimeoutMs: options.renderTimeoutMs,
+            ...(options.stylesheet ? { stylesheet: options.stylesheet } : {}),
           }),
         }
         sites.set(workspace.key, site)

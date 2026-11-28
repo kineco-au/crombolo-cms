@@ -33,6 +33,23 @@ point at `docs/stories/`.
   preview has a **Markdown | Rendered** switch, the rendered page sandboxed as an HTML
   File is.
 
+- **Tailwind on every site (452).** A site's views, partials and components are styled
+  with Tailwind's classes, with no import or build step. The server generates the CSS for
+  the classes they use with Tailwind's JavaScript compiler (`tailwindcss` 4.3.5, no native
+  binaries) at boot, on every save in the template editor and as views change in
+  development, serves it at `/css/tailwind.css` through `asset()`, hashed and kept for a
+  year, and links it in every page's head before the site's own stylesheets. A site's
+  `css/tailwind.css` replaces the default input, for `@theme`, plugins, `@source` and
+  `@source inline(…)` for classes used only in content; one that doesn't compile is
+  logged with its line, the last good stylesheet stays served, and development shows it
+  in a banner. New sites get `css/tailwind.css` with `@import "tailwindcss";`, so
+  Tailwind's editor extension works locally, and the basic template is styled with
+  classes. The template editor completes classes inside `className`/`class` strings and
+  `clsx`/`cn` calls, with their CSS, the variants, a swatch for a colour and the site's
+  own theme, and shows a class's CSS on hover. `styles: { tailwind: false }` or
+  `CROMBOLO_STYLES_TAILWIND=false` turns it off. See `docs/rendering.md`, "Styling with
+  Tailwind".
+
 ### Migrations
 
 - **107 `AddWorkspaceGroups`** (expand, 451): `workspace_group`, each user group a
@@ -42,6 +59,14 @@ point at `docs/stories/`.
 
 - **Nothing to do for workspace groups (451).** The table starts empty: every workspace is
   shared with the people it was, and with no group until its owner chooses one.
+- **Tailwind's base reset now applies to every page (452).** Each page links a generated
+  stylesheet that includes Tailwind's preflight, which zeroes margins, makes headings the
+  size of body text, takes the bullets and numbers off lists and makes images block-level,
+  wherever the site's own CSS doesn't say otherwise. Look over an existing site's pages
+  after upgrading; to keep them exactly as they were, set `styles: { tailwind: false }` in
+  `crombolo.config.ts` or `CROMBOLO_STYLES_TAILWIND=false`. A site with its own
+  `css/tailwind.css` from a build of its own will find it read as the input now, and the
+  generated stylesheet served at its address.
 
 ## v0.84.0 — 2026-11-28
 
